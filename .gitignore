@@ -1,0 +1,15 @@
+# SwiftPM and Xcode
+.build/
+.swiftpm/
+DerivedData/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+
+# The app built by scripts/build-app.sh
+build/
+
+# Python
+__pycache__/
+
+# macOS
+.DS_Store

@@ -1,0 +1,552 @@
+import CoreGraphics
+import Foundation
+
+/// What the window shows besides the picture.
+public struct Status: Equatable, Sendable {
+  /// Where the picture comes from, for the window's subtitle: the analyzer and its firmware, or the feeding program.
+  public var source: String
+  /// Why no live picture comes, shown over the picture; nil while it is live.
+  public var note: String?
+  /// Whether clicks reach the analyzer as taps (live over USB).
+  public var controllable: Bool
+
+  public init(source: String, note: String?, controllable: Bool) {
+    self.source = source
+    self.note = note
+    self.controllable = controllable
+  }
+}
+
+public protocol SessionDelegate: AnyObject {
+  func session(_ session: Session, show image: CGImage)
+  func session(_ session: Session, status: Status)
+}
+
+/// Keeps the window's picture coming: from a tinySA on USB (its live screen after `refresh on`, or on firmware without
+/// it a capture after every sweep), or from a program that feeds pictures; and lets go of the analyzer while another
+/// program borrows it. Runs on a thread of its own and tells its delegate on the main thread.
+public final class Session {
+  public weak var delegate: SessionDelegate?
+
+  public init() {}
+
+  // MARK: The main thread's side
+
+  public func start() {
+    let thread = Thread { [weak self] in self?.run() }
+    thread.name = "tinySA session"
+    thread.qualityOfService = .userInitiated
+    thread.start()
+  }
+
+  /// Lets go of the analyzer properly (its live screen turned off), waiting at most `timeout` seconds.
+  public func stop(timeout: TimeInterval = 2) {
+    lock.locked { stopping = true }
+    _ = finished.wait(timeout: .now() + timeout)
+  }
+
+  /// A tap on the analyzer's screen, at a pixel of it: `touch` while the button is down (again as it moves),
+  /// `release` when it comes up.
+  public func touch(x: Int, y: Int) { lock.locked { taps.append("touch \(x) \(y)") } }
+  public func release(x: Int, y: Int) { lock.locked { taps.append("release \(x) \(y)") } }
+
+  private let lock = NSLock()
+  private var stopping = false
+  private var taps: [String] = []
+  private let finished = DispatchSemaphore(value: 0)
+
+  // MARK: The session thread's side
+
+  private enum Failure: Error {
+    case noAnswer
+    case unexpected(String)
+    /// The app is quitting, or another program asked for the analyzer: let go now.
+    case interrupted
+  }
+
+  private enum Mode {
+    /// The firmware's live screen (`refresh on`): every region as it is drawn.
+    case stream
+    /// A capture after every sweep (`waitscan 1`, `capture rle`), for firmware without the live screen.
+    case poll
+  }
+
+  private static let prompt = Array("ch> ".utf8)
+  private var port: SerialPort?
+  private var screen: Framebuffer?
+  private var stream: ScreenStream?
+  private var mode = Mode.stream
+  /// Bytes read and not yet used (replies before the live screen starts).
+  private var pending: [UInt8] = []
+  private var dirty = false
+  private var lastFrame = Date.distantPast
+  private var lastChecks = Date.distantPast
+  private var lastWatching = Date.distantPast
+  private var feedPicture: Date?
+  /// The usual time between a feeder's pictures: a picture is stale after three of them (and at least 6 s), so a feeder
+  /// with slow sweeps isn't shown as stopped between pictures.
+  private var feedInterval: TimeInterval = 0
+  private var deviceSource = ""
+  private var lastStatus: Status?
+  /// Regions of the live screen skipped so far (damaged by a command's echo), and when that was last looked at.
+  private var skippedSeen = 0
+  private var lastSkipCheck = Date.distantPast
+  private var lastTap = Date.distantPast
+  /// Where a touch went down that hasn't been released yet: the analyzer waits for the release, with its sweep stopped,
+  /// so it is always sent before letting go.
+  private var touchHeld: (x: Int, y: Int)?
+  /// When the live screen last brought bytes: a stream that has gone quiet is checked (a Mac that slept turns it off).
+  private var lastData = Date.distantPast
+  /// The last feeder seen, and when: a moment's unreadable state.json doesn't end its turn.
+  private var lastFeeder: (state: FeedState, seen: Date)?
+  private var lastYieldCheck = Date.distantPast
+  private var yieldAsked = false
+  /// When `refresh on` went out to a quiet stream, until its echo comes back; and the latest text between regions.
+  private var probeSent: Date?
+  private var recentText = ""
+
+  private var isStopping: Bool { lock.locked { stopping } }
+
+  private func run() {
+    while !isStopping {
+      let now = Date()
+      if now.timeIntervalSince(lastWatching) >= 1 {
+        FeedState.touchWatching()
+        lastWatching = now
+      }
+      // A feeding program comes first, then one that asked to borrow the analyzer.
+      if port == nil || now.timeIntervalSince(lastChecks) >= 0.25 {
+        lastChecks = now
+        let current = FeedState.current()
+        if let current { lastFeeder = (current, now) }
+        if let feed = current ?? recentFeeder(now) {
+          letGo()
+          showFeed(feed)
+          pause(0.25)
+          continue
+        }
+        lastFeeder = nil
+        feedPicture = nil
+        feedInterval = 0
+        if let request = BorrowRequest.current() {
+          letGo()
+          publish(
+            Status(
+              source: deviceSource, note: "The tinySA is lent to \(request.name). Its screen comes back when it's done.",
+              controllable: false))
+          pause(0.5)
+          continue
+        }
+      }
+      if port == nil {
+        connect()
+      } else {
+        pump()
+      }
+    }
+    letGo()
+    FeedState.stopWatching()
+    finished.signal()
+  }
+
+  /// The feeder seen within the last 1.5 s, while its state.json can't be read (a feeder writing it in place).
+  private func recentFeeder(_ now: Date) -> FeedState? {
+    guard let lastFeeder, now.timeIntervalSince(lastFeeder.seen) < 1.5,
+      FileManager.default.fileExists(atPath: Integration.stateFile.path)
+    else { return nil }
+    return lastFeeder.state
+  }
+
+  private func connect() {
+    guard let device = DeviceFinder.tinySAs().first else {
+      publish(Status(source: "", note: "Connect a tinySA by USB and switch it on.", controllable: false))
+      pause(1)
+      return
+    }
+    let users = PortUsers.of(device.path)
+    if !users.isEmpty {
+      publish(inUse(by: users.joined(separator: ", ")))
+      pause(2)
+      return
+    }
+    do {
+      port = try SerialPort(path: device.path)
+      yieldAsked = false
+      try greet()
+      let version = try command("version").split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
+      let model = try command("info").split(whereSeparator: \.isNewline).first.map(String.init) ?? device.product
+      let size = ScreenSize.of(version: version)
+      let screen = Framebuffer(size: size)
+      try Capture.apply(capture(size), to: screen)
+      self.screen = screen
+      deviceSource = [model, Self.shortVersion(version)].filter { !$0.isEmpty }.joined(separator: " · ")
+      mode = try startStream() ? .stream : .poll
+      publishFrame()
+      publish(Status(source: deviceSource, note: nil, controllable: true))
+    } catch Failure.interrupted {
+      letGo()
+    } catch SerialPort.Failure.busy {
+      dropPort()
+      publish(inUse(by: nil))
+      pause(2)
+    } catch {
+      dropPort()
+      publish(
+        Status(
+          source: device.product,
+          note: "The tinySA doesn't answer over USB. Switch it off and on, or plug its cable in again.",
+          controllable: false))
+      pause(2)
+    }
+  }
+
+  private func inUse(by names: String?) -> Status {
+    let who = names.map { "another program (\($0))" } ?? "another program"
+    return Status(
+      source: "", note: "The tinySA is in use by \(who). Its screen shows here once that program lets go of it.",
+      controllable: false)
+  }
+
+  /// "v1.4-252" from "tinySA4_v1.4-252-g2b4aa51".
+  static func shortVersion(_ version: String) -> String {
+    guard let v = version.range(of: "_v") else { return version }
+    let rest = version[v.upperBound...]
+    let parts = rest.split(separator: "-")
+    return "v" + parts.prefix(2).joined(separator: "-")
+  }
+
+  /// The live screen and the taps, or a sweep and a capture, until something goes wrong.
+  private func pump() {
+    guard let port, let screen else { return }
+    do {
+      try sendTaps()
+      switch mode {
+      case .stream:
+        let bytes = try port.read(timeout: 0.03)
+        if !bytes.isEmpty {
+          lastData = Date()
+          draw(bytes)
+        }
+        try checkStream()
+      case .poll:
+        _ = try command("waitscan 1", timeout: 30)
+        try Capture.apply(capture(screen.size), to: screen)
+        dirty = true
+      }
+      if dirty, Date().timeIntervalSince(lastFrame) >= 1.0 / 25 { publishFrame() }
+    } catch Failure.interrupted {
+      letGo()
+    } catch {
+      dropPort()
+      publish(Status(source: "", note: "The tinySA went away. Plug it in again, or switch it on.", controllable: false))
+      pause(1)
+    }
+  }
+
+  private func draw<Bytes: Sequence>(_ bytes: Bytes) where Bytes.Element == UInt8 {
+    guard let screen else { return }
+    stream?.feed(bytes) { event in
+      if case let .text(text) = event {
+        // The echo of a `refresh on` sent to a quiet stream: the console answers.
+        recentText = String((recentText + text).suffix(64))
+        if probeSent != nil, recentText.contains("refresh on") {
+          probeSent = nil
+          recentText = ""
+        }
+        return
+      }
+      screen.apply(event)
+      dirty = true
+    }
+  }
+
+  private func sendTaps() throws {
+    let lines = lock.locked { () -> [String] in
+      defer { taps.removeAll() }
+      return taps
+    }
+    if !lines.isEmpty { lastTap = Date() }
+    for line in lines {
+      let parts = line.split(separator: " ")
+      if parts.count == 3, let x = Int(parts[1]), let y = Int(parts[2]) {
+        touchHeld = parts[0] == "touch" ? (x, y) : nil
+      }
+      if mode == .poll {
+        _ = try command(line)
+      } else {
+        try port?.write(line + "\r")  // its echo comes back between regions, as text
+      }
+    }
+  }
+
+  // MARK: The console
+
+  /// A clean console: a live screen left on by a program that ended is turned off first, then a prompt.
+  private func greet() throws {
+    guard let port else { return }
+    try port.write("refresh off\r")
+    _ = try readFor(0.3)
+    port.discardInput()
+    pending.removeAll()
+    try port.write("\r")
+    _ = try readUntil(Self.prompt, timeout: 2)
+    // A touch left down by a program that ended mid-tap keeps the analyzer waiting, its sweep stopped: a release frees
+    // it, and does nothing when no touch is down.
+    _ = try command("release")
+    pending.removeAll()
+  }
+
+  /// Looks after the live screen every second (not in the middle of a tap). A region skipped (a command's echo landed
+  /// inside it) leaves that part of the copy stale until the analyzer happens to draw it again: a whole capture puts it
+  /// right. A stream quiet for 3 s may be a paused analyzer or a slow sweep, but also one whose live screen went off (it
+  /// turns it off when the Mac sleeps): `refresh on` turns it back on, runs beside the sweep without cutting it short,
+  /// and its echo shows the console still answers; without one the analyzer is connected again.
+  private func checkStream() throws {
+    let now = Date()
+    guard now.timeIntervalSince(lastSkipCheck) >= 1, now.timeIntervalSince(lastTap) >= 0.5, touchHeld == nil,
+      let stream, let port
+    else { return }
+    lastSkipCheck = now
+    if let probeSent {
+      if now.timeIntervalSince(probeSent) > 2 { throw Failure.noAnswer }
+      return
+    }
+    if stream.skipped > skippedSeen {
+      try resync()
+    } else if now.timeIntervalSince(lastData) >= 3 {
+      try port.write("refresh on\r")
+      probeSent = now
+      lastData = now
+    }
+  }
+
+  /// A whole capture onto the copy, between the live screen off and on again.
+  private func resync() throws {
+    guard let port, let screen else { return }
+    try port.write("refresh off\r")
+    // Whatever was still on its way, up to the echo of refresh off; then a clean console for the capture.
+    let deadline = Date() + 1
+    var seen = ""
+    while Date() < deadline, !seen.contains("refresh off") {
+      self.stream?.feed(try port.read(timeout: 0.05)) { event in
+        if case let .text(text) = event { seen += text } else { screen.apply(event) }
+      }
+    }
+    pending.removeAll()
+    try Capture.apply(capture(screen.size), to: screen)
+    dirty = true
+    guard try startStream() else {
+      mode = .poll
+      return
+    }
+  }
+
+  /// Turns the live screen on: false on firmware without it ("refresh?").
+  private func startStream() throws -> Bool {
+    guard let port, let screen else { return false }
+    pending.removeAll()
+    try port.write("refresh on\r")
+    let reply = try readFor(0.3)
+    if String(decoding: reply, as: UTF8.self).contains("refresh?") {
+      pending.removeAll()
+      return false
+    }
+    stream = ScreenStream(size: screen.size)
+    skippedSeen = 0
+    lastData = Date()
+    probeSent = nil
+    recentText = ""
+    let early = pending
+    pending.removeAll()
+    draw(early)  // regions may have come with the reply
+    return true
+  }
+
+  /// A command's reply: the text after its echo, up to the prompt.
+  private func command(_ line: String, timeout: TimeInterval = 3) throws -> String {
+    guard let port else { throw Failure.noAnswer }
+    pending.removeAll()
+    try port.write(line + "\r")
+    let end = try readUntil(Self.prompt, timeout: timeout)
+    var reply = String(decoding: pending[0..<(end - Self.prompt.count)], as: UTF8.self)
+    pending.removeFirst(end)
+    if reply.hasPrefix(line) { reply = String(reply.dropFirst(line.count)) }
+    return reply.trimmingCharacters(in: .whitespacesAndNewlines)
+  }
+
+  /// The screen (`capture rle`): its bytes read by their length, since the prompt's bytes can occur inside them.
+  private func capture(_ size: ScreenSize) throws -> Data {
+    guard let port else { throw Failure.noAnswer }
+    let echo = Array("capture rle\r\n".utf8)
+    pending.removeAll()
+    try port.write("capture rle\r")
+    let deadline = Date() + 10
+    var length: Int?
+    while true {
+      if pending.count >= echo.count {
+        guard pending.starts(with: echo) else { throw Failure.unexpected("capture") }
+        let body = pending[echo.count...]
+        if length == nil { length = Capture.length(of: body, size: size) }
+        if let length, body.count >= length + Self.prompt.count { break }
+      }
+      guard Date() < deadline else { throw Failure.noAnswer }
+      try checkYield()
+      pending += try port.read(timeout: 0.1)
+    }
+    let data = Data(pending[echo.count..<(echo.count + length!)])
+    pending.removeAll()
+    return data
+  }
+
+  /// Reads into `pending` until it holds `marker`: the index just past it.
+  private func readUntil(_ marker: [UInt8], timeout: TimeInterval) throws -> Int {
+    guard let port else { throw Failure.noAnswer }
+    let deadline = Date() + timeout
+    while true {
+      if let found = pending.firstRange(of: marker) { return found.upperBound }
+      guard Date() < deadline else { throw Failure.noAnswer }
+      try checkYield()
+      pending += try port.read(timeout: 0.05)
+    }
+  }
+
+  /// Throws `interrupted` when the app is quitting or another program asked for the analyzer (looked at every quarter
+  /// second), so a long wait (a slow sweep, a capture) doesn't hold the analyzer from it.
+  private func checkYield() throws {
+    if isStopping { throw Failure.interrupted }
+    let now = Date()
+    if !yieldAsked, now.timeIntervalSince(lastYieldCheck) >= 0.25 {
+      lastYieldCheck = now
+      yieldAsked = BorrowRequest.current() != nil || FeedState.current() != nil
+    }
+    if yieldAsked { throw Failure.interrupted }
+  }
+
+  /// Everything that comes within `seconds` (also kept in `pending`).
+  private func readFor(_ seconds: TimeInterval) throws -> [UInt8] {
+    guard let port else { throw Failure.noAnswer }
+    let deadline = Date() + seconds
+    var got: [UInt8] = []
+    while Date() < deadline {
+      let bytes = try port.read(timeout: 0.05)
+      got += bytes
+      pending += bytes
+    }
+    return got
+  }
+
+  /// Lets go of the analyzer as it should: its live screen off (or its own sweeping back on, after polling), then the
+  /// port closed.
+  private func letGo() {
+    guard let port else { return }
+    publishControllable(false)
+    if let held = touchHeld {
+      try? port.write("release \(held.x) \(held.y)\r")
+      touchHeld = nil
+    }
+    switch mode {
+    case .stream:
+      if stream != nil, (try? port.write("refresh off\r")) != nil {
+        // Regions still on their way, then the echo: wait for it so nothing is cut off mid-region.
+        let deadline = Date() + 1
+        var seen = ""
+        while Date() < deadline, !seen.contains("refresh off") {
+          guard let bytes = try? port.read(timeout: 0.05) else { break }
+          stream?.feed(bytes) { event in
+            if case let .text(text) = event { seen += text }
+          }
+        }
+      }
+    case .poll:
+      try? port.write("resume\r")
+      _ = try? readFor(0.3)
+    }
+    dropPort()
+  }
+
+  private func dropPort() {
+    port?.close()
+    port = nil
+    stream = nil
+    screen = nil
+    pending.removeAll()
+    dirty = false
+    touchHeld = nil
+    lock.locked { taps.removeAll() }  // clicks made while letting go aren't replayed on the next connection
+  }
+
+  // MARK: Feeding
+
+  private func showFeed(_ feed: FeedState) {
+    if let (image, date) = FeedState.picture(newerThan: feedPicture) {
+      if let previous = feedPicture, date > previous, date.timeIntervalSince(previous) < 60 {
+        let interval = date.timeIntervalSince(previous)
+        feedInterval = feedInterval == 0 ? interval : 0.7 * feedInterval + 0.3 * interval
+      }
+      feedPicture = date
+      DispatchQueue.main.async { [weak self] in
+        guard let self else { return }
+        self.delegate?.session(self, show: image)
+      }
+    }
+    let name = feed.name ?? "another program"
+    let note: String?
+    switch feed.state {
+    case "lent":
+      note = "The tinySA is lent to \(feed.program ?? "another program"). Its screen comes back when it's done."
+    case "waiting":
+      note = "Waiting for the tinySA: switched off, or its USB cable out."
+    default:
+      if let feedPicture, Date().timeIntervalSince(feedPicture) < max(6, 3 * feedInterval) {
+        note = nil
+      } else if let feedPicture {
+        note = "No new picture from \(name) since \(feedPicture.formatted(date: .omitted, time: .standard))."
+      } else {
+        note = "Waiting for a picture from \(name)…"
+      }
+    }
+    publish(Status(source: "Pictures from \(name)", note: note, controllable: false))
+  }
+
+  // MARK: Telling the window
+
+  private func publish(_ status: Status) {
+    guard status != lastStatus else { return }
+    lastStatus = status
+    DispatchQueue.main.async { [weak self] in
+      guard let self else { return }
+      self.delegate?.session(self, status: status)
+    }
+  }
+
+  /// Clicks stop reaching the analyzer at once (the full status follows).
+  private func publishControllable(_ controllable: Bool) {
+    guard var status = lastStatus, status.controllable != controllable else { return }
+    status.controllable = controllable
+    publish(status)
+  }
+
+  private func publishFrame() {
+    guard let image = screen?.image() else { return }
+    dirty = false
+    lastFrame = Date()
+    DispatchQueue.main.async { [weak self] in
+      guard let self else { return }
+      self.delegate?.session(self, show: image)
+    }
+  }
+
+  private func pause(_ seconds: TimeInterval) {
+    let deadline = Date() + seconds
+    while Date() < deadline, !isStopping { Thread.sleep(forTimeInterval: 0.05) }
+  }
+}
+
+extension NSLock {
+  /// `body` with the lock held (NSLock's own `withLock` needs macOS 14).
+  func locked<T>(_ body: () throws -> T) rethrows -> T {
+    lock()
+    defer { unlock() }
+    return try body()
+  }
+}

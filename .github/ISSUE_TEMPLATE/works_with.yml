@@ -1,0 +1,32 @@
+name: It works (or doesn't) with my tinySA
+description: Tell us how tinySA Screen gets on with a model or firmware version
+labels: [compatibility]
+body:
+  - type: input
+    id: model
+    attributes:
+      label: tinySA model
+      placeholder: tinySA ULTRA ZS405, or the original tinySA
+    validations:
+      required: true
+  - type: input
+    id: firmware
+    attributes:
+      label: Firmware
+      placeholder: v1.4-252
+    validations:
+      required: true
+  - type: dropdown
+    id: result
+    attributes:
+      label: How it went
+      options:
+        - Works
+        - Works, with a problem (below)
+        - Doesn't work (below)
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else

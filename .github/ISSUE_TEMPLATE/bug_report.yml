@@ -1,0 +1,41 @@
+name: Something doesn't work
+description: tinySA Screen does something it shouldn't, or doesn't do what it should
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for the report. The window's title shows your tinySA's model and firmware.
+  - type: input
+    id: model
+    attributes:
+      label: tinySA model
+      placeholder: tinySA ULTRA+ ZS406
+    validations:
+      required: true
+  - type: input
+    id: firmware
+    attributes:
+      label: Firmware
+      placeholder: v1.4-252
+    validations:
+      required: true
+  - type: input
+    id: mac
+    attributes:
+      label: macOS and Mac
+      placeholder: macOS 15.4 on a MacBook Air (M2)
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: tinySA Screen version
+      description: tinySA Screen › About tinySA Screen
+      placeholder: 1.0.0
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead. A screenshot (⌘S in the app) helps.
+    validations:
+      required: true

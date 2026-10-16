@@ -1,0 +1,11 @@
+# Python helpers
+
+`tinysa_screen.py` works alongside tinySA Screen from Python 3.9 or later on macOS (the Mac's own `python3` will do), with the standard library only. Copy it
+next to your script, or add this folder to `PYTHONPATH`.
+
+- `borrow(name)`: use the tinySA for a `with` block while tinySA Screen is open.
+- `Feeder(name)`: keep the tinySA in your program and show its screen in tinySA Screen's window.
+- `Console()`: the tinySA's USB console (found by its USB name), with `cmd()` and `screen_png()`.
+
+`example_borrow.py` and `example_feeder.py` show each, and run as they are. The protocols themselves are in
+[docs/INTEGRATION.md](../../docs/INTEGRATION.md), for other languages.

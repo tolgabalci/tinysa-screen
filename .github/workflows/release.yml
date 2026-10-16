@@ -1,0 +1,32 @@
+name: Release
+
+# Push a tag v<version> (matching the VERSION file, with a section in CHANGELOG.md) to publish a release with the app.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: The tag matches VERSION
+        run: test "v$(cat VERSION)" = "$GITHUB_REF_NAME"
+      - name: Test
+        run: swift test
+      - name: Build the app
+        run: scripts/build-app.sh --zip
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(cat VERSION)
+          awk -v v="## $VERSION" 'index($0, v) == 1 {on=1; next} /^## / {on=0} on' CHANGELOG.md > notes.md
+          gh release create "$GITHUB_REF_NAME" "build/tinySA-Screen-$VERSION.zip" \
+            --title "tinySA Screen $VERSION" --notes-file notes.md

@@ -1,0 +1,15 @@
+name: An idea
+description: Something tinySA Screen could do
+labels: [enhancement]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What would you like it to do?
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: What for?
+      description: The situation it would help in.

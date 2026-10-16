@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: tinySA questions (not about this app)
+    url: https://groups.io/g/tinysa
+    about: The tinySA's own user group, for questions about the analyzer itself.
