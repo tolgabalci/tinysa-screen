@@ -116,3 +116,16 @@ extension ScreenStreamTests {
     XCTAssertEqual(parsed.texts.joined(), "refresh on\r\nch> ")
   }
 }
+
+extension ScreenStreamTests {
+  /// NanoVNA-D sends its live screen the same way, but ends each region with the prompt and a new line ("ch> \r\n"):
+  /// the new line is text between regions, nothing is skipped.
+  func testNanoVNARegionsEndWithANewLine() {
+    let region = Self.bulk(x: 10, y: 20, width: 2, height: 1, pixels: [0xF8, 0x00, 0x07, 0xE0]) + Array("\r\n".utf8)
+    let fill = Array("fill\r\n".utf8) + Self.le16(0, 0, 4, 4) + [0x00, 0x1F] + Array("ch> \r\n".utf8)
+    let parsed = events([region + fill + region])
+    XCTAssertEqual(parsed.regions, 3)
+    XCTAssertEqual(parsed.skipped, 0)
+    XCTAssertEqual(parsed.texts.joined(), "\r\n\r\n\r\n")
+  }
+}

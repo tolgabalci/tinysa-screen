@@ -18,6 +18,11 @@ public struct ScreenSize: Equatable, Sendable {
   public static func of(version: String) -> ScreenSize {
     version.lowercased().hasPrefix("tinysa4") ? .ultra : .basic
   }
+
+  /// A NanoVNA's screen, by its USB product name: 480 × 320 on the -H4, 320 × 240 on the others.
+  public static func of(nanoVNA product: String) -> ScreenSize {
+    product.lowercased().hasSuffix("h4") ? .ultra : .basic
+  }
 }
 
 /// A copy of the analyzer's screen on the Mac. The tinySA draws in RGB565, two bytes a pixel sent high byte first;

@@ -26,6 +26,9 @@ All notable changes are listed here, newest first. Versions follow [Semantic Ver
   (⌥⌘⌫); Settings: hold for 10 s to 5 min or until cleared, up to 9 peaks.
 - Settings (⌘,): the seconds Capture keeps, the date, time and size of GIFs, saved bands, clicks as taps, how long pen
   strokes stay, the peak hold.
+- NanoVNA (experimental): a NanoVNA-H or -H4 shows live with DiSlord's NanoVNA-D firmware (the same console and live
+  screen as the tinySA's, regions ending with a new line), or a picture every half second with older firmware; clicks,
+  screenshots, GIFs and the presenter's tools work. Built from NanoVNA-D's source, not yet tried on a NanoVNA.
 - No window tab items in the menus: the app has one window.
 - A command line for scripts and AI agents: `tinysa-screen record`, `capture`, `screenshot`, `sweep` and `status`, with
   results as text or JSON; `record --start --stop` records a given band and puts the analyzer's span back; `peaks`

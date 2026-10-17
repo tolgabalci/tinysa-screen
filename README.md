@@ -66,6 +66,12 @@ antenna.
   later also captures the whole screen quickly and fixes a console hang of earlier versions. Firmware without the live
   screen gets a picture after every sweep instead (not yet tried on such firmware). See
   [Updating the firmware](#updating-the-firmware).
+- **NanoVNA (experimental)**: a NanoVNA-H or -H4 shows the same way, live with
+  [DiSlord's NanoVNA-D firmware](https://github.com/DiSlord/NanoVNA-D), whose console and live screen the tinySA's
+  come from, or a picture every half second with older firmware. Clicks tap its screen, and screenshots, GIFs and the
+  presenter's tools work; bands and the peak hold are for the tinySA's spectrum. Built from NanoVNA-D's source, not yet
+  tried on a NanoVNA: [tell us](https://github.com/tolgabalci/tinysa-screen/issues) how it goes. With a tinySA and a
+  NanoVNA both connected, the tinySA is shown.
 
 ## Install
 

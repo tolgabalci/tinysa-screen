@@ -3,17 +3,47 @@ import Foundation
 import IOKit
 import IOKit.serial
 
-/// A tinySA on USB: its serial port, and the product name it gives ("tinySA4" for the Ultra models).
+/// The instruments the app shows: the tinySA, and (experimental) the NanoVNA-H and -H4, whose firmware has the same
+/// console and live screen.
+public enum Instrument: String, Equatable, Sendable {
+  case tinySA
+  case nanoVNA
+
+  /// The instrument a USB product name is: "tinySA4" or "tinySA"; "NanoVNA-H4", "NanoVNA-H" or "NanoVNA" (the
+  /// firmwares of DiSlord, hugen79 and edy555). Other NanoVNAs (the V2, which speaks binary; the -F) are nil.
+  public init?(product: String) {
+    let name = product.lowercased()
+    if name.contains("tinysa") {
+      self = .tinySA
+    } else if ["nanovna", "nanovna-h", "nanovna-h4"].contains(name) {
+      self = .nanoVNA
+    } else {
+      return nil
+    }
+  }
+}
+
+/// An instrument on USB: its serial port, and the product name it gives ("tinySA4" for the tinySA Ultra models).
 public struct Device: Equatable, Sendable {
   public let path: String
   public let product: String
   public let serialNumber: String?
+
+  public var instrument: Instrument { Instrument(product: product) ?? .tinySA }
 }
 
 public enum DeviceFinder {
-  /// The tinySAs on USB, by the product name of the USB device behind each serial port, so other USB serial devices
-  /// are never opened.
-  public static func tinySAs() -> [Device] {
+  /// The tinySAs on USB, then the NanoVNAs, by the product name of the USB device behind each serial port, so other USB
+  /// serial devices are never opened (a NanoVNA has the tinySA's vendor and product IDs).
+  public static func instruments() -> [Device] {
+    let found = serialPorts().filter { Instrument(product: $0.product) != nil }
+    return found.filter { $0.instrument == .tinySA } + found.filter { $0.instrument == .nanoVNA }
+  }
+
+  /// The tinySAs on USB.
+  public static func tinySAs() -> [Device] { instruments().filter { $0.instrument == .tinySA } }
+
+  private static func serialPorts() -> [Device] {
     let matching = IOServiceMatching(kIOSerialBSDServiceValue) as NSMutableDictionary
     matching[kIOSerialBSDTypeKey] = kIOSerialBSDAllTypes
     var iterator: io_iterator_t = 0
@@ -23,8 +53,7 @@ public enum DeviceFinder {
     while case let service = IOIteratorNext(iterator), service != 0 {
       defer { IOObjectRelease(service) }
       guard let path = property(service, kIOCalloutDeviceKey, searchParents: false) as? String,
-        let product = (property(service, "USB Product Name") ?? property(service, "kUSBProductString")) as? String,
-        product.lowercased().contains("tinysa")
+        let product = (property(service, "USB Product Name") ?? property(service, "kUSBProductString")) as? String
       else { continue }
       let serial = (property(service, "USB Serial Number") ?? property(service, "kUSBSerialNumberString")) as? String
       devices.append(Device(path: path, product: product, serialNumber: serial))

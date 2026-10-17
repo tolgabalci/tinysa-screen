@@ -12,12 +12,15 @@ public struct Status: Equatable, Sendable {
   /// Whether the analyzer's span can be set from here (live over USB, a tinySA Ultra: the original tinySA has two
   /// inputs for different bands, which a span alone can't choose).
   public var tunable: Bool
+  /// The instrument on USB (nil for a feeding program's pictures, or none): only a tinySA's screen is a spectrum.
+  public var instrument: Instrument?
 
-  public init(source: String, note: String?, controllable: Bool, tunable: Bool = false) {
+  public init(source: String, note: String?, controllable: Bool, tunable: Bool = false, instrument: Instrument? = nil) {
     self.source = source
     self.note = note
     self.controllable = controllable
     self.tunable = tunable
+    self.instrument = instrument
   }
 }
 
@@ -133,6 +136,7 @@ public final class Session {
 
   private static let prompt = Array("ch> ".utf8)
   private var port: SerialPort?
+  private var instrument = Instrument.tinySA
   private var screen: Framebuffer?
   private var stream: ScreenStream?
   private var mode = Mode.stream
@@ -226,7 +230,7 @@ public final class Session {
   }
 
   private func connect() {
-    guard let device = DeviceFinder.tinySAs().first else {
+    guard let device = DeviceFinder.instruments().first else {
       publish(Status(source: "", note: "Connect a tinySA by USB and switch it on.", controllable: false))
       pause(1)
       return
@@ -239,11 +243,13 @@ public final class Session {
     }
     do {
       port = try SerialPort(path: device.path)
+      instrument = device.instrument
       yieldAsked = false
       try greet()
       let version = try command("version").split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
-      let model = try command("info").split(whereSeparator: \.isNewline).first.map(String.init) ?? device.product
-      let size = ScreenSize.of(version: version)
+      var model = try command("info").split(whereSeparator: \.isNewline).first.map(String.init) ?? device.product
+      if model.hasPrefix("Board: ") { model = String(model.dropFirst("Board: ".count)) }  // a NanoVNA's info
+      let size = instrument == .tinySA ? ScreenSize.of(version: version) : ScreenSize.of(nanoVNA: device.product)
       let screen = Framebuffer(size: size)
       try Capture.apply(capture(size), to: screen)
       self.screen = screen
@@ -251,7 +257,10 @@ public final class Session {
       mode = try startStream() ? .stream : .poll
       publishFrame()
       recordFrame()
-      publish(Status(source: deviceSource, note: nil, controllable: true, tunable: size == .ultra))
+      publish(
+        Status(
+          source: deviceSource, note: nil, controllable: true, tunable: instrument == .tinySA && size == .ultra,
+          instrument: instrument))
     } catch Failure.interrupted {
       letGo()
     } catch SerialPort.Failure.busy {
@@ -276,8 +285,9 @@ public final class Session {
       controllable: false)
   }
 
-  /// "v1.4-252" from "tinySA4_v1.4-252-g2b4aa51".
+  /// "v1.4-252" from "tinySA4_v1.4-252-g2b4aa51"; "v1.2.52" from a NanoVNA's "1.2.52".
   static func shortVersion(_ version: String) -> String {
+    if let first = version.first, first.isNumber { return "v" + version }
     guard let v = version.range(of: "_v") else { return version }
     let rest = version[v.upperBound...]
     let parts = rest.split(separator: "-")
@@ -299,7 +309,11 @@ public final class Session {
         }
         try checkStream()
       case .poll:
-        _ = try command("waitscan 1", timeout: 30)
+        if instrument == .tinySA {
+          _ = try command("waitscan 1", timeout: 30)
+        } else {
+          try waitWithoutReading(0.5)  // a NanoVNA has no waitscan: a picture every half second
+        }
         try Capture.apply(capture(screen.size), to: screen)
         dirty = true
         recordFrame()
@@ -581,6 +595,15 @@ public final class Session {
     if yieldAsked { throw Failure.interrupted }
   }
 
+  /// Waits, ready to let go if asked meanwhile.
+  private func waitWithoutReading(_ seconds: TimeInterval) throws {
+    let deadline = Date() + seconds
+    while Date() < deadline {
+      try checkYield()
+      Thread.sleep(forTimeInterval: 0.05)
+    }
+  }
+
   /// Everything that comes within `seconds` (also kept in `pending`).
   private func readFor(_ seconds: TimeInterval) throws -> [UInt8] {
     guard let port else { throw Failure.noAnswer }
@@ -617,8 +640,10 @@ public final class Session {
         }
       }
     case .poll:
-      try? port.write("resume\r")
-      _ = try? readFor(0.3)
+      if instrument == .tinySA {  // its sweeping, paused by waitscan, back on
+        try? port.write("resume\r")
+        _ = try? readFor(0.3)
+      }
     }
     dropPort()
   }

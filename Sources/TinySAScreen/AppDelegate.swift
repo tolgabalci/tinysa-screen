@@ -115,6 +115,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
 
   func session(_ session: Session, status: Status) {
     self.status = status
+    peaksButton.isEnabled = status.instrument != .nanoVNA
+    if status.instrument == .nanoVNA { view.showPeaks(nil) }
     updateSubtitle()
     gifs.source = status.source
     bands.status = status
@@ -296,8 +298,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
     }
   }
 
+  /// The hold drawn while it's on, over a spectrum (a NanoVNA's yellow trace is a measurement, not a level).
   private func peaksChanged(_ state: PeakHold.State?) {
-    view.showPeaks(Preferences.peakHold ? state : nil)
+    view.showPeaks(Preferences.peakHold && status.instrument != .nanoVNA ? state : nil)
   }
 
   @objc func toggleFloatOnTop(_ sender: Any?) {
@@ -394,7 +397,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
       return true
     case #selector(togglePeakHold(_:)):
       item.state = Preferences.peakHold ? .on : .off
-      return true
+      return status.instrument != .nanoVNA
     case #selector(clearPeakHold(_:)):
       return Preferences.peakHold
     case #selector(toggleFloatOnTop(_:)):

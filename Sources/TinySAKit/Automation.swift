@@ -194,6 +194,7 @@ public final class Automation: @unchecked Sendable {
     let seconds = request.seconds ?? 10
     guard seconds >= 1, seconds <= 600 else { return .failure("How long to watch: 1 to 600 seconds") }
     if let failure = waitForPicture(cancelled: cancelled) { return failure }
+    guard session.status.instrument != .nanoVNA else { return .failure("Peaks are for a tinySA's spectrum") }
     let hold = PeakHold()
     hold.peakCount = min(max(request.count ?? 5, 1), 9)
     let token = session.onFrame { snapshot, time in hold.add(snapshot, at: time) }
@@ -238,7 +239,7 @@ public final class Automation: @unchecked Sendable {
     var reply = ControlReply(ok: true)
     reply.app = isApp
     reply.version = version
-    reply.devices = DeviceFinder.tinySAs().map { "\($0.product) at \($0.path)" }
+    reply.devices = DeviceFinder.instruments().map { "\($0.product) at \($0.path)" }
     if let feed = FeedState.current() { reply.feeder = "\(feed.name ?? "a program") (\(feed.state))" }
     if let borrow = BorrowRequest.current() { reply.borrower = "\(borrow.name) (process \(borrow.pid))" }
     guard isApp else { return reply }

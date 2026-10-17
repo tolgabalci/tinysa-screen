@@ -7,8 +7,19 @@ here comes from that console; the firmware's source is at [erikkaashoek/tinySA](
 ## Finding the analyzer
 
 The app looks through the Mac's serial ports (IOKit) for one whose USB device calls itself "tinySA" (the Ultra models
-say "tinySA4"), so it never opens another serial device, such as a NanoVNA, which shares the tinySA's USB vendor and
-product IDs. It opens the port for itself alone (`TIOCEXCL`) and checks with `lsof` that no other program has it open.
+say "tinySA4"), or "NanoVNA-H4", "NanoVNA-H" or "NanoVNA", so it never opens another serial device: the NanoVNAs share
+the tinySA's USB vendor and product IDs, and a NanoVNA V2, which speaks binary, calls itself otherwise. A tinySA comes
+first when both are there. It opens the port for itself alone (`TIOCEXCL`) and checks with `lsof` that no other program
+has it open.
+
+### NanoVNA
+
+A NanoVNA's console is the tinySA's ancestor: the same prompt, `capture`, and with DiSlord's NanoVNA-D firmware `capture
+rle`, `refresh on`, `touch` and `release`. The differences the app knows: `version` says only the version ("1.2.52")
+and `info` the board on its first line ("Board: NanoVNA-H 4"); the screen's size comes from the USB name (480 × 320
+for the -H4, 320 × 240 for the others); each region of the live screen ends with the prompt and a new line
+(`ch> \r\n`), the new line being text between regions; and without the live screen there is no `waitscan`, so the
+app captures every half second, leaving the sweep alone.
 
 ## Connecting
 
