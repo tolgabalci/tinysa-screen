@@ -77,6 +77,20 @@ public struct Graph: Equatable, Sendable {
     }
   }
 
+  /// The spacing of the vertical grid lines in pixels (the middle of the gaps between them; the left edge's line is
+  /// left out, the grid lines being at round frequencies), or nil with fewer than three of them.
+  func verticalSpacing(on screen: Snapshot) -> Double? {
+    let rows = Array(stride(from: top + 1, to: bottom, by: 1))
+    var lines: [Int] = []
+    for x in (left + 2)..<max(left + 2, right - 36) {
+      let grey = rows.filter { Graph.isGrid(screen.pixels[$0 * screen.width + x]) }.count
+      if grey * 4 > rows.count, lines.last.map({ x - $0 > 2 }) ?? true { lines.append(x) }
+    }
+    guard lines.count >= 3 else { return nil }
+    let gaps = zip(lines.dropFirst(), lines).map { Double($0 - $1) }.sorted()
+    return gaps[gaps.count / 2]
+  }
+
   /// A fingerprint of the labels around the graph (white text), which changes when the span or the levels do.
   public func labelPrint(on screen: Snapshot) -> Int {
     var hasher = Hasher()
@@ -122,18 +136,57 @@ public struct GraphScale: Equatable, Sendable {
     return start + Int64((span * index / count).rounded())
   }
 
-  /// Reads the labels of a graph on a screen: nil when they can't be read with confidence.
+  /// Reads the labels of a graph on a screen: nil when they can't be read with confidence. They're read twice, at two
+  /// sizes, and both reads must agree; the span must also agree with the grid (the label between START and STOP is
+  /// the spacing of the vertical grid lines, whose pixels give the span by themselves). A misread digit ("438" for
+  /// "433") would otherwise put every readout off.
   public static func read(_ graph: Graph, on screen: Snapshot) -> GraphScale? {
     guard let image = screen.image() else { return nil }
     let regions = graph.labelRegions(screen)
-    let levelRegion = regions[0]
-    let spanRegion = regions[1]
-    let levels = LabelReader.lines(in: image, region: levelRegion)
-    let span = LabelReader.lines(in: image, region: spanRegion).map(\.text).joined(separator: " ")
-    guard let (level0, perRow) = fitLevels(levels, graph: graph), let (start, stop) = parseSpan(span) else {
-      return nil
+    var reads: [(scale: GraphScale, division: Int64?)] = []
+    for zoom in [4, 8] {
+      let levels = LabelReader.lines(in: image, region: regions[0], zoom: zoom)
+      let span = LabelReader.lines(in: image, region: regions[1], zoom: zoom).map(\.text).joined(separator: " ")
+      guard let (level0, perRow) = fitLevels(levels, graph: graph), let (start, stop) = parseSpan(span) else {
+        return nil
+      }
+      reads.append((GraphScale(level0: level0, perRow: perRow, start: start, stop: stop), parseDivision(span)))
     }
-    return GraphScale(level0: level0, perRow: perRow, start: start, stop: stop)
+    guard let scale = reads.first?.scale, reads.allSatisfy({ $0.scale.agrees(with: scale) }) else { return nil }
+    if let division = reads.compactMap(\.division).first, let spacing = graph.verticalSpacing(on: screen) {
+      guard fitsGrid(scale, division: division, spacing: spacing, width: graph.right - graph.left) else { return nil }
+    }
+    return scale
+  }
+
+  /// Whether a span agrees, within 3 %, with the one the grid gives: its width over the lines' spacing, times the
+  /// spacing's frequency.
+  static func fitsGrid(_ scale: GraphScale, division: Int64, spacing: Double, width: Int) -> Bool {
+    let fromGrid = Double(width) * Double(division) / spacing
+    let read = Double(scale.stop - scale.start)
+    return abs(fromGrid - read) <= 0.03 * read
+  }
+
+  /// The same, to rounding.
+  func agrees(with other: GraphScale) -> Bool {
+    start == other.start && stop == other.stop && abs(level0 - other.level0) < 1e-6 && abs(perRow - other.perRow) < 1e-9
+  }
+
+  /// The grid's spacing from the label between START and STOP ("2.0MHz/"): the number with a unit that isn't START's
+  /// or STOP's value.
+  static func parseDivision(_ text: String) -> Int64? {
+    let upper = LabelReader.plain(text).uppercased()
+    let pattern = try! NSRegularExpression(pattern: "(START|STOP|CENTER|SPAN)?\\s*([0-9]+(?:\\.[0-9]+)?)\\s*(GHZ|MHZ|KHZ)")
+    let range = NSRange(upper.startIndex..., in: upper)
+    for match in pattern.matches(in: upper, range: range) where match.range(at: 1).location == NSNotFound {
+      guard let numberRange = Range(match.range(at: 2), in: upper), let unitRange = Range(match.range(at: 3), in: upper),
+        let value = Double(upper[numberRange])
+      else { continue }
+      let factor: Double = upper[unitRange] == "GHZ" ? 1e9 : upper[unitRange] == "MHZ" ? 1e6 : 1e3
+      let hertz = (value * factor).rounded()
+      if hertz > 0, hertz < 1e11 { return Int64(exactly: hertz) }
+    }
+    return nil
   }
 
   /// The level labels (numbers at grid lines, the top of each at its line) fitted to a straight line: the levels
@@ -192,8 +245,10 @@ public struct GraphScale: Equatable, Sendable {
   }
 }
 
-/// Text on the analyzer's screen, read with the Mac's text recognition (Vision). The screen's small bitmap font reads
-/// best enlarged eight times, pixels kept square (four times misreads "902.000000MHz" as "902D00000hHz").
+/// Text on the analyzer's screen, read with the Mac's text recognition (Vision). Recognition is made for dark text on a
+/// light page, and the screen's is a small bitmap font in white on black: enlarged smoothly and turned dark on light,
+/// with a margin, it reads right on macOS 13 to 15 as well as later (enlarged with square pixels, white on black,
+/// macOS 15 read "MHz" as "642" or "6H2", and one smoothing-free try read "433" as "438").
 enum LabelReader {
   /// Letters that look alike, as the screen's font has them: Cyrillic capitals for Latin ones, "$" for "S", "−" for
   /// "-".
@@ -213,15 +268,31 @@ enum LabelReader {
   static func lines(in image: CGImage, region: (minX: Int, minY: Int, maxX: Int, maxY: Int), zoom: Int = 8) -> [Line] {
     let width = region.maxX - region.minX
     let height = region.maxY - region.minY
+    let margin = 8 * zoom
+    let outWidth = width * zoom + 2 * margin
+    let outHeight = height * zoom + 2 * margin
     guard width > 0, height > 0,
-      let crop = image.cropping(to: CGRect(x: region.minX, y: region.minY, width: width, height: height)),
-      let context = CGContext(
-        data: nil, width: width * zoom, height: height * zoom, bitsPerComponent: 8, bytesPerRow: width * zoom * 4,
-        space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)
+      let crop = image.cropping(to: CGRect(x: region.minX, y: region.minY, width: width, height: height))
     else { return [] }
-    context.interpolationQuality = .none
-    context.draw(crop, in: CGRect(x: 0, y: 0, width: width * zoom, height: height * zoom))
-    guard let enlarged = context.makeImage() else { return [] }
+    var grey = [UInt8](repeating: 0, count: outWidth * outHeight)
+    let drawn = grey.withUnsafeMutableBytes { buffer -> Bool in
+      guard
+        let context = CGContext(
+          data: buffer.baseAddress, width: outWidth, height: outHeight, bitsPerComponent: 8, bytesPerRow: outWidth,
+          space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue)
+      else { return false }
+      context.interpolationQuality = .high
+      context.draw(crop, in: CGRect(x: margin, y: margin, width: width * zoom, height: height * zoom))
+      return true
+    }
+    guard drawn else { return [] }
+    for i in grey.indices { grey[i] = 255 - grey[i] }  // dark on light, the margin white
+    guard let provider = CGDataProvider(data: Data(grey) as CFData),
+      let enlarged = CGImage(
+        width: outWidth, height: outHeight, bitsPerComponent: 8, bitsPerPixel: 8, bytesPerRow: outWidth,
+        space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGBitmapInfo(rawValue: 0), provider: provider, decode: nil,
+        shouldInterpolate: false, intent: .defaultIntent)
+    else { return [] }
     let request = VNRecognizeTextRequest()
     request.recognitionLevel = .accurate
     request.usesLanguageCorrection = false
@@ -229,7 +300,9 @@ enum LabelReader {
     guard (try? VNImageRequestHandler(cgImage: enlarged).perform([request])) != nil else { return [] }
     return (request.results ?? []).compactMap { observation in
       guard let text = observation.topCandidates(1).first?.string else { return nil }
-      let top = region.minY + Int(((1 - observation.boundingBox.maxY) * Double(height)).rounded())
+      // The box's top in the enlarged picture, less the margin, back in the screen's rows.
+      let topInPicture = (1 - observation.boundingBox.maxY) * Double(outHeight) - Double(margin)
+      let top = region.minY + Int((topInPicture / Double(zoom)).rounded())
       return Line(text: text, top: top)
     }
   }

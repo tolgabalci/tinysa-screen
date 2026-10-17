@@ -222,4 +222,24 @@ final class PeakHoldTests: XCTestCase {
   func testMisreadSpansAreRefused() {
     XCTAssertNil(GraphScale.parseSpan("START 90200000000000MHz STOP 928.000000MHz"))
   }
+
+  /// The grid's own spacing gives the span, to check the one read: 2 MHz a division is 34.6 pixels on 902–928 MHz,
+  /// 200 kHz is 51.7 on 433.05–434.79 MHz.
+  func testTheGridChecksTheSpan() throws {
+    let wide = try Fixture.screen("screen-915.png")
+    let wideGraph = try XCTUnwrap(Graph.find(on: wide))
+    XCTAssertEqual(try XCTUnwrap(wideGraph.verticalSpacing(on: wide)), 34.6, accuracy: 0.6)
+    let narrow = try Fixture.screen("screen-433.png")
+    let narrowGraph = try XCTUnwrap(Graph.find(on: narrow))
+    XCTAssertEqual(try XCTUnwrap(narrowGraph.verticalSpacing(on: narrow)), 51.7, accuracy: 0.6)
+    XCTAssertEqual(GraphScale.parseDivision("START 902.000000MHz 2.0MHz/ STOP 928.000000MHz"), 2_000_000)
+    XCTAssertEqual(GraphScale.parseDivision("START 433.050000MHz 200.0kHz/ STOP 434.790000MHz"), 200_000)
+    XCTAssertEqual(GraphScale.parseDivision("START 2.400000GHz 10.0MHz/ STOP 2.483500GHz"), 10_000_000)
+    XCTAssertNil(GraphScale.parseDivision("START 902.000000MHz STOP 928.000000MHz"))
+    let right = GraphScale(level0: 10, perRow: -10.0 / 24, start: 902_000_000, stop: 928_000_000)
+    XCTAssertTrue(GraphScale.fitsGrid(right, division: 2_000_000, spacing: 34.6, width: 450))
+    // A misread digit: 908 for 902.
+    let misread = GraphScale(level0: 10, perRow: -10.0 / 24, start: 908_000_000, stop: 928_000_000)
+    XCTAssertFalse(GraphScale.fitsGrid(misread, division: 2_000_000, spacing: 34.6, width: 450))
+  }
 }
