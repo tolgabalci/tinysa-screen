@@ -32,12 +32,16 @@ to how the app talks to the analyzer should also be tried on one; say in the pul
 
 ## Layout
 
-- `Sources/TinySAKit`: everything about the tinySA. `DeviceFinder`, `SerialPort`: finding and opening it.
-  `Capture`: whole-screen captures. `ScreenStream`: the live screen. `Framebuffer`: the copy of the screen.
-  `Integration`: borrowing and feeding. `Session`: the thread that ties these together.
-- `Sources/TinySAScreen`: the Mac app: the window, the view (`ScreenView`), the menus.
+- `Sources/TinySAKit`: everything about the tinySA. `DeviceFinder`, `SerialPort`: finding and opening it (and a
+  NanoVNA). `Capture`: whole-screen captures. `ScreenStream`: the live screen. `Framebuffer`, `Snapshot`: the copy of
+  the screen. `Integration`: borrowing and feeding. `Session`: the thread that ties these together. `FrameRecorder`
+  and `GIF/`: recordings and the GIF encoder. `Band`: spans. `Graph`, `PeakHold`: the peak hold, read from the screen.
+  `Control`, `Automation`: the control socket and what other programs can ask.
+- `Sources/TinySAScreen`: the Mac app: the window, the view (`ScreenView`), the menus, the toolbar's controllers
+  (`GIFController`, `BandController`, `PeakOverlay`), Settings, and the command line (`CommandLineTool`).
 - `integrations/python`: helpers for other programs.
-- `docs`: how it works, how to work with it, and the README's pictures.
+- `packaging/homebrew`: the Homebrew cask, as the tap starts from.
+- `docs`: how it works, how to work with it, the command line, and the README's pictures.
 
 ## Pull requests
 
@@ -47,6 +51,17 @@ to how the app talks to the analyzer should also be tried on one; say in the pul
   isn't obvious.
 - New behavior in the app goes in the README; new formats or commands in `docs/HOW-IT-WORKS.md`; changes to the files
   other programs use in `docs/INTEGRATION.md`, kept compatible (other programs rely on them).
+
+## Releasing (maintainers)
+
+1. Set `VERSION`, date the version's heading in `CHANGELOG.md`, commit, push, and see the CI pass.
+2. Push a tag `v<VERSION>`: the Release workflow tests, builds the app (signed ad hoc) and publishes the release with
+   the changelog's section as its notes.
+3. On a Mac with a "Developer ID Application" certificate and an App Store Connect API key
+   (`~/.config/tinysa-screen/notary.env`: `NOTARY_KEY_ID`, `NOTARY_ISSUER_ID`, `NOTARY_KEY`), run
+   `scripts/release.sh`: it builds the same version signed with the Developer ID and the hardened runtime, has Apple
+   notarize it, staples the ticket, replaces the release's zip with it, and updates the Homebrew cask in
+   [tolgabalci/homebrew-tap](https://github.com/tolgabalci/homebrew-tap) (creating the tap the first time).
 
 By contributing you agree that your work is released under the [MIT License](LICENSE), and to follow the
 [code of conduct](CODE_OF_CONDUCT.md).

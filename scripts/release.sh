@@ -49,6 +49,17 @@ fi
 echo "Updating the Homebrew cask"
 SHA=$(shasum -a 256 "$ZIP" | cut -d' ' -f1)
 TAP=$(mktemp -d)/homebrew-tap
+if ! gh repo view tolgabalci/homebrew-tap >/dev/null 2>&1; then
+  # The first release: the tap, from packaging/homebrew.
+  mkdir -p "$TAP/Casks"
+  cp packaging/homebrew/README.md "$TAP/README.md"
+  cp packaging/homebrew/tinysa-screen.rb "$TAP/Casks/tinysa-screen.rb"
+  git -C "$TAP" init -q -b main
+  git -C "$TAP" add README.md Casks/tinysa-screen.rb
+  git -C "$TAP" commit -q -m "tinysa-screen"
+  gh repo create tolgabalci/homebrew-tap --public --description "Homebrew casks: tinySA Screen" --source "$TAP" --push
+fi
+rm -rf "$TAP"
 gh repo clone tolgabalci/homebrew-tap "$TAP" -- --quiet
 sed -e "s/^  version \".*\"/  version \"$VERSION\"/" -e "s/^  sha256 \".*\"/  sha256 \"$SHA\"/" \
   "$TAP/Casks/tinysa-screen.rb" > "$TAP/Casks/tinysa-screen.rb.new"
