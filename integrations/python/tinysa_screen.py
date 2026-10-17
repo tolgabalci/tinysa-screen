@@ -136,7 +136,8 @@ class Feeder:
 
 def ask(command: str, **fields) -> dict | None:
     """Asks the open tinySA Screen: 'record' (seconds=, output=, and start=, stop= in hertz for a given band),
-    'capture' (output=, seconds=), 'screenshot' (output=), 'sweep' (start=, stop= to set the span) or 'status'; also
+    'capture' (output=, seconds=), 'screenshot' (output=), 'sweep' (start=, stop= to set the span), 'peaks' (seconds=,
+    count=) or 'status'; also
     scale=1 or 2, date=, time=, name=. Its reply as a dict ('ok', and 'error' or 'file', 'seconds'...), or None when the
     app isn't open. Waits as long as the request takes; output paths must be absolute."""
     request = {'command': command, **fields}

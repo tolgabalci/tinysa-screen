@@ -92,6 +92,24 @@ meet), and switching to a zero span resets its sweep time. The firmware's own tw
 always sets start first, so it can do that when going up in frequency. `sweep` itself makes the analyzer cut its
 current sweep short, so the app reads the span only when a band is chosen, never to keep the menu up to date.
 
+## Peak hold
+
+The peak hold reads the analyzer's screen, not the analyzer: `data`, which would give the trace's values, makes the
+analyzer cut its sweep short, and a feeding program's pictures are all there is when it has the analyzer.
+
+- **The graph**: the horizontal grid lines are the rows where much of the width is the grid's grey, dotted; the
+  evenly spaced run of them is the graph's grid (24 rows a division with the small waterfall, 18 with the big one),
+  and its left edge is the first column with a grid line down it.
+- **The trace**: in each column of the graph, the highest pixel of trace 1's yellow, alone or where it's ORed with the
+  grid or another trace (red and green full, blue not). One column a sweep point on a tinySA Ultra.
+- **The labels**: the level labels at the graph's right and the span under it, enlarged eight times with square pixels
+  and read with the Mac's text recognition (Vision). Look-alike letters are taken for what they look like ("$TART", a
+  Cyrillic "М"), each level label belongs to the grid line at its top, and the labels that agree on one step a
+  division win (a misread "30" for "−30" is outvoted). They are read again only when the white pixels around the
+  graph change, and a span or levels that changed start the hold over.
+- **Peaks**: a top of the held trace that stands at least 6 dB above the valleys on either side (before the next
+  higher ground) and above the trace's median, its noise.
+
 ## Firmware without the live screen
 
 If `refresh on` gets `refresh?` (an unknown command), the app falls back to one picture after each sweep:

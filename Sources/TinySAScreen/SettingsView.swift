@@ -11,6 +11,8 @@ struct SettingsView: View {
   @AppStorage(Preferences.Key.gifScale) private var scale = 2
   @AppStorage(Preferences.Key.controlEnabled) private var controlEnabled = true
   @AppStorage(Preferences.Key.inkSeconds) private var inkSeconds = 3
+  @AppStorage(Preferences.Key.peakWindow) private var peakWindow = 0
+  @AppStorage(Preferences.Key.peakCount) private var peakCount = 5
   @AppStorage(Preferences.Key.savedBands) private var savedBandsData = Data()
 
   private var savedBands: [BandPreset] { (try? JSONDecoder().decode([BandPreset].self, from: savedBandsData)) ?? [] }
@@ -52,6 +54,31 @@ struct SettingsView: View {
         Text("Record (⌘R) saves GIFs this way to the Desktop, for up to two minutes; Capture starts from these choices.")
           .foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
+      }
+      Section {
+        Picker("Hold each level", selection: $peakWindow) {
+          Text("Until cleared").tag(0)
+          Text("For 10 seconds").tag(10)
+          Text("For 30 seconds").tag(30)
+          Text("For 1 minute").tag(60)
+          Text("For 5 minutes").tag(300)
+        }
+        Stepper(value: $peakCount, in: 0...9) {
+          HStack {
+            Text("Peaks labeled")
+            Spacer()
+            Text("\(peakCount)").monospacedDigit().foregroundStyle(.secondary)
+          }
+        }
+        .accessibilityValue("\(peakCount) peaks")
+      } header: {
+        Text("Peak hold")
+      } footer: {
+        Text(
+          "Peak hold (⌥⌘P) reads the analyzer's live trace from its screen after each sweep, so the analyzer's own settings stay as they are. Levels are as fine as the screen's pixels: half a decibel at 10 dB a division."
+        )
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
       }
       Section {
         if savedBands.isEmpty {

@@ -13,6 +13,9 @@ enum Preferences {
     static let savedBands = "savedBands"
     static let inkSeconds = "inkSeconds"
     static let floatOnTop = "floatOnTop"
+    static let peakHold = "peakHold"
+    static let peakWindow = "peakWindow"
+    static let peakCount = "peakCount"
   }
 
   static let defaults = UserDefaults.standard
@@ -27,6 +30,9 @@ enum Preferences {
       Key.gifScale: 2,
       Key.inkSeconds: 3,
       Key.floatOnTop: false,
+      Key.peakHold: false,
+      Key.peakWindow: 0,
+      Key.peakCount: 5,
     ])
   }
 
@@ -47,6 +53,20 @@ enum Preferences {
 
   /// Seconds a pen stroke stays before it fades.
   static var inkSeconds: Int { min(max(defaults.integer(forKey: Key.inkSeconds), 1), 30) }
+
+  /// The peak hold drawn over the picture.
+  static var peakHold: Bool {
+    get { defaults.bool(forKey: Key.peakHold) }
+    set { defaults.set(newValue, forKey: Key.peakHold) }
+  }
+
+  /// Seconds the peak hold keeps a level, or nil for until it is cleared.
+  static var peakWindow: TimeInterval? {
+    let seconds = defaults.integer(forKey: Key.peakWindow)
+    return seconds > 0 ? TimeInterval(seconds) : nil
+  }
+
+  static var peakCount: Int { min(max(defaults.integer(forKey: Key.peakCount), 0), 9) }
 
   /// The window stays above other apps' windows.
   static var floatOnTop: Bool {

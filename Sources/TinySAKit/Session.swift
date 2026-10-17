@@ -36,6 +36,18 @@ public final class Session {
   /// Frames of the screen for GIFs: one after each sweep is drawn (or each picture fed).
   public let recorder = FrameRecorder()
 
+  /// Calls `handler` with each frame (the screen after a sweep, or a fed picture), on the session's thread, until the
+  /// returned token is passed to `removeFrameHandler`.
+  public func onFrame(_ handler: @escaping @Sendable (Snapshot, Date) -> Void) -> UUID {
+    let token = UUID()
+    lock.locked { frameHandlers[token] = handler }
+    return token
+  }
+
+  public func removeFrameHandler(_ token: UUID) {
+    lock.locked { frameHandlers[token] = nil }
+  }
+
   public init() {}
 
   /// What the window would show besides the picture, now: readable from any thread.
@@ -86,6 +98,7 @@ public final class Session {
 
   private let lock = NSLock()
   private var jobs: [Job] = []
+  private var frameHandlers: [UUID: @Sendable (Snapshot, Date) -> Void] = [:]
   private var currentStatus: Status?
   private var stopping = false
   private var taps: [String] = []
@@ -338,7 +351,13 @@ public final class Session {
   private func recordFrame() {
     frameDue = nil
     guard let screen else { return }
-    recorder.add(screen.snapshot(), at: Date())
+    took(screen.snapshot(), at: Date())
+  }
+
+  /// A frame: to the recorder, and whoever else wants frames.
+  private func took(_ snapshot: Snapshot, at time: Date) {
+    recorder.add(snapshot, at: time)
+    for handler in lock.locked({ Array(frameHandlers.values) }) { handler(snapshot, time) }
   }
 
   private func sendTaps() throws {
@@ -625,7 +644,7 @@ public final class Session {
         feedInterval = feedInterval == 0 ? interval : 0.7 * feedInterval + 0.3 * interval
       }
       feedPicture = date
-      if let snapshot = Snapshot(image) { recorder.add(snapshot, at: date) }
+      if let snapshot = Snapshot(image) { took(snapshot, at: date) }
       if delegate != nil {
         DispatchQueue.main.async { [weak self] in
           guard let self else { return }

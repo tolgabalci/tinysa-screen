@@ -35,9 +35,10 @@ public final class Automation: @unchecked Sendable {
     case "capture": return capture(request)
     case "screenshot": return screenshot(request, cancelled: cancelled)
     case "sweep": return sweep(request, cancelled: cancelled)
+    case "peaks": return peaks(request, cancelled: cancelled)
     case "status": return status()
     default:
-      return .failure("Unknown command \"\(request.command)\": record, capture, screenshot, sweep or status")
+      return .failure("Unknown command \"\(request.command)\": record, capture, screenshot, sweep, peaks or status")
     }
   }
 
@@ -185,6 +186,51 @@ public final class Automation: @unchecked Sendable {
       }
       return reply
     }
+  }
+
+  /// The highest peaks of the live trace over some seconds (10 by default), held from the screen as the app's peak hold
+  /// does: without asking the analyzer anything, so it works on fed pictures too.
+  private func peaks(_ request: ControlRequest, cancelled: () -> Bool) -> ControlReply {
+    let seconds = request.seconds ?? 10
+    guard seconds >= 1, seconds <= 600 else { return .failure("How long to watch: 1 to 600 seconds") }
+    if let failure = waitForPicture(cancelled: cancelled) { return failure }
+    let hold = PeakHold()
+    hold.peakCount = min(max(request.count ?? 5, 1), 9)
+    let token = session.onFrame { snapshot, time in hold.add(snapshot, at: time) }
+    // The screen as it is now first: a slow sweep may not finish within the seconds asked.
+    if let (snapshot, time) = session.recorder.latestSnapshot() { hold.add(snapshot, at: time) }
+    let end = Date().addingTimeInterval(seconds)
+    while Date() < end {
+      if cancelled() {
+        session.removeFrameHandler(token)
+        return .failure("Cancelled")
+      }
+      Thread.sleep(forTimeInterval: min(0.1, max(0, end.timeIntervalSinceNow)))
+    }
+    session.removeFrameHandler(token)
+    // The labels are read in the background: a moment more for that.
+    let reading = Date().addingTimeInterval(10)
+    while hold.state?.scale == nil, hold.state != nil, Date() < reading, !cancelled() {
+      Thread.sleep(forTimeInterval: 0.1)
+    }
+    guard let state = hold.state else { return .failure("No graph on the screen: a menu over it?") }
+    var reply = ControlReply(ok: true)
+    reply.source = session.status.source
+    reply.seconds = seconds
+    guard let scale = state.scale else {
+      reply.notes = ["The screen's labels couldn't be read, so frequencies and levels are unknown: a menu over them?"]
+      reply.peaks = []
+      return reply
+    }
+    reply.sweep = SweepRange(start: scale.start, stop: scale.stop)
+    reply.resolution = Resolution(
+      hertz: (scale.stop - scale.start) / Int64(max(state.graph.right - state.graph.left - 1, 1)),
+      decibels: (abs(scale.perRow) * 100).rounded() / 100)
+    reply.peaks = state.peaks.compactMap { peak in
+      guard let frequency = peak.frequency, let level = peak.level else { return nil }
+      return PeakReading(frequency: frequency, level: (level * 10).rounded() / 10)
+    }
+    return reply
   }
 
   private func status() -> ControlReply {

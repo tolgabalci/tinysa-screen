@@ -1,0 +1,157 @@
+import XCTest
+
+@testable import TinySAKit
+
+final class PeakHoldTests: XCTestCase {
+  /// The grid is found from the pixels, whatever the waterfall's size.
+  func testFindsTheGraph() throws {
+    let small = try XCTUnwrap(Graph.find(on: Fixture.screen("screen-915.png")))
+    XCTAssertEqual([small.left, small.right, small.top, small.bottom], [30, 480, 0, 240])
+    XCTAssertEqual(small.gridRows, stride(from: 0, through: 240, by: 24).map { $0 })
+    let big = try XCTUnwrap(Graph.find(on: Fixture.screen("screen-915-big.png")))
+    XCTAssertEqual([big.left, big.top, big.bottom], [30, 0, 180])
+    XCTAssertEqual(big.gridRows[1], 18)
+    let black = Snapshot(width: 480, height: 320, pixels: Array(repeating: Snapshot.pixel(r: 0, g: 0, b: 0), count: 480 * 320))
+    XCTAssertNil(Graph.find(on: black))
+  }
+
+  /// The live trace (yellow) is found in every column of the graph, and nothing else is taken for it: not the green
+  /// max hold above it, nor white text.
+  func testReadsTheTrace() throws {
+    let screen = try Fixture.screen("screen-915.png")
+    let graph = try XCTUnwrap(Graph.find(on: screen))
+    let rows = graph.traceRows(on: screen)
+    XCTAssertEqual(rows.count, 450)
+    XCTAssertGreaterThan(rows.compactMap { $0 }.count, 440)
+    XCTAssertEqual(rows[240 - 30], 216)
+    // The noise floor sits between -80 and -60 dBm here: rows 168 to 216.
+    for row in rows.compactMap({ $0 }) { XCTAssertTrue((168...228).contains(row), "row \(row)") }
+  }
+
+  /// The levels and the span are read from the screen's own labels.
+  func testReadsTheScale() throws {
+    let cases: [(String, Double, Double, Int64, Int64)] = [
+      ("screen-915.png", 10, -10.0 / 24, 902_000_000, 928_000_000),
+      ("screen-915-big.png", 10, -10.0 / 18, 902_000_000, 928_000_000),
+      ("screen-433.png", 0, -10.0 / 24, 433_050_000, 434_790_000),
+    ]
+    for (name, level0, perRow, start, stop) in cases {
+      let screen = try Fixture.screen(name)
+      let graph = try XCTUnwrap(Graph.find(on: screen), name)
+      let scale = try XCTUnwrap(GraphScale.read(graph, on: screen), name)
+      XCTAssertEqual(scale.level0, level0, accuracy: 0.001, name)
+      XCTAssertEqual(scale.perRow, perRow, accuracy: 0.0001, name)
+      XCTAssertEqual(scale.start, start, name)
+      XCTAssertEqual(scale.stop, stop, name)
+      XCTAssertEqual(scale.frequency(column: graph.left, of: graph), start)
+      XCTAssertEqual(scale.frequency(column: graph.right - 1, of: graph), stop)
+    }
+  }
+
+  /// A misread label is outvoted by the others; too few labels, no scale.
+  func testLevelFitOutvotesAMisreading() throws {
+    let graph = Graph(left: 30, right: 480, top: 0, bottom: 240, gridRows: stride(from: 0, through: 240, by: 24).map { $0 })
+    let labels = [("10", 0), ("-10", 48), ("-20", 72), ("30", 96), ("-40", 120), ("-50", 144)].map {
+      LabelReader.Line(text: $0.0, top: $0.1)
+    }
+    let fit = try XCTUnwrap(GraphScale.fitLevels(labels, graph: graph))
+    XCTAssertEqual(fit.0, 10, accuracy: 0.001)
+    XCTAssertEqual(fit.1 * 24, -10, accuracy: 0.001)
+    XCTAssertNil(GraphScale.fitLevels(Array(labels.prefix(2)), graph: graph))
+  }
+
+  func testParsesTheSpan() {
+    XCTAssertEqual(GraphScale.parseSpan("START 902.000000MHz 2.0MHz/ SToP 928.000000MHz").map { [$0.0, $0.1] }, [902_000_000, 928_000_000])
+    XCTAssertEqual(GraphScale.parseSpan("START 2.400000GHz 10.0MHz/ STOP 2.483500GHz").map { [$0.0, $0.1] }, [2_400_000_000, 2_483_500_000])
+    XCTAssertEqual(GraphScale.parseSpan("CENTER 915.000000MHz SPAN 26.000000MHz").map { [$0.0, $0.1] }, [902_000_000, 928_000_000])
+    XCTAssertEqual(GraphScale.parseSpan("$TART 902.000000МHz 2.0MHzr $ToP 928.000000MHz").map { [$0.0, $0.1] }, [902_000_000, 928_000_000])
+    XCTAssertNil(GraphScale.parseSpan("START 902-000000MH2 STOP 928.000000MHz"))
+  }
+
+  /// The hold keeps the highest point of each column, finds the peaks, and gives them frequencies and levels once
+  /// the labels are read: the same, to the screen's resolution, as the analyzer's own marker on that peak.
+  func testHoldsPeaks() throws {
+    let hold = PeakHold()
+    let read = expectation(description: "labels read")
+    hold.onChange = { state in
+      if state?.scale != nil { read.fulfill() }
+    }
+    let screen = try Fixture.screen("screen-915-burst.png")
+    hold.add(screen, at: Date())
+    wait(for: [read], timeout: 20)
+    hold.onChange = nil
+    let state = try XCTUnwrap(hold.state)
+    let top = try XCTUnwrap(state.peaks.first)
+    // The analyzer's marker: 902.231 MHz, −23.2 dBm. A column is 57.9 kHz here, a row 0.42 dB.
+    XCTAssertEqual(Double(try XCTUnwrap(top.frequency)), 902_231_000, accuracy: 60_000)
+    XCTAssertEqual(try XCTUnwrap(top.level), -23.2, accuracy: 0.5)
+    // The noise isn't taken for peaks: everything else on this sweep's trace is within 6 dB of its noise.
+    XCTAssertEqual(state.peaks.count, 1)
+    // A quieter sweep afterwards (the same screen with the burst gone) doesn't lower what's held.
+    var quieter = screen
+    for y in 0..<140 {
+      for x in 30..<480 where Graph.isTrace(quieter.pixels[y * 480 + x]) {
+        quieter.pixels[y * 480 + x] = Snapshot.pixel(r: 0, g: 0, b: 0)
+      }
+    }
+    hold.add(quieter, at: Date())
+    XCTAssertEqual(hold.state?.peaks.first?.row, top.row)
+    XCTAssertEqual(hold.state?.scale, state.scale)
+    hold.reset()
+    XCTAssertNil(hold.state)
+  }
+
+  /// A trace that is all noise has no peaks.
+  func testNoiseHasNoPeaks() throws {
+    let hold = PeakHold()
+    hold.add(try Fixture.screen("screen-915-big.png"), at: Date())
+    XCTAssertEqual(hold.state?.peaks.count, 0)
+    XCTAssertEqual(hold.state?.rows.compactMap { $0 }.count, 450)
+  }
+
+  /// Peaks: the tops that stand out from the valleys around them, highest first; flat tops once.
+  func testFindsPeaks() throws {
+    let graph = Graph(left: 30, right: 50, top: 0, bottom: 100, gridRows: [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100])
+    var rows: [Int?] = Array(repeating: 80, count: 20)
+    rows[3] = 40  // a peak 40 rows up
+    rows[10] = 60
+    rows[11] = 60  // a flat top, 20 up
+    rows[16] = 77  // too small to count
+    rows[18] = nil
+    let state = PeakHold.State(graph: graph, rows: rows, scale: nil, peaks: [], since: Date(), window: nil)
+    let peaks = PeakHold.peaks(in: state, count: 5)
+    XCTAssertEqual(peaks.map(\.column), [33, 40])
+    XCTAssertEqual(peaks.map(\.row), [40, 60])
+  }
+
+  /// A screen like the analyzer's: a dotted grid every 24 rows from x = 30, the noise floor at row 200, and a peak.
+  func screen(peakAt column: Int, row: Int) -> Snapshot {
+    var screen = Snapshot(width: 480, height: 320, pixels: Array(repeating: Snapshot.pixel(r: 0, g: 0, b: 0), count: 480 * 320))
+    let grey = Snapshot.pixel(r: 0x83, g: 0x81, b: 0x83)
+    let yellow = Snapshot.pixel(r: 255, g: 255, b: 0)
+    for y in stride(from: 0, through: 240, by: 24) {
+      for x in stride(from: 30, to: 480, by: 2) { screen.pixels[y * 480 + x] = grey }
+    }
+    for y in stride(from: 0, through: 240, by: 2) { screen.pixels[y * 480 + 30] = grey }
+    for x in 30..<480 { screen.pixels[200 * 480 + x] = yellow }
+    for y in row...200 { screen.pixels[y * 480 + column] = yellow }
+    return screen
+  }
+
+  /// With a window, a level is held only that long; without one, until the hold starts over.
+  func testWindowForgets() throws {
+    let start = Date(timeIntervalSinceReferenceDate: 1000)
+    let hold = PeakHold()
+    hold.window = 2
+    hold.add(screen(peakAt: 100, row: 50), at: start)
+    hold.add(screen(peakAt: 300, row: 120), at: start.addingTimeInterval(1))
+    XCTAssertEqual(hold.state?.peaks.map(\.column), [100, 300])
+    hold.add(screen(peakAt: 300, row: 120), at: start.addingTimeInterval(2.5))
+    XCTAssertEqual(hold.state?.peaks.map(\.column), [300], "the first peak is more than 2 s old")
+    let forever = PeakHold()
+    forever.add(screen(peakAt: 100, row: 50), at: start)
+    forever.add(screen(peakAt: 300, row: 120), at: start.addingTimeInterval(600))
+    XCTAssertEqual(forever.state?.peaks.map(\.column), [100, 300])
+    XCTAssertEqual(forever.state?.since, start)
+  }
+}

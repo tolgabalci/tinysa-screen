@@ -57,6 +57,9 @@ func makeMenuBar() -> NSMenu {
       item("Pointer", #selector(AppDelegate.togglePointer(_:)), "l"),
       item("Pen", #selector(AppDelegate.togglePen(_:)), "d"),
       .separator(),
+      item("Peak Hold", #selector(AppDelegate.togglePeakHold(_:)), "p", [.command, .option]),
+      item("Clear Peak Hold", #selector(AppDelegate.clearPeakHold(_:)), "\u{8}", [.command, .option]),
+      .separator(),
       item("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]),
     ])
   // Filled by the band controller each time it opens.

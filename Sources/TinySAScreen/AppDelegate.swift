@@ -29,6 +29,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
   private let captureButton = NSButton()
   private let pointerButton = NSButton()
   private let penButton = NSButton()
+  private let peaksButton = NSButton()
+  /// The peak hold, while it's on: fed each frame by the session.
+  private let peakHold = PeakHold()
+  private var peakFrames: UUID?
+  private var peakSettings: (TimeInterval?, Int)?
   private var keptSeconds = -1
 
   func applicationDidFinishLaunching(_ notification: Notification) {
@@ -43,6 +48,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
     setUpToolbarButton(captureButton, "Capture", symbol: "clock.arrow.circlepath", action: #selector(capture(_:)))
     setUpToolbarButton(pointerButton, "Pointer", symbol: "cursorarrow.rays", action: #selector(togglePointer(_:)))
     setUpToolbarButton(penButton, "Pen", symbol: "pencil.tip", action: #selector(togglePen(_:)))
+    setUpToolbarButton(peaksButton, "Peaks", symbol: "chart.xyaxis.line", action: #selector(togglePeakHold(_:)))
+    peaksButton.setButtonType(.pushOnPushOff)
+    peaksButton.toolTip = "Hold the highest level at each frequency and label the highest peaks, on the Mac (⌥⌘P)"
+    peakHold.onChange = { [weak self] state in
+      DispatchQueue.main.async { self?.peaksChanged(state) }
+    }
     for button in [pointerButton, penButton] {
       button.setButtonType(.pushOnPushOff)
       button.imagePosition = .imageOnly
@@ -149,6 +160,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
   @objc private func preferencesChanged() {
     view.controllable = status.controllable && Preferences.controlEnabled
     view.inkSeconds = TimeInterval(Preferences.inkSeconds)
+    updatePeakHold()
     let kept = Preferences.keptSeconds
     guard kept != keptSeconds else { return }
     keptSeconds = kept
@@ -173,11 +185,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
   }
 
   func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-    [.flexibleSpace, .pointer, .pen, .band, .record, .capture]
+    [.flexibleSpace, .pointer, .pen, .peaks, .band, .record, .capture]
   }
 
   func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-    [.flexibleSpace, .pointer, .pen, .band, .record] + (Preferences.keptSeconds > 0 ? [.capture] : [])
+    [.flexibleSpace, .pointer, .pen, .peaks, .band, .record] + (Preferences.keptSeconds > 0 ? [.capture] : [])
   }
 
   func toolbar(
@@ -192,6 +204,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
     case .pen:
       item.label = "Pen"
       item.view = penButton
+    case .peaks:
+      item.label = "Peaks"
+      item.view = peaksButton
     case .band:
       item.label = "Band"
       item.view = bands.makeButton()
@@ -249,6 +264,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
     pointerButton.state = tool == .pointer ? .on : .off
     penButton.state = tool == .pen ? .on : .off
     if tool != .none { window.makeFirstResponder(view) }  // for Esc
+  }
+
+  // MARK: Peak hold
+
+  @objc func togglePeakHold(_ sender: Any?) {
+    Preferences.peakHold.toggle()
+  }
+
+  @objc func clearPeakHold(_ sender: Any?) {
+    peakHold.reset()
+  }
+
+  /// The peak hold on or off, and its settings, as the preferences say.
+  private func updatePeakHold() {
+    let on = Preferences.peakHold
+    peaksButton.state = on ? .on : .off
+    let settings = (Preferences.peakWindow, Preferences.peakCount)
+    if peakSettings.map({ $0.0 != settings.0 || $0.1 != settings.1 }) ?? true {
+      peakSettings = settings
+      peakHold.peakCount = settings.1
+      peakHold.window = settings.0
+    }
+    if on, peakFrames == nil {
+      let hold = peakHold
+      peakFrames = session.onFrame { snapshot, time in hold.add(snapshot, at: time) }
+    } else if !on, let token = peakFrames {
+      session.removeFrameHandler(token)
+      peakFrames = nil
+      peakHold.reset()
+    }
+  }
+
+  private func peaksChanged(_ state: PeakHold.State?) {
+    view.showPeaks(Preferences.peakHold ? state : nil)
   }
 
   @objc func toggleFloatOnTop(_ sender: Any?) {
@@ -343,6 +392,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
     case #selector(togglePen(_:)):
       item.state = view.tool == .pen ? .on : .off
       return true
+    case #selector(togglePeakHold(_:)):
+      item.state = Preferences.peakHold ? .on : .off
+      return true
+    case #selector(clearPeakHold(_:)):
+      return Preferences.peakHold
     case #selector(toggleFloatOnTop(_:)):
       item.state = Preferences.floatOnTop ? .on : .off
       return true
@@ -364,6 +418,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
 extension NSToolbarItem.Identifier {
   static let pointer = NSToolbarItem.Identifier("pointer")
   static let pen = NSToolbarItem.Identifier("pen")
+  static let peaks = NSToolbarItem.Identifier("peaks")
   static let band = NSToolbarItem.Identifier("band")
   static let record = NSToolbarItem.Identifier("record")
   static let capture = NSToolbarItem.Identifier("capture")

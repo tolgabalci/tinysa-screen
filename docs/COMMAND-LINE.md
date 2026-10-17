@@ -9,6 +9,7 @@ tinysa-screen record --seconds 20 --start 2.4G --stop 2.4835G --output wifi.gif
 tinysa-screen capture --seconds 15 --output last15.gif
 tinysa-screen screenshot --output screen.png
 tinysa-screen sweep --start 902M --stop 928M
+tinysa-screen peaks --seconds 30
 tinysa-screen status
 ```
 
@@ -31,6 +32,7 @@ its full path without the link.)
 | `capture [--seconds N] --output FILE.gif` | Saves the last N seconds the open app keeps (Settings › Keep the latest seconds), all of them without `--seconds`. For when something has just happened. Needs the app open. |
 | `screenshot --output FILE.png` | Saves the screen as it is now, at its own size (`--sharp`: twice that). |
 | `sweep [--start F --stop F]` | Says the span the analyzer sweeps, or sets it. Needs the analyzer on USB, a tinySA Ultra. |
+| `peaks [--seconds N] [--count N]` | The highest peaks of the live trace over N seconds (10 by default, at most 600), held from the screen as the app's [peak hold](../README.md#peak-hold) does: the analyzer is asked nothing, so it works on fed pictures too. Up to `--count` peaks (5; at most 9), each at least 6 dB above its valleys and the noise. |
 | `status` | Says what tinySA Screen sees: whether the app is open, where its picture comes from, the seconds it keeps, the tinySAs on USB, a program feeding pictures or borrowing the analyzer. |
 | `help`, `--help` | The usage. `--version`: the version. |
 
@@ -88,7 +90,8 @@ With `--json`, one line of JSON:
 | `frames`, `images` | Frames of the screen in the GIF (one a sweep), and images in the file (frames, and the time ticking on). |
 | `source` | Where the picture came from: the analyzer and its firmware, or "Pictures from" the feeding program. |
 | `notes` | What a viewer should know about the recording: the span it swept, the picture stopping and coming back, with times. |
-| `sweep`, `previousSweep` | For `sweep`: the span now, and before a change, as `{"start": 902000000, "stop": 928000000, "points": 450}` (hertz). |
+| `sweep`, `previousSweep` | For `sweep`: the span now, and before a change, as `{"start": 902000000, "stop": 928000000, "points": 450}` (hertz). For `peaks`: the span read from the screen. |
+| `peaks`, `resolution` | For `peaks`: the peaks, highest first, as `{"frequency": 906169000, "level": -23.1}` (hertz, dBm), and how finely the screen resolves them, `{"hertz": 57906, "decibels": 0.42}` (a column and a row of the graph). |
 
 `status --json` answers with `app` (whether the app answered), `version`, `devices` (tinySAs on USB), `feeder` and
 `borrower` (programs feeding pictures, or that borrowed the analyzer), and from the open app `source`, `picture`
@@ -112,6 +115,9 @@ and keep the GIF beside its other results. Things worth knowing:
   drawn before the recording begins, and the analyzer's own span is put back afterwards (the notes say so). For other
   settings (markers, levels), use the analyzer's own commands while you [borrow](INTEGRATION.md#borrowing) it.
 - `capture` is the one to use after the fact: with the app open, it has the last minute (by default) at any moment.
+- `peaks` answers "what's on the band?" in numbers, without a picture: `peaks -s 60 --json` lists the strongest
+  signals seen in a minute. Its levels and frequencies are read from the screen, so they're as fine as its pixels
+  (`resolution` says how fine); for exact values, borrow the analyzer and ask it (`data`, markers).
 
 ## The control socket
 
@@ -127,7 +133,7 @@ the socket means the app isn't open.
 
 | Field | |
 | --- | --- |
-| `command` | `record`, `capture`, `screenshot`, `sweep` or `status`. |
+| `command` | `record`, `capture`, `screenshot`, `sweep`, `peaks` or `status`. |
 | `seconds` | How long to record; for `capture`, how many of the kept seconds (all when left out). |
 | `output` | Where to write the file: an absolute path, in a folder that exists. |
 | `scale` | 1, or 2 (the default for GIFs; screenshots default to 1). |
@@ -135,6 +141,7 @@ the socket means the app isn't open.
 | `name` | Who asks, for the window. |
 | `start`, `stop` | A span in hertz: for `sweep`, to set; for `record`, to sweep while recording. |
 | `restore` | For `record` with a span: `false` leaves it set afterwards. |
+| `count` | For `peaks`: how many (5 by default, at most 9). |
 
 The reply is the same JSON as `--json` above. In Python, `integrations/python/tinysa_screen.py` has `ask()`:
 

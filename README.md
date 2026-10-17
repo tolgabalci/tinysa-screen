@@ -29,6 +29,8 @@ show much. tinySA Screen puts its screen in a Mac window, pixel for pixel, as it
   band you saved, and back ([Bands](#bands)).
 - **For presenting**: a red pointer everyone in the call sees, a pen whose strokes fade by themselves, and Float on
   Top ([Presenting](#presenting)).
+- **Peak hold on the Mac**: the highest level at each frequency held as a line over the picture, the highest peaks
+  numbered with their frequency and level, without changing anything on the analyzer ([Peak hold](#peak-hold)).
 - **Screenshots**: ⌘S saves the screen to the Desktop, ⌘C copies it.
 - **Animated GIFs**: record the screen as a GIF (⌘R), or, when something odd has just happened, save the last minute
   that the app always keeps (⇧⌘R). Every pixel exact, the date and time ticking under the screen, and small: only
@@ -100,6 +102,8 @@ That builds the app and puts it in `~/Applications`, where Spotlight finds it.
 | View › Control the tinySA by Clicking | ⌘K | Clicks become taps on the analyzer (on by default) |
 | View › Pointer | ⌘L | A red dot follows the mouse over the picture; Esc ends it ([Presenting](#presenting)) |
 | View › Pen | ⌘D | Draw on the picture; strokes fade after a few seconds; Esc ends it |
+| View › Peak Hold | ⌥⌘P | The peak hold over the picture ([below](#peak-hold)) |
+| View › Clear Peak Hold | ⌥⌘⌫ | Starts the peak hold over |
 | View › Enter Full Screen | ⌃⌘F | The picture as large as the screen allows |
 | Band › (a band) | | Sets the analyzer to sweep that band ([below](#bands)) |
 | Window › Float on Top | | The window stays above other apps' windows |
@@ -130,6 +134,30 @@ Two buttons at the left of the title bar's buttons are for talking people throug
 While either is on, clicks point or draw instead of tapping the analyzer; click its button again, or press Esc, to end
 it. Neither goes into screenshots or GIFs, which are the analyzer's screen alone. **Window › Float on Top** keeps the
 window above other apps' windows, for when you share your whole screen.
+
+## Peak hold
+
+**Peaks** (⌥⌘P) holds the highest level the analyzer's live trace (the yellow one) reaches at each frequency, as a
+magenta line over the picture, and numbers its highest peaks with their frequency and level in a small box, which
+finds itself an empty spot of the graph:
+
+```
+Peak hold since 10:14 AM
+1  906.17 MHz  −23 dBm
+2  911.27 MHz  −55 dBm
+```
+
+It's done on the Mac, from the analyzer's screen after each sweep: the analyzer's own traces, markers and settings
+stay as they are, and it works on a feeding program's pictures too. The frequencies and levels come from the screen's
+own labels (the span under the graph, the levels at its right), read with the Mac's text recognition, so they're as
+fine as the screen's pixels: a column of the graph (58 kHz for 26 MHz) and a row (half a decibel at 10 dB a division).
+On a sweep that caught a reader's burst, the peak hold read 902.23 MHz and −23 dBm where the analyzer's own marker said
+902.231 MHz and −23.2 dBm.
+
+A peak is a top standing at least 6 dB above the valleys around it and above the trace's noise. The hold starts over
+when the span or the levels change, or with View › Clear Peak Hold; Settings can make it keep each level for 10
+seconds to 5 minutes instead, and choose how many peaks to label (up to 9). Like the pointer and the pen, it isn't in
+screenshots or GIFs. `tinysa-screen peaks` gives the same for scripts ([The command line](#the-command-line)).
 
 ## Bands
 
@@ -185,6 +213,7 @@ tinysa-screen capture --seconds 15 --output last.gif    # the last 15 seconds th
 tinysa-screen screenshot --output screen.png
 tinysa-screen record -s 20 --start 2.4G --stop 2.4835G -o wifi.gif   # a given band, then the span put back
 tinysa-screen sweep --start 902M --stop 928M            # set the span (sweep alone reads it)
+tinysa-screen peaks --seconds 30 --json                 # the highest peaks over 30 seconds, read from the screen
 tinysa-screen status --json                             # what it sees, for programs
 ```
 

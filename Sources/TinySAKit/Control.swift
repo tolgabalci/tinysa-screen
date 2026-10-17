@@ -3,7 +3,7 @@ import Foundation
 /// A request to tinySA Screen: a JSON object on one line, sent to the open app's control socket
 /// (`Integration.controlSocket`) or carried out by the command line itself when the app isn't open.
 public struct ControlRequest: Codable, Equatable, Sendable {
-  /// "record", "capture", "screenshot", "sweep" or "status".
+  /// "record", "capture", "screenshot", "sweep", "peaks" or "status".
   public var command: String
   /// How long to record; for capture, how many of the kept seconds (all of them when nil).
   public var seconds: Double?
@@ -21,10 +21,13 @@ public struct ControlRequest: Codable, Equatable, Sendable {
   public var stop: Int64?
   /// For record with a span: put the analyzer's own span back afterwards (the default).
   public var restore: Bool?
+  /// For peaks: how many of the highest (5 by default, at most 9).
+  public var count: Int?
 
   public init(
     command: String, seconds: Double? = nil, output: String? = nil, scale: Int? = nil, date: Bool? = nil,
-    time: Bool? = nil, name: String? = nil, start: Int64? = nil, stop: Int64? = nil, restore: Bool? = nil
+    time: Bool? = nil, name: String? = nil, start: Int64? = nil, stop: Int64? = nil, restore: Bool? = nil,
+    count: Int? = nil
   ) {
     self.command = command
     self.seconds = seconds
@@ -36,6 +39,7 @@ public struct ControlRequest: Codable, Equatable, Sendable {
     self.start = start
     self.stop = stop
     self.restore = restore
+    self.count = count
   }
 }
 
@@ -62,6 +66,9 @@ public struct ControlReply: Codable, Equatable, Sendable {
   /// The span the analyzer sweeps (after a change), and the one before a change.
   public var sweep: SweepRange?
   public var previousSweep: SweepRange?
+  /// For peaks: the highest, highest first, and how finely the screen resolves them.
+  public var peaks: [PeakReading]?
+  public var resolution: Resolution?
 
   // Status
   /// Whether the open app answered (or the command line alone).
@@ -295,4 +302,16 @@ public enum ControlClient {
     var byte: UInt8 = 0
     return recv(fd, &byte, 1, MSG_PEEK | MSG_DONTWAIT) != 0
   }
+}
+
+/// A peak of the held trace: its frequency in hertz and its level in dBm, as read from the screen.
+public struct PeakReading: Codable, Equatable, Sendable {
+  public var frequency: Int64
+  public var level: Double
+}
+
+/// How finely the screen resolves frequencies and levels: one column, one row of the graph.
+public struct Resolution: Codable, Equatable, Sendable {
+  public var hertz: Int64
+  public var decibels: Double
 }

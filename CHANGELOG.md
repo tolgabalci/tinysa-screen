@@ -19,11 +19,17 @@ All notable changes are listed here, newest first. Versions follow [Semantic Ver
 - Presenting: a red pointer (⌘L) that a call shows even when it doesn't show the cursor, a click making a ring; a pen
   (⌘D) whose strokes fade by themselves after a few seconds and stay on what they mark when the window changes size;
   Esc ends either. Window › Float on Top keeps the window above other apps'.
+- Peak hold (⌥⌘P): the highest level of the live trace held as a magenta line over the picture, its highest peaks
+  numbered with their frequency and level in a box that finds an empty spot. Read from the screen after each sweep
+  (the labels with the Mac's text recognition), so the analyzer's settings are left alone and fed pictures work too;
+  on a test sweep it read 902.23 MHz, −23 dBm where the analyzer's marker said 902.231 MHz, −23.2 dBm. Clear Peak Hold
+  (⌥⌘⌫); Settings: hold for 10 s to 5 min or until cleared, up to 9 peaks.
 - Settings (⌘,): the seconds Capture keeps, the date, time and size of GIFs, saved bands, clicks as taps, how long pen
-  strokes stay.
+  strokes stay, the peak hold.
 - No window tab items in the menus: the app has one window.
 - A command line for scripts and AI agents: `tinysa-screen record`, `capture`, `screenshot`, `sweep` and `status`, with
-  results as text or JSON; `record --start --stop` records a given band and puts the analyzer's span back. With the app open the app does the work, through a control socket other programs can use too, and
+  results as text or JSON; `record --start --stop` records a given band and puts the analyzer's span back; `peaks`
+  lists the highest peaks over some seconds, read from the screen. With the app open the app does the work, through a control socket other programs can use too, and
   its window says who is recording; without it, the command line works alone, sharing the analyzer the same way. A
   recording starts only from a live picture.
 - Python: `ask()` asks the open app for recordings, captures, screenshots and its status; `example_record.py`.

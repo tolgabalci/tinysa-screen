@@ -1,4 +1,5 @@
 import AppKit
+import TinySAKit
 
 /// The analyzer's screen, as large as the window allows with its pixels kept sharp, a note over its bottom when the
 /// picture isn't live, and clicks turned into taps on the analyzer when it can take them. For presenting, the pointer
@@ -33,6 +34,7 @@ final class ScreenView: NSView {
   private var pictureSize = CGSize(width: 480, height: 320)
   private let pointer = CALayer()
   private let ink = CALayer()
+  private let peaks = PeakOverlay()
   /// The pen's strokes, in fractions of the picture (0 to 1 across and down from the top left), so they stay on what
   /// they mark when the window changes size.
   private var strokes: [(layer: CAShapeLayer, points: [CGPoint])] = []
@@ -53,6 +55,7 @@ final class ScreenView: NSView {
     picture.magnificationFilter = .nearest  // the analyzer's pixels, sharp, as on its own screen
     picture.minificationFilter = .trilinear
     layer?.addSublayer(picture)
+    layer?.addSublayer(peaks.layer)
     layer?.addSublayer(ink)
     pointer.bounds = CGRect(x: 0, y: 0, width: 18, height: 18)
     pointer.cornerRadius = 9
@@ -103,6 +106,26 @@ final class ScreenView: NSView {
     ink.frame = bounds
     for stroke in strokes { stroke.layer.path = path(stroke.points) }
     CATransaction.commit()
+    drawPeaks()
+  }
+
+  /// The peak hold over the picture, or nothing (nil).
+  func showPeaks(_ state: PeakHold.State?) {
+    peakState = state
+    drawPeaks()
+    setAccessibilityValue(accessibilityText)
+  }
+
+  private var peakState: PeakHold.State?
+
+  private func drawPeaks() {
+    let (rect, scale) = pictureRect
+    peaks.show(peakState, in: rect, scale: scale, contentsScale: window?.backingScaleFactor ?? 2)
+  }
+
+  override func viewDidChangeBackingProperties() {
+    super.viewDidChangeBackingProperties()
+    drawPeaks()
   }
 
   override func updateTrackingAreas() {
@@ -162,12 +185,22 @@ final class ScreenView: NSView {
   }
 
   private var accessibilityText: String {
-    let live = statusNote ?? "Live"
+    var text = statusNote ?? "Live"
     switch tool {
-    case .pointer: return live + ", pointer on"
-    case .pen: return live + ", pen on"
-    case .none: return live
+    case .pointer: text += ", pointer on"
+    case .pen: text += ", pen on"
+    case .none: break
     }
+    if let state = peakState, let scale = state.scale {
+      let span = Double(scale.stop - scale.start) / Double(max(state.graph.right - state.graph.left - 1, 1))
+      let peaks = state.peaks.compactMap { peak -> String? in
+        guard let frequency = peak.frequency, let level = peak.level else { return nil }
+        return PeakOverlay.frequency(frequency, resolution: span) + " "
+          + PeakOverlay.level(level, resolution: abs(scale.perRow))
+      }
+      text += ". " + PeakOverlay.title(state) + ": " + (peaks.isEmpty ? "no peaks" : peaks.joined(separator: "; "))
+    }
+    return text
   }
 
   // MARK: Taps

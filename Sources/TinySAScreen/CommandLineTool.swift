@@ -5,7 +5,7 @@ import TinySAKit
 /// the app open, the app does it (it has the analyzer, and the seconds it keeps); without, the command line does it
 /// alone, sharing the analyzer as the app would (borrowing and feeding included), without a window.
 enum CommandLineTool {
-  static let commands = ["record", "capture", "screenshot", "sweep", "status", "help"]
+  static let commands = ["record", "capture", "screenshot", "sweep", "peaks", "status", "help"]
 
   static let usage = """
     tinySA Screen: the screen of a tinySA spectrum analyzer, live on the Mac.
@@ -20,11 +20,15 @@ enum CommandLineTool {
                                         save the screen as it is now
       tinysa-screen sweep [--start F --stop F] [--json]
                                         the span the tinySA sweeps, or set it (a tinySA Ultra on USB)
+      tinysa-screen peaks [--seconds N] [--count N] [--json]
+                                        the highest peaks of the live trace over N seconds (10), read from the
+                                        screen: the analyzer is asked nothing
       tinysa-screen status [--json]     what tinySA Screen sees: the analyzer, a program feeding pictures, the
                                         seconds it keeps
 
     Options:
-      -s, --seconds N     how long (record), or how many of the kept seconds (capture)
+      -s, --seconds N     how long (record, peaks), or how many of the kept seconds (capture)
+      --count N           peaks: how many (5; at most 9)
       -o, --output FILE   where to save it; an existing file is replaced
       --small             the GIF at the screen's own size (480 × 320 for a tinySA Ultra); the default is twice that
       --sharp             the screenshot at twice the screen's size; the default is its own size
@@ -46,6 +50,7 @@ enum CommandLineTool {
       tinysa-screen record -s 30 -o ~/Desktop/band.gif
       tinysa-screen record -s 20 --start 2.4G --stop 2.4835G -o wifi.gif
       tinysa-screen capture -s 15 -o last15.gif --json
+      tinysa-screen peaks -s 30 --json
       tinysa-screen screenshot -o screen.png
 
     More: https://github.com/tolgabalci/tinysa-screen/blob/main/docs/COMMAND-LINE.md
@@ -99,12 +104,17 @@ enum CommandLineTool {
         }
         if arg == "--start" { request.start = hertz } else { request.stop = hertz }
       case "--keep-span": request.restore = false
+      case "--count":
+        guard let text = value(), let count = Int(text), (1...9).contains(count) else {
+          return fail("--count needs a number from 1 to 9")
+        }
+        request.count = count
       case "--json": json = true
       case "-h", "--help":
         print(usage)
         return 0
       default:
-        if request.seconds == nil, let seconds = Double(arg), command == "record" || command == "capture" {
+        if request.seconds == nil, let seconds = Double(arg), ["record", "capture", "peaks"].contains(command) {
           request.seconds = seconds
         } else {
           return fail("Unknown option \"\(arg)\" (tinysa-screen --help)")
@@ -118,7 +128,12 @@ enum CommandLineTool {
     {
       return fail("--seconds: 1 to \(Int(FrameRecorder.longest))")
     }
-    if !["status", "sweep"].contains(command), request.output == nil { return fail("Where to save it: --output FILE") }
+    if !["status", "sweep", "peaks"].contains(command), request.output == nil {
+      return fail("Where to save it: --output FILE")
+    }
+    if command == "peaks", let seconds = request.seconds, !(1...600).contains(seconds) {
+      return fail("--seconds: 1 to 600")
+    }
     if (request.start == nil) != (request.stop == nil) { return fail("A span needs both --start and --stop") }
     if (request.start != nil || request.restore != nil), !["record", "sweep"].contains(command) {
       return fail("--start, --stop and --keep-span go with record and sweep")
@@ -146,7 +161,7 @@ enum CommandLineTool {
     }
     let session = Session()
     let automation = Automation(session: session, isApp: false, version: version)
-    guard ["record", "screenshot", "sweep"].contains(request.command) else {
+    guard ["record", "screenshot", "sweep", "peaks"].contains(request.command) else {
       return automation.handle(request)
     }
     // Control-C or kill: stop waiting, let go of the analyzer properly, then exit.
@@ -170,6 +185,23 @@ enum CommandLineTool {
     switch command {
     case "status":
       lines.append(statusText(reply))
+    case "peaks":
+      let span = reply.sweep.map { ", \($0.label)" } ?? ""
+      lines.append("Peaks over \(Int(reply.seconds ?? 0)) s" + (reply.source.map { " of \($0)" } ?? "") + span + ":")
+      let resolution = Double(reply.resolution?.hertz ?? 0)
+      let decibels = reply.resolution?.decibels ?? 1
+      for (n, peak) in (reply.peaks ?? []).enumerated() {
+        let frequency = String(
+          format: "%.\(max(0, min(6, Int((-log10(max(resolution, 1) / 1e6)).rounded(.up)))))f MHz",
+          Double(peak.frequency) / 1e6)
+        let level = decibels < 0.25 ? String(format: "%.1f", peak.level) : String(format: "%.0f", peak.level)
+        lines.append("\(n + 1)  \(frequency)  \(level) dBm")
+      }
+      if reply.peaks?.isEmpty == true, reply.notes == nil { lines.append("None: the trace stayed within 6 dB of its noise.") }
+      if let resolution = reply.resolution {
+        lines.append(
+          "(Read from the screen: \(Frequency.format(resolution.hertz)) and \(resolution.decibels) dB a pixel.)")
+      }
     case "sweep":
       if let now = reply.sweep {
         let points = now.points.map { " (\($0) points)" } ?? ""
