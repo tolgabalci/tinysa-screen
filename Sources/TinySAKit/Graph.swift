@@ -172,22 +172,12 @@ public struct GraphScale: Equatable, Sendable {
     start == other.start && stop == other.stop && abs(level0 - other.level0) < 1e-6 && abs(perRow - other.perRow) < 1e-9
   }
 
-  /// The grid's spacing from the label between START and STOP ("2.0MHz/"): the number with a unit that isn't START's
-  /// or STOP's value.
+  /// The grid's spacing from the label between START and STOP ("2.0MHz/"): the middle of the three values.
   static func parseDivision(_ text: String) -> Int64? {
-    let upper = LabelReader.plain(text).uppercased()
-    let pattern = try! NSRegularExpression(pattern: "(START|STOP|CENTER|SPAN)?\\s*([0-9]+(?:\\.[0-9]+)?)\\s*(GHZ|MHZ|KHZ)")
-    let range = NSRange(upper.startIndex..., in: upper)
-    for match in pattern.matches(in: upper, range: range) where match.range(at: 1).location == NSNotFound {
-      guard let numberRange = Range(match.range(at: 2), in: upper), let unitRange = Range(match.range(at: 3), in: upper),
-        let value = Double(upper[numberRange])
-      else { continue }
-      let factor: Double = upper[unitRange] == "GHZ" ? 1e9 : upper[unitRange] == "MHZ" ? 1e6 : 1e3
-      let hertz = (value * factor).rounded()
-      if hertz > 0, hertz < 1e11 { return Int64(exactly: hertz) }
-    }
-    return nil
+    let values = spanValues(text)
+    return values.count == 3 ? values[1] : nil
   }
+
 
   /// The level labels (numbers at grid lines, the top of each at its line) fitted to a straight line: the levels
   /// that agree on one step per grid line, at least three of them. A misread label ("30" for "−30") disagrees and is
@@ -221,28 +211,41 @@ public struct GraphScale: Equatable, Sendable {
     return (best.level0, best.perRow)
   }
 
-  /// "START 902.000000MHz ... STOP 928.000000MHz", or "CENTER 915.000000MHz ... SPAN 26.000000MHz", as read: look-alike
-  /// letters taken for what they look like ("$TART", a Cyrillic "М" in "МHz", "O" for a zero in a number).
-  static func parseSpan(_ text: String) -> (Int64, Int64)? {
-    let upper = LabelReader.plain(text).uppercased()
-    func value(after word: String) -> Int64? {
-      guard let at = upper.range(of: word) else { return nil }
-      let rest = upper[at.upperBound...].trimmingCharacters(in: .whitespaces)
-      let number = String(rest.prefix { $0.isNumber || $0 == "." || $0 == "O" }).replacingOccurrences(of: "O", with: "0")
-      let unit = rest.dropFirst(number.count).prefix(3)
-      guard !number.isEmpty, let base = Double(number) else { return nil }
-      let factor: Double =
-        unit.hasPrefix("GHZ") ? 1e9 : unit.hasPrefix("MHZ") ? 1e6 : unit.hasPrefix("KHZ") ? 1e3 : unit.hasPrefix("HZ") ? 1 : 0
-      let hertz = (base * factor).rounded()
-      guard factor > 0, hertz < 1e11 else { return nil }  // a misread number, not a tinySA's span
-      return Int64(exactly: hertz)
+  /// The values with a unit under the graph, in order ("START 902.000000MHz 2.0MHz/ STOP 928.000000MHz" has three), as
+  /// read: look-alike letters taken for what they look like, an "O" in a number for a zero.
+  static func spanValues(_ text: String) -> [Int64] {
+    var upper = Array(LabelReader.plain(text).uppercased())
+    for i in upper.indices where upper[i] == "O" {
+      let before = i > 0 && (upper[i - 1].isNumber || upper[i - 1] == ".")
+      let after = i + 1 < upper.count && (upper[i + 1].isNumber || upper[i + 1] == ".")
+      if before || after { upper[i] = "0" }
     }
-    if let start = value(after: "START"), let stop = value(after: "STOP"), start < stop { return (start, stop) }
-    if let center = value(after: "CENTER"), let span = value(after: "SPAN"), span > 0, center >= span / 2 {
-      return (center - span / 2, center + span / 2)
+    let line = String(upper)
+    let pattern = try! NSRegularExpression(pattern: "([0-9]+(?:\\.[0-9]+)?)\\s*(GHZ|MHZ|KHZ|HZ)")
+    return pattern.matches(in: line, range: NSRange(line.startIndex..., in: line)).compactMap { match in
+      guard let numberRange = Range(match.range(at: 1), in: line), let unitRange = Range(match.range(at: 2), in: line),
+        let value = Double(line[numberRange])
+      else { return nil }
+      let unit = line[unitRange]
+      let factor: Double = unit == "GHZ" ? 1e9 : unit == "MHZ" ? 1e6 : unit == "KHZ" ? 1e3 : 1
+      let hertz = (value * factor).rounded()
+      return hertz < 1e11 ? Int64(exactly: hertz) : nil  // a misread number isn't a tinySA's span
     }
-    return nil
   }
+
+  /// The span under the graph: its first and last values, START and STOP, or CENTER and SPAN. By their places, not
+  /// their words, which recognition sometimes misspells ("STHRT", "$ToP").
+  static func parseSpan(_ text: String) -> (Int64, Int64)? {
+    let values = spanValues(text)
+    guard values.count >= 2, let first = values.first, let last = values.last else { return nil }
+    let upper = LabelReader.plain(text).uppercased()
+    if upper.contains("CENT") || upper.contains("SPAN") {
+      guard last > 0, first >= last / 2 else { return nil }
+      return (first - last / 2, first + last / 2)
+    }
+    return first < last ? (first, last) : nil
+  }
+
 }
 
 /// Text on the analyzer's screen, read with the Mac's text recognition (Vision). Recognition is made for dark text on a

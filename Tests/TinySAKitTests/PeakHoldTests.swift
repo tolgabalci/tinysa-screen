@@ -66,6 +66,13 @@ final class PeakHoldTests: XCTestCase {
     XCTAssertEqual(GraphScale.parseSpan("CENTER 915.000000MHz SPAN 26.000000MHz").map { [$0.0, $0.1] }, [902_000_000, 928_000_000])
     XCTAssertEqual(GraphScale.parseSpan("$TART 902.000000МHz 2.0MHzr $ToP 928.000000MHz").map { [$0.0, $0.1] }, [902_000_000, 928_000_000])
     XCTAssertNil(GraphScale.parseSpan("START 902-000000MH2 STOP 928.000000MHz"))
+    // Words misspelled by recognition (seen on macOS 15): the values' places say which is which.
+    for text in [
+      "STHRT 902.000000MHz 2.0MHz/ STOP 928.000000MHz", "ISTART 902.000000MHz 2.0MHz1 STOP 928.000000MHz",
+      "START 9O2.000000MHz 2.0MHz/ SToP | 928.000000MHz",
+    ] {
+      XCTAssertEqual(GraphScale.parseSpan(text).map { [$0.0, $0.1] }, [902_000_000, 928_000_000], text)
+    }
   }
 
   /// The hold keeps the highest point of each column, finds the peaks, and gives them frequencies and levels once
