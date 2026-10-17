@@ -190,7 +190,18 @@ public final class ControlServer: @unchecked Sendable {
         if let line = ControlClient.readLine(client, timeout: 5),
           let request = try? JSONDecoder().decode(ControlRequest.self, from: Data(line.utf8))
         {
-          reply = handler(request) { ControlClient.isOpen(client) }
+          // An asker that closed only its sending side still waits for the reply: once that's known, it's open.
+          var halfClosed = false
+          reply = handler(request) {
+            if halfClosed { return true }
+            switch ControlClient.peer(client) {
+            case .open: return true
+            case .halfClosed:
+              halfClosed = true
+              return true
+            case .gone: return false
+            }
+          }
         } else {
           reply = .failure("Not a request: send one line of JSON, such as {\"command\": \"status\"}")
         }
@@ -210,6 +221,7 @@ public enum ControlClient {
     throws -> ControlReply?
   {
     signal(SIGPIPE, SIG_IGN)
+    let timeout = min(max(timeout.isFinite ? timeout : 0, 1), 7200)
     let fd: Int32
     do {
       fd = try connect(path)
@@ -294,14 +306,24 @@ public enum ControlClient {
     }
   }
 
-  /// Whether the other end is still there: not closed (a read would return nothing).
-  static func isOpen(_ fd: Int32) -> Bool {
+  enum Peer { case open, halfClosed, gone }
+
+  /// Whether the other end is still there. An end of file or a hang-up may be the asker having closed only its sending
+  /// side (as some clients do after a request): a space written to it (harmless before the reply's JSON) tells that from
+  /// one that has gone.
+  static func peer(_ fd: Int32) -> Peer {
     var poller = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
-    guard poll(&poller, 1, 0) > 0 else { return true }
-    if poller.revents & Int16(POLLHUP | POLLERR) != 0 { return false }
-    var byte: UInt8 = 0
-    return recv(fd, &byte, 1, MSG_PEEK | MSG_DONTWAIT) != 0
+    guard poll(&poller, 1, 0) > 0 else { return .open }
+    if poller.revents & Int16(POLLHUP | POLLERR) == 0 {
+      var byte: UInt8 = 0
+      if recv(fd, &byte, 1, MSG_PEEK | MSG_DONTWAIT) != 0 { return .open }
+    }
+    var space = UInt8(ascii: " ")
+    return Darwin.write(fd, &space, 1) == 1 ? .halfClosed : .gone
   }
+
+  /// Whether the other end is still there (see `peer`).
+  static func isOpen(_ fd: Int32) -> Bool { peer(fd) != .gone }
 }
 
 /// A peak of the held trace: its frequency in hertz and its level in dBm, as read from the screen.

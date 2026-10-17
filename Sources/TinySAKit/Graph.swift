@@ -40,22 +40,18 @@ public struct Graph: Equatable, Sendable {
         if run.count > best.count { best = run }
       }
     }
-    guard best.count >= 4, let first = best.first, let last = best.last else { return nil }
+    guard best.count >= 4, let first = best.first else { return nil }
     let step = best[1] - best[0]
-    // The left edge: the first column with a grid line down most of the graph.
-    var left: Int?
-    for x in 0..<(width / 4) {
-      var grey = 0
-      for y in first..<last where isGrid(screen.pixels[y * width + x]) { grey += 1 }
-      if grey > (last - first) / 3 {
-        left = x
-        break
-      }
+    // The left edge: where the horizontal grid lines start, the leftmost start two of them agree on. A trace crossing
+    // the lines there hides their first dots (and the vertical line at the edge can be all trace where a signal sits
+    // on the first point), but not on every line; one stray grey pixel doesn't make an edge.
+    let starts = best.compactMap { y in (0..<(width / 4)).first { isGrid(screen.pixels[y * width + $0]) } }
+    guard let left = Set(starts).sorted().first(where: { x in starts.filter { $0 == x }.count >= 2 }) else {
+      return nil
     }
-    guard let left else { return nil }
-    // The bottom grid line is often hidden under the trace or the waterfall's top: one step below the last seen, if
-    // the screen goes that far.
-    let bottom = min(last + step, height - 1)
+    // The graph has ten divisions (the firmware's NGRIDY), its bottom line often hidden under the trace or the
+    // waterfall's top.
+    let bottom = min(first + 10 * step, height - 1)
     let gridRows = stride(from: first, through: bottom, by: step).map { $0 }
     return Graph(left: left, right: width, top: first, bottom: bottom, gridRows: gridRows)
   }
@@ -99,10 +95,11 @@ public struct Graph: Equatable, Sendable {
   /// The levels at the right edge, and the span under the graph.
   func labelRegions(_ screen: Snapshot) -> [(minX: Int, minY: Int, maxX: Int, maxY: Int)] {
     let levelsWidth = max(30, (right - left) / 11)
-    return [
-      (right - levelsWidth, max(0, top - 2), right, min(screen.height, bottom + 2)),
-      (left, max(bottom, screen.height - 20), right, screen.height),
+    let regions = [
+      (max(left, right - levelsWidth), max(0, top - 2), right, min(screen.height, bottom + 2)),
+      (left, min(screen.height, max(bottom, screen.height - 20)), right, screen.height),
     ]
+    return regions.map { ($0.0, $0.1, max($0.0, min($0.2, screen.width)), max($0.1, $0.3)) }
   }
 }
 
@@ -159,10 +156,11 @@ public struct GraphScale: Equatable, Sendable {
       for j in points.indices where j > i && points[j].row != points[i].row {
         let perRow = (points[j].value - points[i].value) / Double(points[j].row - points[i].row)
         let perDivision = perRow * step
-        guard perRow < 0, abs(perDivision - perDivision.rounded()) < 0.01 || [0.1, 0.2, 0.5].contains(abs(perDivision))
-        else { continue }
+        let fine = [0.1, 0.2, 0.5].contains { abs(abs(perDivision) - $0) < 0.001 }
+        guard perRow < 0, abs(perDivision - perDivision.rounded()) < 0.01 || fine else { continue }
         let level0 = points[i].value - perRow * Double(points[i].row)
-        let agreeing = points.filter { abs(level0 + perRow * Double($0.row) - $0.value) < 0.01 }.count
+        let agreeing = points.filter { abs(level0 + perRow * Double($0.row) - $0.value) < 0.001 + abs(perRow) * 0.01 }
+          .count
         if agreeing > (best?.agreeing ?? 0) { best = (level0, perRow, agreeing) }
       }
     }
@@ -182,8 +180,9 @@ public struct GraphScale: Equatable, Sendable {
       guard !number.isEmpty, let base = Double(number) else { return nil }
       let factor: Double =
         unit.hasPrefix("GHZ") ? 1e9 : unit.hasPrefix("MHZ") ? 1e6 : unit.hasPrefix("KHZ") ? 1e3 : unit.hasPrefix("HZ") ? 1 : 0
-      guard factor > 0 else { return nil }
-      return Int64((base * factor).rounded())
+      let hertz = (base * factor).rounded()
+      guard factor > 0, hertz < 1e11 else { return nil }  // a misread number, not a tinySA's span
+      return Int64(exactly: hertz)
     }
     if let start = value(after: "START"), let stop = value(after: "STOP"), start < stop { return (start, stop) }
     if let center = value(after: "CENTER"), let span = value(after: "SPAN"), span > 0, center >= span / 2 {

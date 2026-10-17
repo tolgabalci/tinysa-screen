@@ -11,12 +11,18 @@ final class GIFController {
   private let view: ScreenView
   /// Where the picture comes from (the window's subtitle), kept in the GIF's comment.
   var source = ""
+  /// Why no live picture comes (the window's note), or nil while it's live; and since when it hasn't come. A GIF never
+  /// shows an old picture as if it were live: Record starts only from a live picture, and a GIF ends where it stopped.
+  var notLive: (note: String, since: Date)?
   /// Recording began, ticked or ended: for the toolbar and the menus.
   var onChange: (() -> Void)?
 
   private var recording: UUID?
   private var timer: Timer?
   private var sheet: NSWindow?
+  /// GIFs being made and written, and what waits for them (quitting).
+  private var saving = 0
+  private var whenSaved: [() -> Void] = []
   private static let queue = DispatchQueue(label: "GIFs", qos: .userInitiated)
 
   init(recorder: FrameRecorder, window: NSWindow, view: ScreenView) {
@@ -44,14 +50,20 @@ final class GIFController {
 
   func startRecording() {
     guard recording == nil else { return }
+    if let notLive {
+      view.flash("Nothing to record: \(notLive.note)")
+      return
+    }
     guard recorder.hasSnapshot else {
       view.flash("Nothing to record yet: no picture from the tinySA.")
       return
     }
     recording = recorder.begin()
-    timer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+    let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
       MainActor.assumeIsolated { self?.tick() }
     }
+    RunLoop.main.add(timer, forMode: .common)  // the time and the 2:00 stop go on while a menu is open
+    self.timer = timer
     onChange?()
   }
 
@@ -69,7 +81,7 @@ final class GIFController {
     timer?.invalidate()
     timer = nil
     onChange?()
-    guard let clip = recorder.end(id) else {
+    guard let clip = recorder.end(id, at: notLive?.since ?? Date()) else {
       view.flash("Nothing was recorded: no picture came.")
       return
     }
@@ -82,8 +94,8 @@ final class GIFController {
   /// Opens the Capture sheet with the seconds kept up to now.
   func capture() {
     guard sheet == nil, let window else { return }
-    guard let clip = recorder.recent(), clip.duration >= 1 else {
-      view.flash("Nothing to capture yet.")
+    guard let clip = recorder.recent(at: notLive?.since ?? Date()), clip.duration >= 1 else {
+      view.flash(notLive.map { "Nothing to capture: \($0.note)" } ?? "Nothing to capture yet.")
       return
     }
     let host = NSHostingController(
@@ -131,17 +143,43 @@ final class GIFController {
   private func make(_ clip: Clip, options: GIFOptions, then finish: @escaping @MainActor (GIFResult?) -> Void) {
     var options = options
     options.comment = comment(clip)
+    saving += 1
     Self.queue.async {
       let result = GIF.make(clip, options: options)
-      DispatchQueue.main.async { MainActor.assumeIsolated { finish(result) } }
+      DispatchQueue.main.async {
+        MainActor.assumeIsolated {
+          finish(result)
+          self.saved()
+        }
+      }
     }
   }
 
+  private func saved() {
+    saving -= 1
+    guard saving == 0 else { return }
+    let waiting = whenSaved
+    whenSaved.removeAll()
+    for done in waiting { done() }
+  }
+
+  /// Stops a recording and saves it, then calls `done` once every GIF in the making is written: for quitting.
+  func finish(then done: @escaping () -> Void) {
+    if isRecording { stopRecording() }
+    if saving == 0 {
+      done()
+    } else {
+      whenSaved.append(done)
+    }
+  }
+
+  var isBusy: Bool { isRecording || saving > 0 }
+
   private func save(_ clip: Clip, options: GIFOptions, note: String = "") {
     view.flash(note + "Making the GIF…")
-    let url = Self.desktopURL(for: clip.start)
     make(clip, options: options) { [weak self] result in
       guard let self else { return }
+      let url = Self.desktopURL(for: clip.start)  // named now: another GIF may have been saved meanwhile
       do {
         guard let result else { throw CocoaError(.fileWriteUnknown) }
         try result.data.write(to: url, options: .atomic)
@@ -178,19 +216,21 @@ final class GIFController {
 
   // MARK: Files
 
-  /// "tinySA 2026-10-17 at 10.15.32.gif", named after the clip's start like the Mac's screen recordings.
-  static func name(for start: Date, number: Int = 1) -> String {
+  /// "tinySA 2026-10-17 at 10.15.32.gif", named after the clip's start like the Mac's screen recordings (whatever the
+  /// Mac's calendar and digits).
+  static func name(for start: Date, number: Int = 1, extension kind: String = "gif") -> String {
     let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
     formatter.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
-    return "tinySA \(formatter.string(from: start))" + (number > 1 ? " (\(number))" : "") + ".gif"
+    return "tinySA \(formatter.string(from: start))" + (number > 1 ? " (\(number))" : "") + ".\(kind)"
   }
 
   /// A new file on the Desktop, never one already there.
-  static func desktopURL(for start: Date) -> URL {
+  static func desktopURL(for start: Date, extension kind: String = "gif") -> URL {
     let desktop = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask)[0]
     var number = 1
     while true {
-      let url = desktop.appendingPathComponent(name(for: start, number: number))
+      let url = desktop.appendingPathComponent(name(for: start, number: number, extension: kind))
       if !FileManager.default.fileExists(atPath: url.path) { return url }
       number += 1
     }

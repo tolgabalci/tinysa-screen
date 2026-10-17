@@ -4,7 +4,9 @@ import TinySAKit
 import UniformTypeIdentifiers
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, NSToolbarDelegate, SessionDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMenuItemValidation, NSToolbarDelegate,
+  SessionDelegate
+{
   static let repository = URL(string: "https://github.com/tolgabalci/tinysa-screen")!
 
   private let window = NSWindow(
@@ -76,7 +78,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
     window.toolbarStyle = .unifiedCompact
     if !window.setFrameUsingName("tinySA Screen") { window.center() }
     window.setFrameAutosaveName("tinySA Screen")
-    window.level = Preferences.floatOnTop ? .floating : .normal
+    window.delegate = self
+    updateWindowLevel()
+    for name in [NSApplication.didBecomeActiveNotification, NSApplication.didResignActiveNotification] {
+      NotificationCenter.default.addObserver(self, selector: #selector(updateWindowLevel), name: name, object: nil)
+    }
     window.makeKeyAndOrderFront(nil)
     view.onTap = { [weak self] x, y, released in
       if released { self?.session.release(x: x, y: y) } else { self?.session.touch(x: x, y: y) }
@@ -92,9 +98,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
 
   func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 
+  /// The app's one window closed (Settings may still be open): the app quits, letting go of the analyzer.
+  func windowWillClose(_ notification: Notification) {
+    if notification.object as? NSWindow === window { NSApp.terminate(nil) }
+  }
+
+  /// A recording in progress is stopped and saved, and GIFs being made are written, before the app quits (at most 15
+  /// seconds).
+  func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+    guard let gifs, gifs.isBusy else { return .terminateNow }
+    var answered = false
+    let answer = {
+      guard !answered else { return }
+      answered = true
+      NSApp.reply(toApplicationShouldTerminate: true)
+    }
+    gifs.finish(then: answer)
+    DispatchQueue.main.asyncAfter(deadline: .now() + 15) { MainActor.assumeIsolated { answer() } }
+    return .terminateLater
+  }
+
   func applicationWillTerminate(_ notification: Notification) {
     control?.stop()
-    gifs.stopRecording()
     session.stop()
     ProcessInfo.processInfo.endActivity(activity)
   }
@@ -114,6 +139,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
   }
 
   func session(_ session: Session, status: Status) {
+    // When the picture stopped coming, for GIFs: they end there rather than show it as live.
+    if let note = status.note {
+      gifs.notLive = (note, gifs.notLive?.since ?? Date())
+    } else {
+      gifs.notLive = nil
+    }
     self.status = status
     peaksButton.isEnabled = status.instrument != .nanoVNA
     if status.instrument == .nanoVNA { view.showPeaks(nil) }
@@ -198,26 +229,43 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
     _ toolbar: NSToolbar, itemForItemIdentifier identifier: NSToolbarItem.Identifier,
     willBeInsertedIntoToolbar flag: Bool
   ) -> NSToolbarItem? {
+    // At the narrowest window, the pointer, pen and peaks go to the overflow menu first, Record and Capture last; in
+    // that menu each is a menu item (Band with its bands).
     let item = NSToolbarItem(itemIdentifier: identifier)
+    func menuForm(_ title: String, _ action: Selector) -> NSMenuItem {
+      NSMenuItem(title: title, action: action, keyEquivalent: "")
+    }
     switch identifier {
     case .pointer:
       item.label = "Pointer"
       item.view = pointerButton
+      item.menuFormRepresentation = menuForm("Pointer", #selector(togglePointer(_:)))
+      item.visibilityPriority = .low
     case .pen:
       item.label = "Pen"
       item.view = penButton
+      item.menuFormRepresentation = menuForm("Pen", #selector(togglePen(_:)))
+      item.visibilityPriority = .low
     case .peaks:
       item.label = "Peaks"
       item.view = peaksButton
+      item.menuFormRepresentation = menuForm("Peak Hold", #selector(togglePeakHold(_:)))
     case .band:
       item.label = "Band"
       item.view = bands.makeButton()
+      let form = NSMenuItem(title: "Band", action: nil, keyEquivalent: "")
+      form.submenu = bands.overflowMenu
+      item.menuFormRepresentation = form
     case .record:
       item.label = "Record"
       item.view = recordButton
+      item.menuFormRepresentation = menuForm("Record GIF", #selector(toggleRecording(_:)))
+      item.visibilityPriority = .high
     case .capture:
       item.label = "Capture"
       item.view = captureButton
+      item.menuFormRepresentation = menuForm("Capture as GIF…", #selector(capture(_:)))
+      item.visibilityPriority = .high
     default:
       return nil
     }
@@ -290,7 +338,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
     }
     if on, peakFrames == nil {
       let hold = peakHold
-      peakFrames = session.onFrame { snapshot, time in hold.add(snapshot, at: time) }
+      let session = session
+      peakFrames = session.onFrame { snapshot, time in
+        if session.status.instrument != .nanoVNA { hold.add(snapshot, at: time) }  // a VNA's trace isn't a spectrum
+      }
     } else if !on, let token = peakFrames {
       session.removeFrameHandler(token)
       peakFrames = nil
@@ -305,7 +356,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
 
   @objc func toggleFloatOnTop(_ sender: Any?) {
     Preferences.floatOnTop.toggle()
-    window.level = Preferences.floatOnTop ? .floating : .normal
+    updateWindowLevel()
+  }
+
+  /// Float on Top keeps the window above other apps' windows while another app is in front (a call's, say); while this
+  /// app is, its own windows (Settings, About, sheets) open above it as usual.
+  @objc private func updateWindowLevel() {
+    window.level = Preferences.floatOnTop && !NSApp.isActive ? .floating : .normal
   }
 
   @objc func capture(_ sender: Any?) {
@@ -316,11 +373,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
 
   @objc func saveScreenshot(_ sender: Any?) {
     guard let image else { return }
-    let formatter = DateFormatter()
-    formatter.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
-    let name = "tinySA \(formatter.string(from: Date())).png"
-    let folder = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask)[0]
-    let url = folder.appendingPathComponent(name)
+    // Named after when its picture came (not now: the picture may have stopped coming), never over another file.
+    let url = GIFController.desktopURL(for: session.recorder.latestSnapshot()?.time ?? Date(), extension: "png")
+    let name = url.lastPathComponent
     guard let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil)
     else { return }
     CGImageDestinationAddImage(destination, image, nil)
@@ -385,7 +440,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
   func validateMenuItem(_ item: NSMenuItem) -> Bool {
     switch item.action {
     case #selector(saveScreenshot(_:)), #selector(copy(_:)):
-      return image != nil
+      return image != nil && window.attachedSheet == nil  // ⌘S and ⌘C in the Capture sheet aren't screenshots
     case #selector(toggleControl(_:)):
       item.state = Preferences.controlEnabled ? .on : .off
       return true
@@ -399,7 +454,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
       item.state = Preferences.peakHold ? .on : .off
       return status.instrument != .nanoVNA
     case #selector(clearPeakHold(_:)):
-      return Preferences.peakHold
+      return Preferences.peakHold && status.instrument != .nanoVNA
     case #selector(toggleFloatOnTop(_:)):
       item.state = Preferences.floatOnTop ? .on : .off
       return true

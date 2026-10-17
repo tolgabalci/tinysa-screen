@@ -112,8 +112,10 @@ and keep the GIF beside its other results. Things worth knowing:
 
 - A recording takes as long as asked: `record -s 120` returns after two minutes.
 - To record a given band, give it: `record -s 20 --start 902M --stop 928M`. The span is set, a whole sweep of it is
-  drawn before the recording begins, and the analyzer's own span is put back afterwards (the notes say so). For other
-  settings (markers, levels), use the analyzer's own commands while you [borrow](INTEGRATION.md#borrowing) it.
+  drawn before the recording begins, and the analyzer's own span is put back afterwards (the notes say whether it
+  was). One request at a time can set the span (a second is refused until the first is done), and only on a tinySA
+  Ultra on USB here: not when a feeding program has the analyzer. For other settings (markers, levels), use the
+  analyzer's own commands while you [borrow](INTEGRATION.md#borrowing) it.
 - `capture` is the one to use after the fact: with the app open, it has the last minute (by default) at any moment.
 - `peaks` answers "what's on the band?" in numbers, without a picture: `peaks -s 60 --json` lists the strongest
   signals seen in a minute. Its levels and frequencies are read from the screen, so they're as fine as its pixels
@@ -125,7 +127,8 @@ The command line talks to the open app through a Unix-domain socket in the app's
 `~/Library/Caches/tinySA Screen/control.sock`, which only your user can open. Any language can use it the same way:
 connect, send one request as a line of JSON, read one reply line, and the app closes the connection. A request runs as
 long as it takes (a recording, its seconds); closing the connection before the reply cancels it. Nothing answering at
-the socket means the app isn't open.
+the socket means the app isn't open. A client that closes its sending side after the request (as some do) still gets
+the reply, which then starts with a space or two.
 
 ```json
 {"command": "record", "seconds": 30, "output": "/Users/me/band.gif", "scale": 2, "date": true, "time": true, "name": "my-script"}

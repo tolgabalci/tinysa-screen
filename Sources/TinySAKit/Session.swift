@@ -82,25 +82,39 @@ public final class Session {
   /// session's thread with the live screen paused for a moment; `done` is called there. Fails without the analyzer on
   /// USB (a feeding program has it, say), with the reason.
   public func sweep(_ target: SweepRange?, done: @escaping @Sendable (Result<SweepChange, AnalyzerError>) -> Void) {
-    lock.locked { jobs.append(.sweep(target, done)) }
+    lock.locked { jobs.append((UUID(), .sweep(target, done))) }
   }
 
-  /// `sweep`, waiting for the result (not on the main thread: its delegate calls would wait too).
+  /// `sweep`, waiting for the result (not on the main thread: its delegate calls would wait too). A change that hasn't
+  /// started within `timeout` (the analyzer busy with a long sweep, say) is taken back, so it never happens later
+  /// unasked; one that has started is waited for.
   public func sweep(_ target: SweepRange?, timeout: TimeInterval = 15) -> Result<SweepChange, AnalyzerError> {
     let finished = DispatchSemaphore(value: 0)
     let result = ResultBox()
-    sweep(target) { outcome in
-      result.set(outcome)
-      finished.signal()
+    let id = UUID()
+    lock.locked {
+      jobs.append(
+        (
+          id,
+          .sweep(target) { outcome in
+            result.set(outcome)
+            finished.signal()
+          }
+        ))
     }
-    guard finished.wait(timeout: .now() + timeout) == .success, let outcome = result.get() else {
-      return .failure(.failed("The tinySA didn't answer in time"))
+    if finished.wait(timeout: .now() + timeout) == .success, let outcome = result.get() { return outcome }
+    let takenBack = lock.locked { () -> Bool in
+      guard let i = jobs.firstIndex(where: { $0.id == id }) else { return false }
+      jobs.remove(at: i)
+      return true
     }
-    return outcome
+    if takenBack { return .failure(.failed("The tinySA was busy for \(Int(timeout)) seconds: try again")) }
+    _ = finished.wait(timeout: .now() + 30)
+    return result.get() ?? .failure(.failed("The tinySA didn't answer in time"))
   }
 
   private let lock = NSLock()
-  private var jobs: [Job] = []
+  private var jobs: [(id: UUID, job: Job)] = []
   private var frameHandlers: [UUID: @Sendable (Snapshot, Date) -> Void] = [:]
   private var currentStatus: Status?
   private var stopping = false
@@ -309,10 +323,11 @@ public final class Session {
         }
         try checkStream()
       case .poll:
-        if instrument == .tinySA {
+        if instrument == .tinySA, touchHeld == nil {
           _ = try command("waitscan 1", timeout: 30)
         } else {
-          try waitWithoutReading(0.5)  // a NanoVNA has no waitscan: a picture every half second
+          // A NanoVNA has no waitscan, and a tinySA doesn't sweep while a touch is down: a picture every half second.
+          try waitWithoutReading(0.5)
         }
         try Capture.apply(capture(screen.size), to: screen)
         dirty = true
@@ -447,7 +462,9 @@ public final class Session {
     try port.write("refresh off\r")
     let deadline = Date() + 1
     var seen = ""
-    while Date() < deadline, !seen.contains("refresh off") {
+    // Up to the prompt after the echo: a prompt read later would be taken for the next command's reply.
+    while Date() < deadline {
+      if let echo = seen.range(of: "refresh off"), seen[echo.upperBound...].contains("ch> ") { break }
       self.stream?.feed(try port.read(timeout: 0.05)) { event in
         if case let .text(text) = event { seen += text } else { screen.apply(event) }
       }
@@ -468,7 +485,7 @@ public final class Session {
   private func runJobs() throws {
     let waiting = lock.locked { () -> [Job] in
       defer { jobs.removeAll() }
-      return jobs
+      return jobs.map(\.job)
     }
     for (i, job) in waiting.enumerated() {
       do {
@@ -486,7 +503,7 @@ public final class Session {
   private func failJobs(_ reason: String) {
     let waiting = lock.locked { () -> [Job] in
       defer { jobs.removeAll() }
-      return jobs
+      return jobs.map(\.job)
     }
     for job in waiting { job.fail(reason) }
   }
@@ -669,7 +686,11 @@ public final class Session {
         feedInterval = feedInterval == 0 ? interval : 0.7 * feedInterval + 0.3 * interval
       }
       feedPicture = date
-      if let snapshot = Snapshot(image) { took(snapshot, at: date) }
+      // A picture older than a live one can be (left on the disk by an earlier run) is shown, as the window does with
+      // its note, but not recorded as if it were live.
+      if Date().timeIntervalSince(date) < max(6, 3 * feedInterval), let snapshot = Snapshot(image) {
+        took(snapshot, at: date)
+      }
       if delegate != nil {
         DispatchQueue.main.async { [weak self] in
           guard let self else { return }

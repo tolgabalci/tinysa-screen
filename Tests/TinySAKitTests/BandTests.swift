@@ -20,8 +20,13 @@ final class BandTests: XCTestCase {
     XCTAssertEqual(fm.commands(from: ism915), ["sweep start 87500000", "sweep stop 108000000"])
     XCTAssertEqual(ism915.commands(from: wifi), ["sweep start 902000000", "sweep stop 928000000"])
     XCTAssertEqual(ism915.commands(from: nil), ["sweep start 902000000", "sweep stop 928000000"])
+    // Spans that share an edge: start set first would meet stop.
+    let low = SweepRange(start: 902_000_000, stop: 915_000_000)
+    let high = SweepRange(start: 915_000_000, stop: 928_000_000)
+    XCTAssertEqual(high.commands(from: low), ["sweep stop 928000000", "sweep start 915000000"])
+    XCTAssertEqual(low.commands(from: high), ["sweep start 902000000", "sweep stop 915000000"])
     // Every order, simulated as the firmware does it: start never ends up above stop on the way.
-    let spans = BandPreset.builtIn.flatMap { $0 }.map(\.range)
+    let spans = BandPreset.builtIn.flatMap { $0 }.map(\.range) + [low, high]
     for from in spans {
       for to in spans {
         var current = from

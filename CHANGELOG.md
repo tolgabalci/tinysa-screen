@@ -29,7 +29,13 @@ All notable changes are listed here, newest first. Versions follow [Semantic Ver
 - NanoVNA (experimental): a NanoVNA-H or -H4 shows live with DiSlord's NanoVNA-D firmware (the same console and live
   screen as the tinySA's, regions ending with a new line), or a picture every half second with older firmware; clicks,
   screenshots, GIFs and the presenter's tools work. Built from NanoVNA-D's source, not yet tried on a NanoVNA.
-- No window tab items in the menus: the app has one window.
+- No window tab items in the menus: the app has one window; closing it quits the app. Edit has Undo, Cut, Paste and
+  Select All for text fields.
+- A GIF never shows a picture that stopped coming as if it were live: Record starts only from a live picture, a
+  recording or capture ends where the picture stopped, and a fed picture left on the disk by an earlier run isn't
+  recorded. Screenshots are named after when their picture came. Quitting while recording saves the GIF first.
+- Fixed from 1.0.0: a touch held while the app polls an analyzer without the live screen no longer stalls it, and the
+  live screen is paused cleanly (up to the prompt) before a whole capture.
 - A command line for scripts and AI agents: `tinysa-screen record`, `capture`, `screenshot`, `sweep` and `status`, with
   results as text or JSON; `record --start --stop` records a given band and puts the analyzer's span back; `peaks`
   lists the highest peaks over some seconds, read from the screen. With the app open the app does the work, through a control socket other programs can use too, and

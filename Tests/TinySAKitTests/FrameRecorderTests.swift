@@ -128,4 +128,15 @@ final class FrameRecorderTests: XCTestCase {
     XCTAssertLessThan(frame.size, 480 * 320 * 4 / 10)
     XCTAssertEqual(frame.snapshot(), screen)
   }
+
+  /// An old picture (a feeding program's, left on the disk from an earlier run) doesn't take the place of newer frames.
+  func testOlderFramesAreLeftOut() throws {
+    let recorder = FrameRecorder()
+    recorder.keepRecent = 60
+    for t in 0...5 { recorder.add(screen(t), at: at(100 + Double(t))) }
+    recorder.add(screen(99), at: at(10))
+    recorder.add(screen(6), at: at(106))
+    let clip = try XCTUnwrap(recorder.recent(at: at(107)))
+    XCTAssertEqual(clip.frames.map(\.time), (100...106).map { at(Double($0)) })
+  }
 }

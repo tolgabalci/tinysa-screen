@@ -68,6 +68,19 @@ final class LZWTests: XCTestCase {
     XCTAssertLessThan(encoded.count, lzw.encode(symbols, codeSize: 4).count)
   }
 
+  /// The end code is written at the width a decoder reads it: wider when the table reached the next size with the
+  /// last code (a strict decoder found no end code in such streams).
+  func testEndCodeWidth() throws {
+    var lzw = LZWEncoder()
+    let example: [UInt8] = [1, 0, 0, 0, 2, 3, 2, 2, 1, 3, 1, 1, 0]
+    XCTAssertEqual(try DecodedGIF.lzwDecode(lzw.encode(example, codeSize: 2), codeSize: 2, count: example.count), example)
+    var generator = SeededGenerator(seed: 7)
+    for _ in 0..<20_000 {
+      let symbols = (0..<Int.random(in: 1...40, using: &generator)).map { _ in UInt8.random(in: 0...3, using: &generator) }
+      XCTAssertEqual(try DecodedGIF.lzwDecode(lzw.encode(symbols, codeSize: 2), codeSize: 2, count: symbols.count), symbols)
+    }
+  }
+
   func testEmptyAndCodeSizes() throws {
     var lzw = LZWEncoder()
     XCTAssertEqual(try DecodedGIF.lzwDecode(lzw.encode([], codeSize: 2), codeSize: 2, count: 0), [])

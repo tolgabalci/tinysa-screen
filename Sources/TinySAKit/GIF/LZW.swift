@@ -80,6 +80,9 @@ struct LZWEncoder {
               i += 1
             }
             out.write(current, width)
+            // A decoder adds a code to its table after this last one too, widening its codes when the table reaches
+            // the next size: the end code goes at the width it will read.
+            if next == 1 << width, width < 12 { width += 1 }
           }
         }
       }

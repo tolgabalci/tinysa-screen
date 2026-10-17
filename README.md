@@ -9,10 +9,11 @@ The screen of your [tinySA](https://tinysa.org) spectrum analyzer, live in a win
 Teams, Zoom or Meet and everyone sees the band as you do. Click the picture and the analyzer takes it as a tap on its
 own screen.
 
-![tinySA Screen on a Mac, showing a tinySA Ultra+ with a UHF RFID reader hopping across 902–928 MHz](docs/images/window-live.jpg)
+![tinySA Screen on a Mac, showing a tinySA Ultra+ with a UHF RFID reader hopping across 902–928 MHz and the peak hold](docs/images/window-live.jpg)
 
-_tinySA Screen with a tinySA Ultra+ watching a UHF RFID reader hop across the 902–928 MHz band: the green line holds
-the channels it used, four markers read them out, and each hop is a dash in the waterfall._
+_tinySA Screen with a tinySA Ultra+ watching a UHF RFID reader hop across the 902–928 MHz band. In two minutes the peak
+hold (magenta) has caught five of its channels, numbered with their frequency and level; each hop is a dash in the
+waterfall. The title bar has the pointer and pen, the peak hold, bands, Record and Capture._
 
 ## Why
 
@@ -139,7 +140,7 @@ Two buttons at the left of the title bar's buttons are for talking people throug
 
 While either is on, clicks point or draw instead of tapping the analyzer; click its button again, or press Esc, to end
 it. Neither goes into screenshots or GIFs, which are the analyzer's screen alone. **Window › Float on Top** keeps the
-window above other apps' windows, for when you share your whole screen.
+window above other apps' windows while you work in another one (a call's, say), for when you share your whole screen.
 
 ## Peak hold
 
@@ -189,6 +190,11 @@ report or paste into a chat:
   say. A picture of the GIF's first frame shows where it starts. Choose whether the date and the time go under the
   screen, the size, then **Save to Desktop**, or **Copy** to paste it into a chat or an email as an animated GIF. The
   sheet says how large the file will be before you save it.
+
+![A GIF made by tinySA Screen: the 2.4 GHz band, Wi-Fi bursts, the date and time ticking under the screen](docs/images/gif-2400mhz-wifi.gif)
+
+_A GIF made by tinySA Screen (`tinysa-screen record -s 15 --start 2.4G --stop 2.4835G`): 15 seconds of the 2.4 GHz
+band, a sweep a frame, in 511 KB at the sharp size._
 
 What's in a GIF:
 

@@ -77,9 +77,16 @@ struct CaptureSheet: View {
         Button("Cancel") { done(nil) }
           .keyboardShortcut(.cancelAction)
         Button("Copy") { done(Choice(seconds: seconds, action: .copy)) }
-          .help("Copy the GIF to paste into a chat or an email")
+          .keyboardShortcut("c")
+          .help("Copy the GIF to paste into a chat or an email (⌘C)")
         Button("Save to Desktop") { done(Choice(seconds: seconds, action: .save)) }
           .keyboardShortcut(.defaultAction)
+        // ⌘S saves too, as the screenshot's does outside the sheet.
+        Button("") { done(Choice(seconds: seconds, action: .save)) }
+          .keyboardShortcut("s")
+          .frame(width: 0, height: 0)
+          .opacity(0)
+          .accessibilityHidden(true)
       }
     }
     .padding(20)
@@ -87,6 +94,7 @@ struct CaptureSheet: View {
     .task(id: "\(seconds) \(scale) \(showsDate) \(showsTime)") {
       estimate.update(clip.last(seconds), options: GIFOptions(scale: scale, showsDate: showsDate, showsTime: showsTime))
     }
+    .onDisappear { estimate.cancel() }
   }
 
   /// The GIF's first frame as it will look, strip and all: drawn twice the screen's size, shown at half that, so a
@@ -95,8 +103,8 @@ struct CaptureSheet: View {
     let options = GIFOptions(scale: 2, showsDate: showsDate, showsTime: showsTime)
     let still = frames.snapshot(of: clip.frame(at: start)).map { GIF.still($0, at: start, options: options) }
     let image = still?.image()
-    let width = CGFloat(screen.width)
-    let height = image.map { width * CGFloat($0.height) / CGFloat($0.width) } ?? CGFloat(screen.height)
+    let width = CGFloat(min(screen.width, 480))  // a wider fed picture is shown smaller, to fit the sheet
+    let height = image.map { width * CGFloat($0.height) / CGFloat($0.width) } ?? width * CGFloat(screen.height) / CGFloat(screen.width)
     return Group {
       if let image {
         Image(decorative: image, scale: 2)
@@ -173,5 +181,12 @@ final class SizeEstimate: ObservableObject {
     }
     pending = work
     Self.queue.asyncAfter(deadline: .now() + 0.25, execute: work)
+  }
+
+  /// No more measuring (the sheet closed).
+  func cancel() {
+    generation += 1
+    pending?.cancel()
+    pending = nil
   }
 }

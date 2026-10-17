@@ -10,8 +10,12 @@ final class BandController: NSObject, NSMenuDelegate, NSMenuItemValidation {
   private weak var window: NSWindow?
   /// The menu of the title bar's Band button: a pull-down, so its first item is the button's own title.
   let toolbarMenu = NSMenu(title: "Band")
-  /// The menu bar's Band menu.
+  /// The menu bar's Band menu, and the one the title bar's overflow menu shows when the window is too narrow for it.
   private let menuBarMenu: NSMenu?
+  let overflowMenu = NSMenu(title: "Band")
+  /// The saved bands the menus were last filled with: they're filled again when those change, not with every other
+  /// setting (the window's frame is one, saved as it moves).
+  private var savedBands: Data?
   var status = Status(source: "", note: nil, controllable: false) {
     didSet {
       if status != oldValue { refresh() }
@@ -31,15 +35,22 @@ final class BandController: NSObject, NSMenuDelegate, NSMenuItemValidation {
     super.init()
     toolbarMenu.delegate = self
     menuBarMenu?.delegate = self
+    overflowMenu.delegate = self
     refresh()
     NotificationCenter.default.addObserver(
-      self, selector: #selector(refresh), name: UserDefaults.didChangeNotification, object: nil)
+      self, selector: #selector(savedBandsMayHaveChanged), name: UserDefaults.didChangeNotification, object: nil)
   }
 
-  /// Both menus filled now, not only as they open, so they read right to VoiceOver and other assistive apps.
+  /// The menus filled now, not only as they open, so they read right to VoiceOver and other assistive apps.
   @objc func refresh() {
+    savedBands = Preferences.defaults.data(forKey: Preferences.Key.savedBands)
     fill(toolbarMenu)
+    fill(overflowMenu)
     if let menuBarMenu { fill(menuBarMenu) }
+  }
+
+  @objc private func savedBandsMayHaveChanged() {
+    if Preferences.defaults.data(forKey: Preferences.Key.savedBands) != savedBands { refresh() }
   }
 
   /// The title bar's Band button.

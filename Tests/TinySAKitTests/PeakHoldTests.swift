@@ -154,4 +154,72 @@ final class PeakHoldTests: XCTestCase {
     XCTAssertEqual(forever.state?.peaks.map(\.column), [100, 300])
     XCTAssertEqual(forever.state?.since, start)
   }
+
+  /// After the hold starts over (Clear, a setting changed), the readouts come back at once: the labels read before are
+  /// remembered.
+  func testReadoutsComeBackAfterStartingOver() throws {
+    let hold = PeakHold()
+    let read = expectation(description: "labels read")
+    hold.onChange = { state in
+      if state?.scale != nil { read.fulfill() }
+    }
+    let screen = try Fixture.screen("screen-915-burst.png")
+    hold.add(screen, at: Date())
+    wait(for: [read], timeout: 20)
+    hold.onChange = nil
+    hold.reset()
+    hold.add(screen, at: Date())
+    XCTAssertNotNil(hold.state?.scale)
+    XCTAssertNotNil(hold.state?.peaks.first?.level)
+    hold.window = 30
+    hold.add(screen, at: Date())
+    XCTAssertNotNil(hold.state?.scale)
+  }
+
+  /// A peak at the graph's edge counts: nothing on its outer side holds it down.
+  func testPeaksAtTheEdges() {
+    let left = PeakHold()
+    left.add(screen(peakAt: 30, row: 60), at: Date())
+    XCTAssertEqual(left.state?.peaks.map(\.column), [30])
+    let right = PeakHold()
+    right.add(screen(peakAt: 479, row: 60), at: Date())
+    XCTAssertEqual(right.state?.peaks.map(\.column), [479])
+  }
+
+  /// Pictures too small for a box of readouts, or for the labels, don't trip anything up.
+  func testSmallPictures() {
+    for (width, height) in [(120, 100), (28, 50), (40, 40)] {
+      var picture = Snapshot(width: width, height: height, pixels: Array(repeating: Snapshot.pixel(r: 0, g: 0, b: 0), count: width * height))
+      for y in stride(from: 0, to: height, by: 10) {
+        for x in stride(from: 0, to: width, by: 2) { picture.pixels[y * width + x] = Snapshot.pixel(r: 0x83, g: 0x81, b: 0x83) }
+      }
+      for y in stride(from: 0, to: height, by: 2) { picture.pixels[y * width + 2] = Snapshot.pixel(r: 0x83, g: 0x81, b: 0x83) }
+      let hold = PeakHold()
+      hold.add(picture, at: Date())
+      hold.add(picture, at: Date())
+      if let graph = Graph.find(on: picture) {
+        _ = graph.labelPrint(on: picture)
+        for region in graph.labelRegions(picture) {
+          XCTAssertLessThanOrEqual(region.minX, region.maxX)
+          XCTAssertLessThanOrEqual(region.minY, region.maxY)
+        }
+      }
+    }
+  }
+
+  /// Fine scales (0.1, 0.2, 0.5 dB a division) fit despite the decimals not being exact in binary.
+  func testFineScales() throws {
+    let graph = Graph(left: 30, right: 480, top: 0, bottom: 240, gridRows: stride(from: 0, through: 240, by: 24).map { $0 })
+    for perDivision in [0.1, 0.2, 0.5] {
+      let labels = (0..<6).map { n in
+        LabelReader.Line(text: String(format: "%.1f", -20.1 - perDivision * Double(n)), top: 24 * n)
+      }
+      let fit = try XCTUnwrap(GraphScale.fitLevels(labels, graph: graph), "\(perDivision) dB a division")
+      XCTAssertEqual(fit.1 * 24, -perDivision, accuracy: 0.0001)
+    }
+  }
+
+  func testMisreadSpansAreRefused() {
+    XCTAssertNil(GraphScale.parseSpan("START 90200000000000MHz STOP 928.000000MHz"))
+  }
 }

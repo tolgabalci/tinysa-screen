@@ -21,6 +21,8 @@ public final class Automation: @unchecked Sendable {
 
   private let lock = NSLock()
   private var recordingNames: [UUID: String] = [:]
+  /// The request that has set the span for itself, until it's done: one at a time, or they'd put back each other's.
+  private var spanHolder: UUID?
 
   public init(session: Session, isApp: Bool, version: String) {
     self.session = session
@@ -60,23 +62,39 @@ public final class Automation: @unchecked Sendable {
     }
     if let failure = waitForPicture(cancelled: cancelled) { return failure }
     var notes: [String] = []
+    // A span of its own: set, held against other requests until put back, and a whole sweep of it drawn first.
+    var lease: UUID?
     var restore: SweepRange?
     if let target {
-      // The span set, then a whole sweep of it drawn before the recording begins.
-      let changed = Date()
+      switch takeSpan() {
+      case .success(let token): lease = token
+      case .failure(let message): return message
+      }
       switch session.sweep(target) {
-      case .failure(let error): return .failure("The span couldn't be set: \(error)")
+      case .failure(let error):
+        giveBackSpan(lease)
+        return .failure("The span couldn't be set: \(error)")
       case .success(let change):
         if request.restore ?? true, !change.before.matches(change.after) { restore = change.before }
-        notes.append("Swept \(change.after.label)" + (restore.map { "; \($0.label) put back afterwards" } ?? ""))
+        notes.append("Swept \(change.after.label)")
       }
-      waitForFrames(after: changed, count: 2, cancelled: cancelled)
+      waitForFrames(after: Date(), count: 2, cancelled: cancelled)
     }
-    defer {
-      if let restore, case .failure(let error) = session.sweep(restore) {
-        announce?("The span \(restore.label) couldn't be put back: \(error)")
+    /// The span put back (on every way out), and what came of it in the notes.
+    func putBack() {
+      if let spanToRestore = restore {
+        restore = nil
+        switch session.sweep(spanToRestore) {
+        case .success: notes.append("Put back \(spanToRestore.label)")
+        case .failure(let error):
+          notes.append("\(spanToRestore.label) couldn't be put back: \(error)")
+          announce?("The span \(spanToRestore.label) couldn't be put back: \(error)")
+        }
       }
+      giveBackSpan(lease)
+      lease = nil
     }
+    defer { putBack() }
     let recorder = session.recorder
     let id = recorder.begin()
     let name = request.name ?? "another program"
@@ -101,6 +119,7 @@ public final class Automation: @unchecked Sendable {
     }
     let clip = recorder.end(id)
     changeRecordings { $0[id] = nil }
+    putBack()
     guard let clip else { return .failure("Nothing was recorded: no picture came") }
     var reply = save(clip, request: request, to: output)
     if reply.ok {
@@ -172,6 +191,14 @@ public final class Automation: @unchecked Sendable {
     case .failure(let message): return message
     }
     if let failure = waitForPicture(cancelled: cancelled) { return failure }
+    var lease: UUID?
+    if target != nil {
+      switch takeSpan() {
+      case .success(let token): lease = token
+      case .failure(let message): return message
+      }
+    }
+    defer { giveBackSpan(lease) }
     switch session.sweep(target) {
     case .failure(let error): return .failure(error.description)
     case .success(let change):
@@ -254,6 +281,32 @@ public final class Automation: @unchecked Sendable {
   }
 
   // MARK: Helpers
+
+  /// The span for this request alone, while it lasts; refused when another holds it, or when the analyzer's span
+  /// can't be set from here (a feeding program has it, a NanoVNA, the original tinySA).
+  private func takeSpan() -> Result<UUID, ControlReply> {
+    let status = session.status
+    guard status.tunable else {
+      let why =
+        status.source.hasPrefix("Pictures from")
+        ? "\(status.source.dropFirst("Pictures from ".count)) has the tinySA: set the span there"
+        : "the span can be set only on a tinySA Ultra on USB here"
+      return .failure(.failure("The span can't be set: \(why)"))
+    }
+    return lock.locked {
+      guard spanHolder == nil else {
+        return .failure(.failure("Another request has set the span for its recording: try again when it's done"))
+      }
+      let token = UUID()
+      spanHolder = token
+      return .success(token)
+    }
+  }
+
+  private func giveBackSpan(_ token: UUID?) {
+    guard let token else { return }
+    lock.locked { if spanHolder == token { spanHolder = nil } }
+  }
 
   /// The span a request asks for: nil without one; both ends, in order, or a failure.
   static func span(_ request: ControlRequest) -> Result<SweepRange?, ControlReply> {

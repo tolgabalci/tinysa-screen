@@ -12,6 +12,13 @@ final class ScreenView: NSView {
   var tool = Tool.none {
     didSet {
       guard tool != oldValue else { return }
+      // A touch down on the analyzer when the tool came on is let go of now: the analyzer would wait for it, its
+      // sweep stopped.
+      if let held = touching {
+        touching = nil
+        onTap?(held.x, held.y, true)
+      }
+      if drawing != nil { endStroke() }
       pointer.isHidden = true
       window?.invalidateCursorRects(for: self)
       setAccessibilityValue(accessibilityText)
@@ -38,7 +45,8 @@ final class ScreenView: NSView {
   /// The pen's strokes, in fractions of the picture (0 to 1 across and down from the top left), so they stay on what
   /// they mark when the window changes size.
   private var strokes: [(layer: CAShapeLayer, points: [CGPoint])] = []
-  private var drawing: Int?
+  /// The stroke being drawn (strokes before it may fade and go meanwhile).
+  private var drawing: CAShapeLayer?
   private static let blankCursor = NSCursor(image: NSImage(size: NSSize(width: 1, height: 1)), hotSpot: .zero)
   private let noteBox = NSView()
   private let noteLabel = NSTextField(wrappingLabelWithString: "")
@@ -160,6 +168,7 @@ final class ScreenView: NSView {
 
   /// Why the picture isn't live, or nil.
   func say(_ note: String?) {
+    if let note, note != statusNote { announce(note) }
     statusNote = note
     updateNote()
   }
@@ -168,13 +177,23 @@ final class ScreenView: NSView {
   func flash(_ note: String) {
     flashNote = note
     updateNote()
+    announce(note)
     flashTimer?.invalidate()
-    flashTimer = Timer.scheduledTimer(withTimeInterval: 2.5, repeats: false) { [weak self] _ in
+    let timer = Timer(timeInterval: 2.5, repeats: false) { [weak self] _ in
       MainActor.assumeIsolated {
         self?.flashNote = nil
         self?.updateNote()
       }
     }
+    RunLoop.main.add(timer, forMode: .common)  // also while a menu is open
+    flashTimer = timer
+  }
+
+  /// VoiceOver says the note too: it's shown only for a moment.
+  private func announce(_ text: String) {
+    NSAccessibility.post(
+      element: self, notification: .announcementRequested,
+      userInfo: [.announcement: text, .priority: NSAccessibilityPriorityLevel.high.rawValue])
   }
 
   private func updateNote() {
@@ -308,23 +327,22 @@ final class ScreenView: NSView {
     stroke.path = path(points)
     ink.addSublayer(stroke)
     strokes.append((stroke, points))
-    drawing = strokes.count - 1
+    drawing = stroke
   }
 
   private func continueStroke(to point: CGPoint) {
-    guard let drawing, drawing < strokes.count else { return }
-    strokes[drawing].points.append(fraction(point))
+    guard let drawing, let i = strokes.firstIndex(where: { $0.layer === drawing }) else { return }
+    strokes[i].points.append(fraction(point))
     CATransaction.begin()
     CATransaction.setDisableActions(true)
-    strokes[drawing].layer.path = path(strokes[drawing].points)
+    drawing.path = path(strokes[i].points)
     CATransaction.commit()
   }
 
   /// The stroke stays for `inkSeconds`, then fades away.
   private func endStroke() {
-    guard let drawing, drawing < strokes.count else { return }
-    self.drawing = nil
-    let layer = strokes[drawing].layer
+    guard let layer = drawing else { return }
+    drawing = nil
     DispatchQueue.main.asyncAfter(deadline: .now() + inkSeconds) { [weak self] in
       CATransaction.begin()
       CATransaction.setAnimationDuration(0.8)
@@ -381,11 +399,8 @@ final class ScreenView: NSView {
   }
 
   override func mouseUp(with event: NSEvent) {
-    if tool == .pen {
-      endStroke()
-      return
-    }
-    guard let last = touching else { return }
+    if tool == .pen { endStroke() }
+    guard let last = touching else { return }  // a touch is always released, whatever the tool now
     let p = pixel(at: event) ?? last
     touching = nil
     onTap?(p.x, p.y, true)

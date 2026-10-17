@@ -48,7 +48,11 @@ public final class PeakHold: @unchecked Sendable {
   private var current: State?
   /// The highest rows of each second (or one bucket for the whole hold).
   private var buckets: [(second: Int, rows: [Int?])] = []
+  /// The labels' fingerprint now, the spans and levels read for each fingerprint seen (a menu over the labels changes it
+  /// for a while), and the ones the held rows belong to.
   private var labels: Int?
+  private var scales: [Int: GraphScale] = [:]
+  private var rowsScale: GraphScale?
   private var reading = false
   private var unread: (Snapshot, Graph, Int)?
   private let readingQueue = DispatchQueue(label: "Reading the screen's labels", qos: .utility)
@@ -61,8 +65,7 @@ public final class PeakHold: @unchecked Sendable {
     set {
       lock.locked {
         holdWindow = newValue.map { max(1, $0) }
-        buckets.removeAll()
-        current = nil
+        startOver()
       }
       onChange?(nil)
     }
@@ -78,11 +81,16 @@ public final class PeakHold: @unchecked Sendable {
 
   /// Starts the hold over.
   public func reset() {
-    lock.locked {
-      buckets.removeAll()
-      current = nil
-    }
+    lock.locked { startOver() }
     onChange?(nil)
+  }
+
+  /// Nothing held; the labels read again from the next frame (their fingerprint forgotten, the spans read kept).
+  private func startOver() {
+    buckets.removeAll()
+    current = nil
+    labels = nil
+    rowsScale = nil
   }
 
   /// The screen after a sweep.
@@ -91,10 +99,19 @@ public final class PeakHold: @unchecked Sendable {
     let rows = graph.traceRows(on: screen)
     let print = graph.labelPrint(on: screen)
     let state = lock.locked { () -> State? in
-      if let current, current.graph != graph {
-        buckets.removeAll()  // another layout (the waterfall's size changed): start over
-        self.current = nil
+      if let current, current.graph != graph { startOver() }  // another layout (the waterfall's size changed)
+      // The labels: read before for this fingerprint, or to be read now (nil meanwhile, so no readouts from labels
+      // that have changed). Levels held under other labels start over.
+      if print != labels {
+        labels = print
+        if scales[print] == nil { unread = (screen, graph, print) }
       }
+      let scale = scales[print]
+      if let scale, let rowsScale, scale != rowsScale {
+        buckets.removeAll()
+        current = nil
+      }
+      if let scale { rowsScale = scale }
       let second = Int(time.timeIntervalSinceReferenceDate.rounded(.down))
       let key = holdWindow == nil ? 0 : second
       if buckets.last?.second != key || buckets.last?.rows.count != rows.count {
@@ -112,7 +129,6 @@ public final class PeakHold: @unchecked Sendable {
           if let row = bucket.rows[i] { held[i] = min(held[i] ?? row, row) }
         }
       }
-      let scale = current?.scale
       var state = State(
         graph: graph, rows: held, scale: scale, peaks: [], since: current?.since ?? time, window: holdWindow,
         quietSpot: Self.quietSpot(
@@ -120,11 +136,6 @@ public final class PeakHold: @unchecked Sendable {
           staying: current?.graph == graph ? current?.quietSpot : nil))
       state.peaks = Self.peaks(in: state, count: count)
       current = state
-      // The labels changed (or were never read): read them again, away from this thread.
-      if print != labels {
-        labels = print
-        unread = (screen, graph, print)
-      }
       return state
     }
     onChange?(state)
@@ -144,15 +155,18 @@ public final class PeakHold: @unchecked Sendable {
       guard let self else { return }
       let changed = self.lock.locked { () -> State? in
         self.reading = false
-        // Labels that changed again meanwhile are read next; unreadable ones (a menu over them) change nothing.
-        guard var state = self.current, state.graph == graph, print == self.labels, let scale, scale != state.scale
-        else { return nil }
-        if state.scale != nil {
+        guard let scale else { return nil }  // unreadable (a menu over the labels): no readouts until they're back
+        if self.scales.count > 32 { self.scales.removeAll() }
+        self.scales[print] = scale
+        // Labels that changed again meanwhile are read next.
+        guard var state = self.current, state.graph == graph, print == self.labels else { return nil }
+        if let rowsScale = self.rowsScale, rowsScale != scale {
           // Another span or other levels: what was held belongs to the old ones.
           self.buckets.removeAll()
           state.rows = Array(repeating: nil, count: state.rows.count)
           state.since = Date()
         }
+        self.rowsScale = scale
         state.scale = scale
         state.peaks = Self.peaks(in: state, count: self.count)
         self.current = state
@@ -193,7 +207,12 @@ public final class PeakHold: @unchecked Sendable {
         }
       }
     }
-    if let staying, ink(staying.x, staying.y) <= least * 3 / 2 + 20 { return staying }
+    guard least != .max else {
+      return (max(0, min(xs[0], screen.width - 1)), max(0, min(graph.top + 2, screen.height - 1)))  // no room
+    }
+    if let staying, staying.x >= 0, staying.x + size.width <= screen.width, ink(staying.x, staying.y) <= least * 3 / 2 + 20 {
+      return staying
+    }
     return best
   }
 
@@ -219,26 +238,38 @@ public final class PeakHold: @unchecked Sendable {
       // The first of a flat top only, and only a top: no higher (smaller) row next to it.
       if i > 0, let left = rows[i - 1], left <= row { continue }
       if i + 1 < rows.count, let right = rows[i + 1], right < row { continue }
-      // The valleys: the lowest point on each side before higher ground.
+      // The valleys: the lowest point on each side before higher ground. A side that reaches the graph's edge without
+      // higher ground doesn't hold the peak down (a peak at the edge has nothing on that side).
       var leftValley = row
+      var leftOpen = true
       var j = i - 1
       while j >= 0 {
         if let r = rows[j] {
-          if r < row { break }
+          if r < row {
+            leftOpen = false
+            break
+          }
           leftValley = max(leftValley, r)
         }
         j -= 1
       }
       var rightValley = row
+      var rightOpen = true
       j = i + 1
       while j < rows.count {
         if let r = rows[j] {
-          if r < row { break }
+          if r < row {
+            rightOpen = false
+            break
+          }
           rightValley = max(rightValley, r)
         }
         j += 1
       }
-      guard min(leftValley, rightValley) - row >= minimum, noise - row >= minimum else { continue }
+      let base =
+        leftOpen && rightOpen
+        ? max(leftValley, rightValley) : leftOpen ? rightValley : rightOpen ? leftValley : min(leftValley, rightValley)
+      guard base - row >= minimum, noise - row >= minimum else { continue }
       let column = state.graph.left + i
       var peak = Peak(column: column, row: row)
       if let scale = state.scale {

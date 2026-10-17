@@ -56,18 +56,32 @@ enum CommandLineTool {
     More: https://github.com/tolgabalci/tinysa-screen/blob/main/docs/COMMAND-LINE.md
     """
 
-  /// Whether the arguments ask for the command line rather than the app (macOS passes the app arguments of its own,
-  /// all starting with "-").
+  /// Whether the arguments ask for the command line rather than the app: anything but the arguments macOS (or Xcode)
+  /// gives an app it opens, "-psn_…", and "-NS…" or "-Apple…" with a value.
   static func isAsked(_ arguments: [String]) -> Bool {
-    guard arguments.count > 1 else { return false }
-    let first = arguments[1]
-    return !first.hasPrefix("-") || ["-h", "--help", "--version"].contains(first)
+    var args = arguments.dropFirst()[...]
+    while let arg = args.first {
+      args = args.dropFirst()
+      if arg.hasPrefix("-psn_") { continue }
+      if arg.hasPrefix("-NS") || arg.hasPrefix("-Apple") {
+        args = args.dropFirst()  // its value
+        continue
+      }
+      return true
+    }
+    return false
   }
 
   /// Runs the command line: the exit status.
   static func run(_ arguments: [String]) -> Int32 {
     var args = Array(arguments.dropFirst())
-    let command = args.removeFirst()
+    // The command may come after options ("--json status"): it's the first word that is one.
+    let command: String
+    if let at = args.firstIndex(where: { commands.contains($0) || ["-h", "--help", "--version"].contains($0) }) {
+      command = args.remove(at: at)
+    } else {
+      return fail("Which command: record, capture, screenshot, sweep, peaks or status (tinysa-screen --help)")
+    }
     if ["help", "-h", "--help"].contains(command) {
       print(usage)
       return 0
@@ -123,10 +137,18 @@ enum CommandLineTool {
     }
     if command == "screenshot" { request.scale = sharp ? 2 : 1 }
     if command == "record", request.seconds == nil { return fail("How long to record: --seconds N") }
-    if let seconds = request.seconds, command == "record" || command == "capture",
-      !(1...FrameRecorder.longest).contains(seconds)
-    {
-      return fail("--seconds: 1 to \(Int(FrameRecorder.longest))")
+    if let seconds = request.seconds {
+      switch command {
+      case "record", "capture":
+        guard (1...FrameRecorder.longest).contains(seconds) else {
+          return fail("--seconds: 1 to \(Int(FrameRecorder.longest))")
+        }
+      case "peaks": break  // checked below
+      default: return fail("--seconds goes with record, capture and peaks")
+      }
+    }
+    if let start = request.start, let stop = request.stop, start >= stop {
+      return fail("The span's start must be below its stop")
     }
     if !["status", "sweep", "peaks"].contains(command), request.output == nil {
       return fail("Where to save it: --output FILE")
@@ -255,8 +277,12 @@ enum CommandLineTool {
     return URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent(expanded).path
   }
 
+  /// The app's version, from the bundle the program is in, also when it's run through a link (Homebrew links it).
   static var version: String {
-    Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "(built from source)"
+    let program = Bundle.main.executableURL?.resolvingSymlinksInPath()
+    let app = program?.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+    let bundle = app.flatMap(Bundle.init(url:)) ?? Bundle.main
+    return bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "(built from source)"
   }
 
   static func fail(_ message: String) -> Int32 {

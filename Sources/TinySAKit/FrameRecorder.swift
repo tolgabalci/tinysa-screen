@@ -92,9 +92,11 @@ public final class FrameRecorder: @unchecked Sendable {
     }
   }
 
-  /// The screen at a moment.
+  /// The screen at a moment. Moments only go forward: a frame older than the latest (an old picture a feeding program
+  /// left on the disk, say) is left out, so it can't take the place of newer ones.
   public func add(_ snapshot: Snapshot, at time: Date) {
     lock.locked {
+      if let latest, time < latest.time { return }
       if let latest, latest.snapshot == snapshot { return }
       if let size = frames.last.map({ ($0.width, $0.height) }), size != (snapshot.width, snapshot.height) {
         frames.removeAll()  // another screen: frames of two sizes don't make one GIF
@@ -162,7 +164,9 @@ public final class FrameRecorder: @unchecked Sendable {
   private func storeLatest() {
     guard let current = latest, !current.stored else { return }
     let frame = RecordedFrame(current.snapshot, at: current.time)
-    if let previous = frames.last, current.time.timeIntervalSince(previous.time) < Self.closest, frames.count > 1 {
+    if let previous = frames.last, frames.count > 1,
+      (0..<Self.closest).contains(current.time.timeIntervalSince(previous.time))
+    {
       frames[frames.count - 1] = frame
     } else {
       frames.append(frame)

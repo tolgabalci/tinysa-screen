@@ -1,6 +1,7 @@
 #!/bin/bash
-# Builds tinySA Screen.app in build/: a release build for Apple silicon and Intel Macs, signed ad hoc (no Developer ID:
-# a downloaded copy is opened the first time with right-click › Open).
+# Builds tinySA Screen.app in build/: a release build for Apple silicon and Intel Macs, signed ad hoc, or with the
+# identity in SIGN_IDENTITY ("Developer ID Application: …", with the hardened runtime and a timestamp, as notarizing
+# needs; scripts/release.sh does that and the rest).
 #   scripts/build-app.sh            the app
 #   scripts/build-app.sh --zip      the app, and build/tinySA-Screen-<version>.zip for a release
 set -euo pipefail
@@ -26,7 +27,12 @@ done
 iconutil -c icns "$ICONS" -o "$APP/Contents/Resources/AppIcon.icns"
 rm -rf "$(dirname "$ICONS")"
 
-codesign --force --sign - "$APP"
+if [[ -n "${SIGN_IDENTITY:-}" ]]; then
+  codesign --force --options runtime --timestamp --sign "$SIGN_IDENTITY" "$APP"
+  codesign --verify --strict --verbose=2 "$APP"
+else
+  codesign --force --sign - "$APP"
+fi
 echo "Built $APP ($VERSION, build $BUILD): $(lipo -archs "$APP/Contents/MacOS/tinysa-screen")"
 
 if [[ "${1:-}" == "--zip" ]]; then

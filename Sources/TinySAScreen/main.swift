@@ -45,7 +45,18 @@ func makeMenuBar() -> NSMenu {
       .separator(),
       item("Close", #selector(NSWindow.performClose(_:)), "w"),
     ])
-  _ = menu("Edit", [item("Copy Screenshot", #selector(AppDelegate.copy(_:)), "c")])
+  _ = menu(
+    "Edit",
+    [
+      // The text fields (a band's name) need these: AppKit's ⌘-keys reach them only through the menu.
+      item("Undo", Selector(("undo:")), "z"),
+      item("Redo", Selector(("redo:")), "z", [.command, .shift]),
+      .separator(),
+      item("Cut", #selector(NSText.cut(_:)), "x"),
+      item("Copy Screenshot", #selector(AppDelegate.copy(_:)), "c"),
+      item("Paste", #selector(NSText.paste(_:)), "v"),
+      item("Select All", #selector(NSText.selectAll(_:)), "a"),
+    ])
   _ = menu(
     "View",
     [

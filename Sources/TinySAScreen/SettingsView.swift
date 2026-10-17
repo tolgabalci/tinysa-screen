@@ -123,8 +123,7 @@ struct SettingsView: View {
       }
     }
     .formStyle(.grouped)
-    .frame(width: 480)
-    .fixedSize()
+    .frame(minWidth: 460, idealWidth: 480, maxWidth: 640, minHeight: 320, idealHeight: 620)
   }
 }
 
@@ -138,8 +137,11 @@ final class SettingsWindow {
     if window == nil {
       let window = NSWindow(contentViewController: NSHostingController(rootView: SettingsView()))
       window.title = "tinySA Screen Settings"
-      window.styleMask = [.titled, .closable]
+      // Resizable and scrolling: all of it is taller than a small display.
+      window.styleMask = [.titled, .closable, .resizable]
       window.isReleasedWhenClosed = false
+      let visible = NSScreen.main?.visibleFrame.height ?? 800
+      window.setContentSize(NSSize(width: 480, height: min(620, visible - 80)))
       window.center()
       self.window = window
     }
