@@ -84,7 +84,7 @@ final class ControlTests: XCTestCase {
     let automation = Automation(session: Session(), isApp: false, version: "test")
     automation.pictureWait = 0.3
     func error(_ request: ControlRequest) -> String? { automation.handle(request).error }
-    XCTAssertEqual(error(ControlRequest(command: "dance")), "Unknown command \"dance\": record, capture, screenshot, sweep or status")
+    XCTAssertEqual(error(ControlRequest(command: "dance")), "Unknown command \"dance\": record, capture, screenshot, sweep, peaks or status")
     XCTAssertEqual(error(ControlRequest(command: "record", output: "/tmp/x.gif")), "How long to record: 1 to 120 seconds")
     XCTAssertEqual(error(ControlRequest(command: "record", seconds: 121, output: "/tmp/x.gif")), "How long to record: 1 to 120 seconds")
     XCTAssertEqual(error(ControlRequest(command: "record", seconds: 5)), "Where to save it: an output path")
