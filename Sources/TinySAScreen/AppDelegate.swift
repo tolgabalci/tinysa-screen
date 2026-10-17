@@ -27,10 +27,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
   private var otherRecordings: [String] = []
   private let recordButton = NSButton()
   private let captureButton = NSButton()
+  private let pointerButton = NSButton()
+  private let penButton = NSButton()
   private var keptSeconds = -1
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     Preferences.register()
+    NSWindow.allowsAutomaticWindowTabbing = false  // one window: no tab bar items in the menus
     // The toolbar asks for its buttons as soon as it is set: they come first.
     gifs = GIFController(recorder: session.recorder, window: window, view: view)
     let bandMenu = NSApp.mainMenu?.items.first { $0.submenu?.title == "Band" }?.submenu
@@ -38,6 +41,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
     gifs.onChange = { [weak self] in self?.updateGIFControls() }
     setUpToolbarButton(recordButton, "Record", symbol: "record.circle", action: #selector(toggleRecording(_:)))
     setUpToolbarButton(captureButton, "Capture", symbol: "clock.arrow.circlepath", action: #selector(capture(_:)))
+    setUpToolbarButton(pointerButton, "Pointer", symbol: "cursorarrow.rays", action: #selector(togglePointer(_:)))
+    setUpToolbarButton(penButton, "Pen", symbol: "pencil.tip", action: #selector(togglePen(_:)))
+    for button in [pointerButton, penButton] {
+      button.setButtonType(.pushOnPushOff)
+      button.imagePosition = .imageOnly
+      button.setAccessibilityLabel(button.title)
+    }
+    pointerButton.toolTip = "A red dot follows the mouse over the picture, for everyone in a call to see (⌘L). Esc ends it."
+    penButton.toolTip = "Draw on the picture; each stroke fades after a few seconds (⌘D). Esc ends it."
+    view.onEscape = { [weak self] in self?.setTool(.none) }
     window.title = "tinySA Screen"
     window.contentView = view
     window.contentAspectRatio = NSSize(width: 480, height: 320)
@@ -52,6 +65,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
     window.toolbarStyle = .unifiedCompact
     if !window.setFrameUsingName("tinySA Screen") { window.center() }
     window.setFrameAutosaveName("tinySA Screen")
+    window.level = Preferences.floatOnTop ? .floating : .normal
     window.makeKeyAndOrderFront(nil)
     view.onTap = { [weak self] x, y, released in
       if released { self?.session.release(x: x, y: y) } else { self?.session.touch(x: x, y: y) }
@@ -134,6 +148,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
   /// Settings changed (here or in the Settings window): Capture keeps what they say, clicks tap or don't.
   @objc private func preferencesChanged() {
     view.controllable = status.controllable && Preferences.controlEnabled
+    view.inkSeconds = TimeInterval(Preferences.inkSeconds)
     let kept = Preferences.keptSeconds
     guard kept != keptSeconds else { return }
     keptSeconds = kept
@@ -158,11 +173,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
   }
 
   func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-    [.flexibleSpace, .band, .record, .capture]
+    [.flexibleSpace, .pointer, .pen, .band, .record, .capture]
   }
 
   func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-    [.flexibleSpace, .band, .record] + (Preferences.keptSeconds > 0 ? [.capture] : [])
+    [.flexibleSpace, .pointer, .pen, .band, .record] + (Preferences.keptSeconds > 0 ? [.capture] : [])
   }
 
   func toolbar(
@@ -171,6 +186,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
   ) -> NSToolbarItem? {
     let item = NSToolbarItem(itemIdentifier: identifier)
     switch identifier {
+    case .pointer:
+      item.label = "Pointer"
+      item.view = pointerButton
+    case .pen:
+      item.label = "Pen"
+      item.view = penButton
     case .band:
       item.label = "Band"
       item.view = bands.makeButton()
@@ -214,6 +235,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
 
   @objc func toggleRecording(_ sender: Any?) {
     gifs.toggleRecording()
+  }
+
+  // MARK: Presenting
+
+  @objc func togglePointer(_ sender: Any?) { setTool(view.tool == .pointer ? .none : .pointer) }
+  @objc func togglePen(_ sender: Any?) { setTool(view.tool == .pen ? .none : .pen) }
+
+  /// The pointer or the pen takes the mouse (clicks no longer tap the analyzer), or neither.
+  private func setTool(_ tool: ScreenView.Tool) {
+    if tool != .pen { view.clearInk() }
+    view.tool = tool
+    pointerButton.state = tool == .pointer ? .on : .off
+    penButton.state = tool == .pen ? .on : .off
+    if tool != .none { window.makeFirstResponder(view) }  // for Esc
+  }
+
+  @objc func toggleFloatOnTop(_ sender: Any?) {
+    Preferences.floatOnTop.toggle()
+    window.level = Preferences.floatOnTop ? .floating : .normal
   }
 
   @objc func capture(_ sender: Any?) {
@@ -297,6 +337,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
     case #selector(toggleControl(_:)):
       item.state = Preferences.controlEnabled ? .on : .off
       return true
+    case #selector(togglePointer(_:)):
+      item.state = view.tool == .pointer ? .on : .off
+      return true
+    case #selector(togglePen(_:)):
+      item.state = view.tool == .pen ? .on : .off
+      return true
+    case #selector(toggleFloatOnTop(_:)):
+      item.state = Preferences.floatOnTop ? .on : .off
+      return true
     case #selector(toggleRecording(_:)):
       item.title = gifs.isRecording ? "Stop Recording" : "Record GIF"
       return gifs.isRecording || session.recorder.hasSnapshot
@@ -313,6 +362,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
 }
 
 extension NSToolbarItem.Identifier {
+  static let pointer = NSToolbarItem.Identifier("pointer")
+  static let pen = NSToolbarItem.Identifier("pen")
   static let band = NSToolbarItem.Identifier("band")
   static let record = NSToolbarItem.Identifier("record")
   static let capture = NSToolbarItem.Identifier("capture")

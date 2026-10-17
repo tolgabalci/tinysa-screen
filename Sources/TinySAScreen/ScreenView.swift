@@ -1,8 +1,25 @@
 import AppKit
 
 /// The analyzer's screen, as large as the window allows with its pixels kept sharp, a note over its bottom when the
-/// picture isn't live, and clicks turned into taps on the analyzer when it can take them.
+/// picture isn't live, and clicks turned into taps on the analyzer when it can take them. For presenting, the pointer
+/// (a red dot following the mouse, which a call shows even when it doesn't show the cursor) and the pen (strokes that
+/// fade after a few seconds) take the mouse instead.
 final class ScreenView: NSView {
+  enum Tool { case none, pointer, pen }
+
+  /// The presenter's tool, or none: clicks tap the analyzer.
+  var tool = Tool.none {
+    didSet {
+      guard tool != oldValue else { return }
+      pointer.isHidden = true
+      window?.invalidateCursorRects(for: self)
+      setAccessibilityValue(accessibilityText)
+    }
+  }
+  /// Seconds a pen stroke stays before it fades.
+  var inkSeconds: TimeInterval = 3
+  /// Escape pressed: leave the tool.
+  var onEscape: (() -> Void)?
   /// Whether clicks become taps: the picture is live over USB and control is on.
   var controllable = false {
     didSet {
@@ -14,6 +31,13 @@ final class ScreenView: NSView {
 
   private let picture = CALayer()
   private var pictureSize = CGSize(width: 480, height: 320)
+  private let pointer = CALayer()
+  private let ink = CALayer()
+  /// The pen's strokes, in fractions of the picture (0 to 1 across and down from the top left), so they stay on what
+  /// they mark when the window changes size.
+  private var strokes: [(layer: CAShapeLayer, points: [CGPoint])] = []
+  private var drawing: Int?
+  private static let blankCursor = NSCursor(image: NSImage(size: NSSize(width: 1, height: 1)), hotSpot: .zero)
   private let noteBox = NSView()
   private let noteLabel = NSTextField(wrappingLabelWithString: "")
   private var statusNote: String?
@@ -29,6 +53,19 @@ final class ScreenView: NSView {
     picture.magnificationFilter = .nearest  // the analyzer's pixels, sharp, as on its own screen
     picture.minificationFilter = .trilinear
     layer?.addSublayer(picture)
+    layer?.addSublayer(ink)
+    pointer.bounds = CGRect(x: 0, y: 0, width: 18, height: 18)
+    pointer.cornerRadius = 9
+    pointer.backgroundColor = NSColor.systemRed.cgColor
+    pointer.borderColor = NSColor(white: 1, alpha: 0.85).cgColor
+    pointer.borderWidth = 1.5
+    pointer.shadowColor = NSColor.systemRed.cgColor
+    pointer.shadowOpacity = 0.9
+    pointer.shadowRadius = 10
+    pointer.shadowOffset = .zero
+    pointer.isHidden = true
+    pointer.zPosition = 10
+    layer?.addSublayer(pointer)
 
     noteBox.wantsLayer = true
     noteBox.layer?.backgroundColor = NSColor(white: 0.12, alpha: 0.9).cgColor
@@ -63,7 +100,27 @@ final class ScreenView: NSView {
     CATransaction.begin()
     CATransaction.setDisableActions(true)
     picture.frame = bounds
+    ink.frame = bounds
+    for stroke in strokes { stroke.layer.path = path(stroke.points) }
     CATransaction.commit()
+  }
+
+  override func updateTrackingAreas() {
+    super.updateTrackingAreas()
+    trackingAreas.forEach(removeTrackingArea)
+    addTrackingArea(
+      NSTrackingArea(
+        rect: .zero, options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self))
+  }
+
+  override var acceptsFirstResponder: Bool { true }
+
+  override func keyDown(with event: NSEvent) {
+    if event.keyCode == 53, tool != .none {  // Escape
+      onEscape?()
+    } else {
+      super.keyDown(with: event)
+    }
   }
 
   func show(_ image: CGImage) {
@@ -101,7 +158,16 @@ final class ScreenView: NSView {
     let text = statusNote ?? flashNote
     if noteLabel.stringValue != text ?? "" { noteLabel.stringValue = text ?? "" }
     noteBox.isHidden = text == nil
-    setAccessibilityValue(statusNote ?? "Live")
+    setAccessibilityValue(accessibilityText)
+  }
+
+  private var accessibilityText: String {
+    let live = statusNote ?? "Live"
+    switch tool {
+    case .pointer: return live + ", pointer on"
+    case .pen: return live + ", pen on"
+    case .none: return live
+    }
   }
 
   // MARK: Taps
@@ -125,24 +191,156 @@ final class ScreenView: NSView {
   }
 
   override func resetCursorRects() {
-    if controllable { addCursorRect(pictureRect.rect, cursor: .pointingHand) }
+    switch tool {
+    case .pointer: addCursorRect(pictureRect.rect, cursor: Self.blankCursor)  // the red dot is the pointer
+    case .pen: addCursorRect(pictureRect.rect, cursor: .crosshair)
+    case .none: if controllable { addCursorRect(pictureRect.rect, cursor: .pointingHand) }
+    }
   }
 
-  /// A click on the picture taps the analyzer even while another window is the active one, as in a remote screen
-  /// viewer: shared in a call, the call's own window usually is. (View › Control the tinySA by Clicking turns taps off.)
-  override func acceptsFirstMouse(for event: NSEvent?) -> Bool { controllable }
+  /// A click on the picture taps the analyzer (or points, or draws) even while another window is the active one, as in
+  /// a remote screen viewer: shared in a call, the call's own window usually is. (View › Control the tinySA by Clicking
+  /// turns taps off.)
+  override func acceptsFirstMouse(for event: NSEvent?) -> Bool { controllable || tool != .none }
+
+  // MARK: Pointer and pen
+
+  override func mouseMoved(with event: NSEvent) {
+    guard tool == .pointer else { return }
+    let point = convert(event.locationInWindow, from: nil)
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    pointer.position = point
+    pointer.isHidden = !pictureRect.rect.contains(point)
+    CATransaction.commit()
+  }
+
+  override func mouseExited(with event: NSEvent) {
+    pointer.isHidden = true
+  }
+
+  /// A ring that grows and fades where the pointer clicks: look here.
+  private func ripple(at point: CGPoint) {
+    let ring = CAShapeLayer()
+    ring.path = CGPath(ellipseIn: CGRect(x: -30, y: -30, width: 60, height: 60), transform: nil)
+    ring.position = point
+    ring.fillColor = nil
+    ring.strokeColor = NSColor.systemRed.cgColor
+    ring.lineWidth = 3
+    ring.opacity = 0
+    layer?.addSublayer(ring)
+    let grow = CABasicAnimation(keyPath: "transform.scale")
+    grow.fromValue = 0.3
+    grow.toValue = 1.2
+    let fade = CABasicAnimation(keyPath: "opacity")
+    fade.fromValue = 1
+    fade.toValue = 0
+    let both = CAAnimationGroup()
+    both.animations = [grow, fade]
+    both.duration = 0.6
+    CATransaction.begin()
+    CATransaction.setCompletionBlock { ring.removeFromSuperlayer() }
+    ring.add(both, forKey: "ripple")
+    CATransaction.commit()
+  }
+
+  /// A point of the view as a fraction of the picture.
+  private func fraction(_ point: CGPoint) -> CGPoint {
+    let rect = pictureRect.rect
+    return CGPoint(x: (point.x - rect.minX) / rect.width, y: (rect.maxY - point.y) / rect.height)
+  }
+
+  private func path(_ fractions: [CGPoint]) -> CGPath {
+    let rect = pictureRect.rect
+    let path = CGMutablePath()
+    for (i, f) in fractions.enumerated() {
+      let point = CGPoint(x: rect.minX + f.x * rect.width, y: rect.maxY - f.y * rect.height)
+      if i == 0 { path.move(to: point) } else { path.addLine(to: point) }
+    }
+    return path
+  }
+
+  private func startStroke(at point: CGPoint) {
+    let stroke = CAShapeLayer()
+    stroke.fillColor = nil
+    stroke.strokeColor = NSColor.systemRed.cgColor
+    stroke.lineWidth = 3.5
+    stroke.lineCap = .round
+    stroke.lineJoin = .round
+    stroke.shadowColor = NSColor.black.cgColor
+    stroke.shadowOpacity = 0.7
+    stroke.shadowRadius = 1.5
+    stroke.shadowOffset = .zero
+    let points = [fraction(point)]
+    stroke.path = path(points)
+    ink.addSublayer(stroke)
+    strokes.append((stroke, points))
+    drawing = strokes.count - 1
+  }
+
+  private func continueStroke(to point: CGPoint) {
+    guard let drawing, drawing < strokes.count else { return }
+    strokes[drawing].points.append(fraction(point))
+    CATransaction.begin()
+    CATransaction.setDisableActions(true)
+    strokes[drawing].layer.path = path(strokes[drawing].points)
+    CATransaction.commit()
+  }
+
+  /// The stroke stays for `inkSeconds`, then fades away.
+  private func endStroke() {
+    guard let drawing, drawing < strokes.count else { return }
+    self.drawing = nil
+    let layer = strokes[drawing].layer
+    DispatchQueue.main.asyncAfter(deadline: .now() + inkSeconds) { [weak self] in
+      CATransaction.begin()
+      CATransaction.setAnimationDuration(0.8)
+      CATransaction.setCompletionBlock {
+        layer.removeFromSuperlayer()
+        self?.strokes.removeAll { $0.layer === layer }
+      }
+      layer.opacity = 0
+      CATransaction.commit()
+    }
+  }
+
+  /// Every stroke gone at once.
+  func clearInk() {
+    for stroke in strokes { stroke.layer.removeFromSuperlayer() }
+    strokes.removeAll()
+    drawing = nil
+  }
 
   /// Where the button went down or last moved to, while it is down: a release always follows a touch, even when the
   /// pointer comes up off the picture.
   private var touching: (x: Int, y: Int)?
 
   override func mouseDown(with event: NSEvent) {
+    let point = convert(event.locationInWindow, from: nil)
+    switch tool {
+    case .pointer:
+      if pictureRect.rect.contains(point) { ripple(at: point) }
+      return
+    case .pen:
+      if pictureRect.rect.contains(point) { startStroke(at: point) }
+      return
+    case .none:
+      break
+    }
     guard controllable, let p = pixel(at: event) else { return }
     touching = p
     onTap?(p.x, p.y, false)
   }
 
   override func mouseDragged(with event: NSEvent) {
+    if tool == .pen {
+      continueStroke(to: convert(event.locationInWindow, from: nil))
+      return
+    }
+    if tool == .pointer {
+      mouseMoved(with: event)
+      return
+    }
     guard touching != nil, Date().timeIntervalSince(lastDrag) > 0.04, let p = pixel(at: event) else { return }
     lastDrag = Date()
     touching = p
@@ -150,6 +348,10 @@ final class ScreenView: NSView {
   }
 
   override func mouseUp(with event: NSEvent) {
+    if tool == .pen {
+      endStroke()
+      return
+    }
     guard let last = touching else { return }
     let p = pixel(at: event) ?? last
     touching = nil

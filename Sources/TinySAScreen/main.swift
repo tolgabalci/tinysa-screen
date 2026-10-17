@@ -1,7 +1,7 @@
 import AppKit
 
-/// The menu bar: the app (settings), File (a screenshot, GIFs), Edit (copy the screenshot), View (sizes, control, full
-/// screen), Band (the analyzer's span), Window, Help.
+/// The menu bar: the app (settings), File (a screenshot, GIFs), Edit (copy the screenshot), View (sizes, control, the
+/// presenter's pointer and pen, full screen), Band (the analyzer's span), Window (float on top), Help.
 @MainActor
 func makeMenuBar() -> NSMenu {
   let bar = NSMenu()
@@ -54,6 +54,8 @@ func makeMenuBar() -> NSMenu {
       item("Triple Size", #selector(AppDelegate.tripleSize(_:)), "3"),
       .separator(),
       item("Control the tinySA by Clicking", #selector(AppDelegate.toggleControl(_:)), "k"),
+      item("Pointer", #selector(AppDelegate.togglePointer(_:)), "l"),
+      item("Pen", #selector(AppDelegate.togglePen(_:)), "d"),
       .separator(),
       item("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]),
     ])
@@ -64,6 +66,7 @@ func makeMenuBar() -> NSMenu {
     [
       item("Minimize", #selector(NSWindow.performMiniaturize(_:)), "m"),
       item("Zoom", #selector(NSWindow.performZoom(_:))),
+      item("Float on Top", #selector(AppDelegate.toggleFloatOnTop(_:))),
       .separator(),
       item("Bring All to Front", #selector(NSApplication.arrangeInFront(_:))),
     ])

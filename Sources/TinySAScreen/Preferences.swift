@@ -11,6 +11,8 @@ enum Preferences {
     static let gifShowsTime = "gifShowsTime"
     static let gifScale = "gifScale"
     static let savedBands = "savedBands"
+    static let inkSeconds = "inkSeconds"
+    static let floatOnTop = "floatOnTop"
   }
 
   static let defaults = UserDefaults.standard
@@ -23,6 +25,8 @@ enum Preferences {
       Key.gifShowsDate: true,
       Key.gifShowsTime: true,
       Key.gifScale: 2,
+      Key.inkSeconds: 3,
+      Key.floatOnTop: false,
     ])
   }
 
@@ -40,6 +44,15 @@ enum Preferences {
   static var gifShowsDate: Bool { defaults.bool(forKey: Key.gifShowsDate) }
   static var gifShowsTime: Bool { defaults.bool(forKey: Key.gifShowsTime) }
   static var gifScale: Int { defaults.integer(forKey: Key.gifScale) == 1 ? 1 : 2 }
+
+  /// Seconds a pen stroke stays before it fades.
+  static var inkSeconds: Int { min(max(defaults.integer(forKey: Key.inkSeconds), 1), 30) }
+
+  /// The window stays above other apps' windows.
+  static var floatOnTop: Bool {
+    get { defaults.bool(forKey: Key.floatOnTop) }
+    set { defaults.set(newValue, forKey: Key.floatOnTop) }
+  }
 
   /// The bands the user saved (Band › Save Current Span as a Band), at the top of the Band menu.
   static var savedBands: [BandPreset] {

@@ -10,6 +10,7 @@ struct SettingsView: View {
   @AppStorage(Preferences.Key.gifShowsTime) private var showsTime = true
   @AppStorage(Preferences.Key.gifScale) private var scale = 2
   @AppStorage(Preferences.Key.controlEnabled) private var controlEnabled = true
+  @AppStorage(Preferences.Key.inkSeconds) private var inkSeconds = 3
   @AppStorage(Preferences.Key.savedBands) private var savedBandsData = Data()
 
   private var savedBands: [BandPreset] { (try? JSONDecoder().decode([BandPreset].self, from: savedBandsData)) ?? [] }
@@ -76,8 +77,22 @@ struct SettingsView: View {
       } header: {
         Text("Your bands")
       }
-      Section("Control") {
+      Section {
         Toggle("Clicks on the picture tap the tinySA", isOn: $controlEnabled)
+        Stepper(value: $inkSeconds, in: 1...30) {
+          HStack {
+            Text("Pen strokes fade after")
+            Spacer()
+            Text("\(inkSeconds) s").monospacedDigit().foregroundStyle(.secondary)
+          }
+        }
+        .accessibilityValue("\(inkSeconds) seconds")
+      } header: {
+        Text("Clicks")
+      } footer: {
+        Text("The pointer (⌘L) and the pen (⌘D) take the mouse while they're on, for presenting in a call; Esc ends them.")
+          .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
       }
     }
     .formStyle(.grouped)

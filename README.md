@@ -27,6 +27,8 @@ show much. tinySA Screen puts its screen in a Mac window, pixel for pixel, as it
   span or move a marker while you talk.
 - **Bands in one click**: the Band menu sets the analyzer to FM radio, 433, 868 or 915 MHz, 2.4 GHz and more, or a
   band you saved, and back ([Bands](#bands)).
+- **For presenting**: a red pointer everyone in the call sees, a pen whose strokes fade by themselves, and Float on
+  Top ([Presenting](#presenting)).
 - **Screenshots**: ⌘S saves the screen to the Desktop, ⌘C copies it.
 - **Animated GIFs**: record the screen as a GIF (⌘R), or, when something odd has just happened, save the last minute
   that the app always keeps (⇧⌘R). Every pixel exact, the date and time ticking under the screen, and small: only
@@ -96,9 +98,12 @@ That builds the app and puts it in `~/Applications`, where Spotlight finds it.
 | Edit › Copy Screenshot | ⌘C | The screenshot, to paste anywhere |
 | View › Actual Size, Double Size, Triple Size | ⌘1, ⌘2, ⌘3 | The window at one, two or three of the Mac's points per analyzer pixel |
 | View › Control the tinySA by Clicking | ⌘K | Clicks become taps on the analyzer (on by default) |
+| View › Pointer | ⌘L | A red dot follows the mouse over the picture; Esc ends it ([Presenting](#presenting)) |
+| View › Pen | ⌘D | Draw on the picture; strokes fade after a few seconds; Esc ends it |
 | View › Enter Full Screen | ⌃⌘F | The picture as large as the screen allows |
 | Band › (a band) | | Sets the analyzer to sweep that band ([below](#bands)) |
-| tinySA Screen › Settings… | ⌘, | What Capture keeps, how GIFs look, clicks as taps |
+| Window › Float on Top | | The window stays above other apps' windows |
+| tinySA Screen › Settings… | ⌘, | What Capture keeps, how GIFs look, saved bands, clicks and the pen |
 
 A click on the picture is a tap on the analyzer's screen, even while the call's window is the active one: here the
 analyzer's DISPLAY menu, opened from the Mac.
@@ -110,6 +115,21 @@ analyzer lent to a program for a while.
 
 Quit tinySA Screen before you unplug the analyzer or hand it to another program by hand: it turns the analyzer's live
 screen off as it quits.
+
+## Presenting
+
+Two buttons at the left of the title bar's buttons are for talking people through what's on the screen:
+
+- **Pointer** (⌘L): a red dot follows the mouse over the picture, in place of the cursor. A call that shares the
+  window doesn't always show the cursor, and when it does, it's small; the dot is part of the picture, so everyone sees
+  it. A click makes a ring around the spot.
+- **Pen** (⌘D): drag to draw on the picture, to circle a peak, say. Each stroke fades away after three seconds
+  (Settings changes how long), so there's nothing to clear; the strokes stay on what they mark if the window changes
+  size.
+
+While either is on, clicks point or draw instead of tapping the analyzer; click its button again, or press Esc, to end
+it. Neither goes into screenshots or GIFs, which are the analyzer's screen alone. **Window › Float on Top** keeps the
+window above other apps' windows, for when you share your whole screen.
 
 ## Bands
 

@@ -16,7 +16,12 @@ All notable changes are listed here, newest first. Versions follow [Semantic Ver
   433, 868 and 915 MHz, 2.4 and 5 GHz Wi-Fi, cellular, ADS-B or GPS in one click; Back to the span before; Save
   Current Span as a Band. Start and stop are set in the order that never makes the analyzer pass through a zero span
   (which would reset its sweep time). A tinySA Ultra on USB.
-- Settings (⌘,): the seconds Capture keeps, the date, time and size of GIFs, saved bands, clicks as taps.
+- Presenting: a red pointer (⌘L) that a call shows even when it doesn't show the cursor, a click making a ring; a pen
+  (⌘D) whose strokes fade by themselves after a few seconds and stay on what they mark when the window changes size;
+  Esc ends either. Window › Float on Top keeps the window above other apps'.
+- Settings (⌘,): the seconds Capture keeps, the date, time and size of GIFs, saved bands, clicks as taps, how long pen
+  strokes stay.
+- No window tab items in the menus: the app has one window.
 - A command line for scripts and AI agents: `tinysa-screen record`, `capture`, `screenshot`, `sweep` and `status`, with
   results as text or JSON; `record --start --stop` records a given band and puts the analyzer's span back. With the app open the app does the work, through a control socket other programs can use too, and
   its window says who is recording; without it, the command line works alone, sharing the analyzer the same way. A
