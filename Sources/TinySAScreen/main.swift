@@ -1,7 +1,7 @@
 import AppKit
 
 /// The menu bar: the app (settings), File (a screenshot, GIFs), Edit (copy the screenshot), View (sizes, control, full
-/// screen), Window, Help.
+/// screen), Band (the analyzer's span), Window, Help.
 @MainActor
 func makeMenuBar() -> NSMenu {
   let bar = NSMenu()
@@ -57,6 +57,8 @@ func makeMenuBar() -> NSMenu {
       .separator(),
       item("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]),
     ])
+  // Filled by the band controller each time it opens.
+  _ = menu("Band", [])
   let window = menu(
     "Window",
     [

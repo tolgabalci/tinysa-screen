@@ -3,7 +3,7 @@ import Foundation
 /// A request to tinySA Screen: a JSON object on one line, sent to the open app's control socket
 /// (`Integration.controlSocket`) or carried out by the command line itself when the app isn't open.
 public struct ControlRequest: Codable, Equatable, Sendable {
-  /// "record", "capture", "screenshot" or "status".
+  /// "record", "capture", "screenshot", "sweep" or "status".
   public var command: String
   /// How long to record; for capture, how many of the kept seconds (all of them when nil).
   public var seconds: Double?
@@ -16,10 +16,15 @@ public struct ControlRequest: Codable, Equatable, Sendable {
   public var time: Bool?
   /// Who asks, shown in the window while it records ("Recording 30 s for my-script").
   public var name: String?
+  /// The span to sweep, in hertz: for sweep, to set it; for record, while recording.
+  public var start: Int64?
+  public var stop: Int64?
+  /// For record with a span: put the analyzer's own span back afterwards (the default).
+  public var restore: Bool?
 
   public init(
     command: String, seconds: Double? = nil, output: String? = nil, scale: Int? = nil, date: Bool? = nil,
-    time: Bool? = nil, name: String? = nil
+    time: Bool? = nil, name: String? = nil, start: Int64? = nil, stop: Int64? = nil, restore: Bool? = nil
   ) {
     self.command = command
     self.seconds = seconds
@@ -28,6 +33,9 @@ public struct ControlRequest: Codable, Equatable, Sendable {
     self.date = date
     self.time = time
     self.name = name
+    self.start = start
+    self.stop = stop
+    self.restore = restore
   }
 }
 
@@ -51,6 +59,9 @@ public struct ControlReply: Codable, Equatable, Sendable {
   public var source: String?
   /// What happened meanwhile that a viewer should know: the picture stopping, say.
   public var notes: [String]?
+  /// The span the analyzer sweeps (after a change), and the one before a change.
+  public var sweep: SweepRange?
+  public var previousSweep: SweepRange?
 
   // Status
   /// Whether the open app answered (or the command line alone).

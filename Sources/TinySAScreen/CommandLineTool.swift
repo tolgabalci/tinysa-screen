@@ -5,7 +5,7 @@ import TinySAKit
 /// the app open, the app does it (it has the analyzer, and the seconds it keeps); without, the command line does it
 /// alone, sharing the analyzer as the app would (borrowing and feeding included), without a window.
 enum CommandLineTool {
-  static let commands = ["record", "capture", "screenshot", "status", "help"]
+  static let commands = ["record", "capture", "screenshot", "sweep", "status", "help"]
 
   static let usage = """
     tinySA Screen: the screen of a tinySA spectrum analyzer, live on the Mac.
@@ -18,6 +18,8 @@ enum CommandLineTool {
                                         save the last N seconds the open app keeps (all of them without --seconds)
       tinysa-screen screenshot --output FILE.png [--sharp] [--json]
                                         save the screen as it is now
+      tinysa-screen sweep [--start F --stop F] [--json]
+                                        the span the tinySA sweeps, or set it (a tinySA Ultra on USB)
       tinysa-screen status [--json]     what tinySA Screen sees: the analyzer, a program feeding pictures, the
                                         seconds it keeps
 
@@ -28,6 +30,9 @@ enum CommandLineTool {
       --sharp             the screenshot at twice the screen's size; the default is its own size
       --no-date           no date under the screen in the GIF
       --no-time           no time under the screen in the GIF
+      --start F --stop F  record: sweep this span while recording, and put the tinySA's own back afterwards;
+                          sweep: set it. Frequencies like 902M, 2.4G, 433.92MHz or 915000000
+      --keep-span         record: leave the tinySA on the span afterwards
       --name NAME         who is asking, shown in the app's window while it records
       --json              the result as one line of JSON, for programs: {"ok": true, "file": ..., "seconds": ...}
       -h, --help          this help
@@ -39,6 +44,7 @@ enum CommandLineTool {
 
     Examples:
       tinysa-screen record -s 30 -o ~/Desktop/band.gif
+      tinysa-screen record -s 20 --start 2.4G --stop 2.4835G -o wifi.gif
       tinysa-screen capture -s 15 -o last15.gif --json
       tinysa-screen screenshot -o screen.png
 
@@ -87,6 +93,12 @@ enum CommandLineTool {
       case "--name":
         guard let name = value() else { return fail("--name needs a name") }
         request.name = name
+      case "--start", "--stop":
+        guard let text = value(), let hertz = Frequency.parse(text) else {
+          return fail("\(arg) needs a frequency, such as 902M or 2.4G")
+        }
+        if arg == "--start" { request.start = hertz } else { request.stop = hertz }
+      case "--keep-span": request.restore = false
       case "--json": json = true
       case "-h", "--help":
         print(usage)
@@ -106,7 +118,11 @@ enum CommandLineTool {
     {
       return fail("--seconds: 1 to \(Int(FrameRecorder.longest))")
     }
-    if command != "status", request.output == nil { return fail("Where to save it: --output FILE") }
+    if !["status", "sweep"].contains(command), request.output == nil { return fail("Where to save it: --output FILE") }
+    if (request.start == nil) != (request.stop == nil) { return fail("A span needs both --start and --stop") }
+    if (request.start != nil || request.restore != nil), !["record", "sweep"].contains(command) {
+      return fail("--start, --stop and --keep-span go with record and sweep")
+    }
     if request.name == nil { request.name = "the command line" }
 
     let reply = carryOut(request)
@@ -130,7 +146,7 @@ enum CommandLineTool {
     }
     let session = Session()
     let automation = Automation(session: session, isApp: false, version: version)
-    guard request.command == "record" || request.command == "screenshot" else {
+    guard ["record", "screenshot", "sweep"].contains(request.command) else {
       return automation.handle(request)
     }
     // Control-C or kill: stop waiting, let go of the analyzer properly, then exit.
@@ -154,6 +170,12 @@ enum CommandLineTool {
     switch command {
     case "status":
       lines.append(statusText(reply))
+    case "sweep":
+      if let now = reply.sweep {
+        let points = now.points.map { " (\($0) points)" } ?? ""
+        lines.append(
+          "The tinySA sweeps \(now.label)\(points)" + (reply.previousSweep.map { ", was \($0.label)" } ?? "") + ".")
+      }
     case "screenshot":
       lines.append(
         "Saved \(reply.file ?? ""): \(reply.width ?? 0) × \(reply.height ?? 0)"

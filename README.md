@@ -25,6 +25,8 @@ show much. tinySA Screen puts its screen in a Mac window, pixel for pixel, as it
   sharp.
 - **Control from the Mac**: a click on the picture is a tap on the analyzer's screen, to open its menus, change the
   span or move a marker while you talk.
+- **Bands in one click**: the Band menu sets the analyzer to FM radio, 433, 868 or 915 MHz, 2.4 GHz and more, or a
+  band you saved, and back ([Bands](#bands)).
 - **Screenshots**: ⌘S saves the screen to the Desktop, ⌘C copies it.
 - **Animated GIFs**: record the screen as a GIF (⌘R), or, when something odd has just happened, save the last minute
   that the app always keeps (⇧⌘R). Every pixel exact, the date and time ticking under the screen, and small: only
@@ -95,6 +97,7 @@ That builds the app and puts it in `~/Applications`, where Spotlight finds it.
 | View › Actual Size, Double Size, Triple Size | ⌘1, ⌘2, ⌘3 | The window at one, two or three of the Mac's points per analyzer pixel |
 | View › Control the tinySA by Clicking | ⌘K | Clicks become taps on the analyzer (on by default) |
 | View › Enter Full Screen | ⌃⌘F | The picture as large as the screen allows |
+| Band › (a band) | | Sets the analyzer to sweep that band ([below](#bands)) |
 | tinySA Screen › Settings… | ⌘, | What Capture keeps, how GIFs look, clicks as taps |
 
 A click on the picture is a tap on the analyzer's screen, even while the call's window is the active one: here the
@@ -107,6 +110,18 @@ analyzer lent to a program for a while.
 
 Quit tinySA Screen before you unplug the analyzer or hand it to another program by hand: it turns the analyzer's live
 screen off as it quits.
+
+## Bands
+
+The **Band** menu, in the title bar and the menu bar, sets the analyzer to sweep a band in one click: FM radio, airband,
+marine VHF, the 2 m and 70 cm amateur bands, 433 MHz, 868 MHz (Europe) and 915 MHz (Americas) for LoRa and RFID,
+2.4 GHz and 5 GHz Wi-Fi, cellular 700–900 MHz, ADS-B and GPS. **Back to** puts back the span the analyzer had before the
+first band you chose, and **Save Current Span as a Band** keeps whatever span the analyzer sweeps now, set on the
+analyzer itself, at the top of the menu (Settings removes it).
+
+A band sets only the span, the analyzer's start and stop: its other settings stay as they are, and those it works out
+from the span (resolution bandwidth, sweep time) follow it as they do when you set the span on the analyzer. Bands need
+the analyzer on USB here and a tinySA Ultra; when a feeding program has the analyzer, set the band there.
 
 ## Recording GIFs
 
@@ -148,6 +163,8 @@ ln -s "/Applications/tinySA Screen.app/Contents/MacOS/tinysa-screen" /usr/local/
 tinysa-screen record --seconds 30 --output band.gif     # record 30 seconds from now
 tinysa-screen capture --seconds 15 --output last.gif    # the last 15 seconds the open app kept
 tinysa-screen screenshot --output screen.png
+tinysa-screen record -s 20 --start 2.4G --stop 2.4835G -o wifi.gif   # a given band, then the span put back
+tinysa-screen sweep --start 902M --stop 928M            # set the span (sweep alone reads it)
 tinysa-screen status --json                             # what it sees, for programs
 ```
 

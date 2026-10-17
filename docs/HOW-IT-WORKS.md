@@ -83,6 +83,15 @@ turns it off.
 `touch x y` presses the analyzer's touch screen at a pixel (0, 0 at the top left), again as the finger moves, and
 `release x y` lifts it. The firmware handles them as touches on its own screen, menus included.
 
+## Bands
+
+A band is two commands, `sweep start <Hz>` and `sweep stop <Hz>`, sent with the live screen paused for a moment (`refresh
+off`, the commands, a whole capture, `refresh on`), and `sweep` before and after to read the span. They go one at a time
+in the order that keeps start below stop: the analyzer takes a start above the old stop as a zero span (start and stop
+meet), and switching to a zero span resets its sweep time. The firmware's own two-number form, `sweep <start> <stop>`,
+always sets start first, so it can do that when going up in frequency. `sweep` itself makes the analyzer cut its
+current sweep short, so the app reads the span only when a band is chosen, never to keep the menu up to date.
+
 ## Firmware without the live screen
 
 If `refresh on` gets `refresh?` (an unknown command), the app falls back to one picture after each sweep:

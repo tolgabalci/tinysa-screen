@@ -84,7 +84,7 @@ final class ControlTests: XCTestCase {
     let automation = Automation(session: Session(), isApp: false, version: "test")
     automation.pictureWait = 0.3
     func error(_ request: ControlRequest) -> String? { automation.handle(request).error }
-    XCTAssertEqual(error(ControlRequest(command: "dance")), "Unknown command \"dance\": record, capture, screenshot or status")
+    XCTAssertEqual(error(ControlRequest(command: "dance")), "Unknown command \"dance\": record, capture, screenshot, sweep or status")
     XCTAssertEqual(error(ControlRequest(command: "record", output: "/tmp/x.gif")), "How long to record: 1 to 120 seconds")
     XCTAssertEqual(error(ControlRequest(command: "record", seconds: 121, output: "/tmp/x.gif")), "How long to record: 1 to 120 seconds")
     XCTAssertEqual(error(ControlRequest(command: "record", seconds: 5)), "Where to save it: an output path")
@@ -98,6 +98,21 @@ final class ControlTests: XCTestCase {
     XCTAssertTrue(status.ok)
     XCTAssertEqual(status.app, false)
     XCTAssertEqual(status.version, "test")
+  }
+
+  /// A span needs both ends, in order; and without the analyzer on USB, sweep says why.
+  func testSpanRequests() throws {
+    XCTAssertEqual(try Automation.span(ControlRequest(command: "sweep")).get(), nil)
+    XCTAssertEqual(
+      try Automation.span(ControlRequest(command: "sweep", start: 902_000_000, stop: 928_000_000)).get(),
+      SweepRange(start: 902_000_000, stop: 928_000_000))
+    XCTAssertThrowsError(try Automation.span(ControlRequest(command: "sweep", start: 902_000_000)).get())
+    XCTAssertThrowsError(try Automation.span(ControlRequest(command: "sweep", start: 928_000_000, stop: 902_000_000)).get())
+    let automation = Automation(session: Session(), isApp: false, version: "test")
+    automation.pictureWait = 0.2
+    XCTAssertEqual(
+      automation.handle(ControlRequest(command: "sweep", start: 5, stop: 1)).error, "The span's start must be below its stop")
+    XCTAssertEqual(automation.handle(ControlRequest(command: "sweep")).error, "No picture: Starting…")
   }
 
   /// Replies are one line of JSON that reads back the same.

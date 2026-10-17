@@ -9,11 +9,15 @@ public struct Status: Equatable, Sendable {
   public var note: String?
   /// Whether clicks reach the analyzer as taps (live over USB).
   public var controllable: Bool
+  /// Whether the analyzer's span can be set from here (live over USB, a tinySA Ultra: the original tinySA has two
+  /// inputs for different bands, which a span alone can't choose).
+  public var tunable: Bool
 
-  public init(source: String, note: String?, controllable: Bool) {
+  public init(source: String, note: String?, controllable: Bool, tunable: Bool = false) {
     self.source = source
     self.note = note
     self.controllable = controllable
+    self.tunable = tunable
   }
 }
 
@@ -59,7 +63,29 @@ public final class Session {
   public func touch(x: Int, y: Int) { lock.locked { taps.append("touch \(x) \(y)") } }
   public func release(x: Int, y: Int) { lock.locked { taps.append("release \(x) \(y)") } }
 
+  /// The span the analyzer sweeps, and with a `target` the span it is set to: the span before and after. Done on the
+  /// session's thread with the live screen paused for a moment; `done` is called there. Fails without the analyzer on
+  /// USB (a feeding program has it, say), with the reason.
+  public func sweep(_ target: SweepRange?, done: @escaping @Sendable (Result<SweepChange, AnalyzerError>) -> Void) {
+    lock.locked { jobs.append(.sweep(target, done)) }
+  }
+
+  /// `sweep`, waiting for the result (not on the main thread: its delegate calls would wait too).
+  public func sweep(_ target: SweepRange?, timeout: TimeInterval = 15) -> Result<SweepChange, AnalyzerError> {
+    let finished = DispatchSemaphore(value: 0)
+    let result = ResultBox()
+    sweep(target) { outcome in
+      result.set(outcome)
+      finished.signal()
+    }
+    guard finished.wait(timeout: .now() + timeout) == .success, let outcome = result.get() else {
+      return .failure(.failed("The tinySA didn't answer in time"))
+    }
+    return outcome
+  }
+
   private let lock = NSLock()
+  private var jobs: [Job] = []
   private var currentStatus: Status?
   private var stopping = false
   private var taps: [String] = []
@@ -72,6 +98,17 @@ public final class Session {
     case unexpected(String)
     /// The app is quitting, or another program asked for the analyzer: let go now.
     case interrupted
+  }
+
+  /// Work for the analyzer itself, done between regions of the live screen.
+  private enum Job {
+    case sweep(SweepRange?, @Sendable (Result<SweepChange, AnalyzerError>) -> Void)
+
+    func fail(_ reason: String) {
+      switch self {
+      case let .sweep(_, done): done(.failure(.unavailable(reason)))
+      }
+    }
   }
 
   private enum Mode {
@@ -135,6 +172,7 @@ public final class Session {
         if let current { lastFeeder = (current, now) }
         if let feed = current ?? recentFeeder(now) {
           letGo()
+          failJobs("\(feed.name ?? "Another program") has the tinySA and feeds its pictures: change it there")
           showFeed(feed)
           pause(0.25)
           continue
@@ -144,6 +182,7 @@ public final class Session {
         feedInterval = 0
         if let request = BorrowRequest.current() {
           letGo()
+          failJobs("The tinySA is lent to \(request.name)")
           publish(
             Status(
               source: deviceSource, note: "The tinySA is lent to \(request.name). Its screen comes back when it's done.",
@@ -153,11 +192,13 @@ public final class Session {
         }
       }
       if port == nil {
+        failJobs(lastStatus?.note ?? "No tinySA on USB")
         connect()
       } else {
         pump()
       }
     }
+    failJobs("tinySA Screen is quitting")
     letGo()
     FeedState.stopWatching()
     finished.signal()
@@ -197,7 +238,7 @@ public final class Session {
       mode = try startStream() ? .stream : .poll
       publishFrame()
       recordFrame()
-      publish(Status(source: deviceSource, note: nil, controllable: true))
+      publish(Status(source: deviceSource, note: nil, controllable: true, tunable: size == .ultra))
     } catch Failure.interrupted {
       letGo()
     } catch SerialPort.Failure.busy {
@@ -235,6 +276,7 @@ public final class Session {
     guard let port, let screen else { return }
     do {
       try sendTaps()
+      if touchHeld == nil { try runJobs() }
       switch mode {
       case .stream:
         let bytes = try port.read(timeout: 0.03)
@@ -361,9 +403,15 @@ public final class Session {
 
   /// A whole capture onto the copy, between the live screen off and on again.
   private func resync() throws {
+    try pauseStream()
+    try resumeStream()
+  }
+
+  /// The live screen off, and whatever was still on its way drawn, up to the echo of `refresh off`: a clean console for
+  /// commands.
+  private func pauseStream() throws {
     guard let port, let screen else { return }
     try port.write("refresh off\r")
-    // Whatever was still on its way, up to the echo of refresh off; then a clean console for the capture.
     let deadline = Date() + 1
     var seen = ""
     while Date() < deadline, !seen.contains("refresh off") {
@@ -372,12 +420,65 @@ public final class Session {
       }
     }
     pending.removeAll()
+  }
+
+  /// A whole capture onto the copy (the analyzer drew meanwhile), then the live screen on again.
+  private func resumeStream() throws {
+    guard let screen else { return }
     try Capture.apply(capture(screen.size), to: screen)
     changed()
-    guard try startStream() else {
-      mode = .poll
-      return
+    if try !startStream() { mode = .poll }
+  }
+
+  // MARK: Jobs
+
+  private func runJobs() throws {
+    let waiting = lock.locked { () -> [Job] in
+      defer { jobs.removeAll() }
+      return jobs
     }
+    for (i, job) in waiting.enumerated() {
+      do {
+        switch job {
+        case let .sweep(target, done): done(.success(try changeSweep(target)))
+        }
+      } catch {
+        job.fail(error is Failure ? "The tinySA didn't answer" : "\(error)")
+        for later in waiting.dropFirst(i + 1) { later.fail("The tinySA didn't answer") }
+        throw error
+      }
+    }
+  }
+
+  private func failJobs(_ reason: String) {
+    let waiting = lock.locked { () -> [Job] in
+      defer { jobs.removeAll() }
+      return jobs
+    }
+    for job in waiting { job.fail(reason) }
+  }
+
+  /// The span before, then set to `target` and read back.
+  private func changeSweep(_ target: SweepRange?) throws -> SweepChange {
+    if mode == .stream { try pauseStream() }
+    let before = try readSweep()
+    var after = before
+    if let target, !target.matches(before) {
+      for line in target.commands(from: before) { _ = try command(line) }
+      after = try readSweep()
+    }
+    if mode == .stream {
+      try resumeStream()
+    } else {
+      changed()
+    }
+    return SweepChange(before: before, after: after)
+  }
+
+  private func readSweep() throws -> SweepRange {
+    let reply = try command("sweep")
+    guard let range = SweepRange(reply: reply) else { throw Failure.unexpected("sweep: \(reply)") }
+    return range
   }
 
   /// Turns the live screen on: false on firmware without it ("refresh?").
@@ -568,6 +669,7 @@ public final class Session {
   private func publishControllable(_ controllable: Bool) {
     guard var status = lastStatus, status.controllable != controllable else { return }
     status.controllable = controllable
+    status.tunable = status.tunable && controllable
     publish(status)
   }
 

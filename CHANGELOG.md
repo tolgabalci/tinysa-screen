@@ -12,9 +12,13 @@ All notable changes are listed here, newest first. Versions follow [Semantic Ver
   a strip under the screen (each can be turned off), at twice the screen's size or its own. The app's own encoder
   keeps them small: only the rectangle that changed, unchanged pixels transparent or not whichever compresses better,
   the screen's own colours.
-- Settings (⌘,): the seconds Capture keeps, the date, time and size of GIFs, clicks as taps.
-- A command line for scripts and AI agents: `tinysa-screen record`, `capture`, `screenshot` and `status`, with results
-  as text or JSON. With the app open the app does the work, through a control socket other programs can use too, and
+- Bands: a Band menu (title bar and menu bar) sets the analyzer's span to FM radio, airband, marine VHF, 2 m and 70 cm,
+  433, 868 and 915 MHz, 2.4 and 5 GHz Wi-Fi, cellular, ADS-B or GPS in one click; Back to the span before; Save
+  Current Span as a Band. Start and stop are set in the order that never makes the analyzer pass through a zero span
+  (which would reset its sweep time). A tinySA Ultra on USB.
+- Settings (⌘,): the seconds Capture keeps, the date, time and size of GIFs, saved bands, clicks as taps.
+- A command line for scripts and AI agents: `tinysa-screen record`, `capture`, `screenshot`, `sweep` and `status`, with
+  results as text or JSON; `record --start --stop` records a given band and puts the analyzer's span back. With the app open the app does the work, through a control socket other programs can use too, and
   its window says who is recording; without it, the command line works alone, sharing the analyzer the same way. A
   recording starts only from a live picture.
 - Python: `ask()` asks the open app for recordings, captures, screenshots and its status; `example_record.py`.

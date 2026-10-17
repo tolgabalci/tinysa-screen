@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import TinySAKit
 
 /// Settings (⌘,): what Capture keeps, how GIFs look, and whether clicks tap the analyzer.
 struct SettingsView: View {
@@ -9,6 +10,9 @@ struct SettingsView: View {
   @AppStorage(Preferences.Key.gifShowsTime) private var showsTime = true
   @AppStorage(Preferences.Key.gifScale) private var scale = 2
   @AppStorage(Preferences.Key.controlEnabled) private var controlEnabled = true
+  @AppStorage(Preferences.Key.savedBands) private var savedBandsData = Data()
+
+  private var savedBands: [BandPreset] { (try? JSONDecoder().decode([BandPreset].self, from: savedBandsData)) ?? [] }
 
   var body: some View {
     Form {
@@ -47,6 +51,30 @@ struct SettingsView: View {
         Text("Record (⌘R) saves GIFs this way to the Desktop, for up to two minutes; Capture starts from these choices.")
           .foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
+      }
+      Section {
+        if savedBands.isEmpty {
+          Text("None yet. Band › Save Current Span as a Band adds the span the tinySA sweeps.")
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        ForEach(savedBands) { band in
+          HStack {
+            Text(band.name)
+            Spacer()
+            Text(band.range.label).foregroundStyle(.secondary)
+            Button {
+              savedBandsData = (try? JSONEncoder().encode(savedBands.filter { $0 != band })) ?? Data()
+            } label: {
+              Image(systemName: "minus.circle")
+            }
+            .buttonStyle(.borderless)
+            .help("Remove this band")
+            .accessibilityLabel("Remove \(band.name)")
+          }
+        }
+      } header: {
+        Text("Your bands")
       }
       Section("Control") {
         Toggle("Clicks on the picture tap the tinySA", isOn: $controlEnabled)

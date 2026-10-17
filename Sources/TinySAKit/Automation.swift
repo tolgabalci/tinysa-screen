@@ -34,9 +34,10 @@ public final class Automation: @unchecked Sendable {
     case "record": return record(request, cancelled: cancelled)
     case "capture": return capture(request)
     case "screenshot": return screenshot(request, cancelled: cancelled)
+    case "sweep": return sweep(request, cancelled: cancelled)
     case "status": return status()
     default:
-      return .failure("Unknown command \"\(request.command)\": record, capture, screenshot or status")
+      return .failure("Unknown command \"\(request.command)\": record, capture, screenshot, sweep or status")
     }
   }
 
@@ -51,13 +52,35 @@ public final class Automation: @unchecked Sendable {
     case .success(let url): output = url
     case .failure(let message): return message
     }
+    let target: SweepRange?
+    switch Self.span(request) {
+    case .success(let span): target = span
+    case .failure(let message): return message
+    }
     if let failure = waitForPicture(cancelled: cancelled) { return failure }
+    var notes: [String] = []
+    var restore: SweepRange?
+    if let target {
+      // The span set, then a whole sweep of it drawn before the recording begins.
+      let changed = Date()
+      switch session.sweep(target) {
+      case .failure(let error): return .failure("The span couldn't be set: \(error)")
+      case .success(let change):
+        if request.restore ?? true, !change.before.matches(change.after) { restore = change.before }
+        notes.append("Swept \(change.after.label)" + (restore.map { "; \($0.label) put back afterwards" } ?? ""))
+      }
+      waitForFrames(after: changed, count: 2, cancelled: cancelled)
+    }
+    defer {
+      if let restore, case .failure(let error) = session.sweep(restore) {
+        announce?("The span \(restore.label) couldn't be put back: \(error)")
+      }
+    }
     let recorder = session.recorder
     let id = recorder.begin()
     let name = request.name ?? "another program"
     changeRecordings { $0[id] = name }
     announce?("Recording \(Int(seconds)) s for \(name)…")
-    var notes: [String] = []
     var lastNote: String?
     let end = Date().addingTimeInterval(seconds)
     while Date() < end {
@@ -140,6 +163,30 @@ public final class Automation: @unchecked Sendable {
     return reply
   }
 
+  /// The span the analyzer sweeps, or with start and stop, sets it: the span now and, after a change, before.
+  private func sweep(_ request: ControlRequest, cancelled: () -> Bool) -> ControlReply {
+    let target: SweepRange?
+    switch Self.span(request) {
+    case .success(let span): target = span
+    case .failure(let message): return message
+    }
+    if let failure = waitForPicture(cancelled: cancelled) { return failure }
+    switch session.sweep(target) {
+    case .failure(let error): return .failure(error.description)
+    case .success(let change):
+      var reply = ControlReply(ok: true)
+      reply.source = session.status.source
+      if target != nil {
+        reply.sweep = change.after
+        reply.previousSweep = change.before
+        announce?("\(request.name ?? "Another program") set the tinySA to \(change.after.label)")
+      } else {
+        reply.sweep = change.before
+      }
+      return reply
+    }
+  }
+
   private func status() -> ControlReply {
     let status = session.status
     var reply = ControlReply(ok: true)
@@ -160,6 +207,26 @@ public final class Automation: @unchecked Sendable {
   }
 
   // MARK: Helpers
+
+  /// The span a request asks for: nil without one; both ends, in order, or a failure.
+  static func span(_ request: ControlRequest) -> Result<SweepRange?, ControlReply> {
+    switch (request.start, request.stop) {
+    case (nil, nil): return .success(nil)
+    case let (start?, stop?) where start >= 0 && start < stop: return .success(SweepRange(start: start, stop: stop))
+    case (_?, _?): return .failure(.failure("The span's start must be below its stop"))
+    default: return .failure(.failure("A span needs both a start and a stop"))
+    }
+  }
+
+  /// Waits until `count` new frames have come since `moment` (a sweep drawn after a change), at most 15 seconds.
+  private func waitForFrames(after moment: Date, count: Int, cancelled: () -> Bool) {
+    var seen: Set<Date> = []
+    let deadline = Date().addingTimeInterval(15)
+    while seen.count < count, Date() < deadline, !cancelled() {
+      if let time = session.recorder.latestSnapshot()?.time, time > moment { seen.insert(time) }
+      Thread.sleep(forTimeInterval: 0.05)
+    }
+  }
 
   /// Waits for a live picture: nil when there is one, else why there isn't.
   private func waitForPicture(cancelled: () -> Bool) -> ControlReply? {

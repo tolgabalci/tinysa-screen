@@ -1,4 +1,5 @@
 import Foundation
+import TinySAKit
 
 /// The app's settings, kept in its user defaults (the Settings window binds to the same keys).
 enum Preferences {
@@ -9,6 +10,7 @@ enum Preferences {
     static let gifShowsDate = "gifShowsDate"
     static let gifShowsTime = "gifShowsTime"
     static let gifScale = "gifScale"
+    static let savedBands = "savedBands"
   }
 
   static let defaults = UserDefaults.standard
@@ -38,4 +40,13 @@ enum Preferences {
   static var gifShowsDate: Bool { defaults.bool(forKey: Key.gifShowsDate) }
   static var gifShowsTime: Bool { defaults.bool(forKey: Key.gifShowsTime) }
   static var gifScale: Int { defaults.integer(forKey: Key.gifScale) == 1 ? 1 : 2 }
+
+  /// The bands the user saved (Band › Save Current Span as a Band), at the top of the Band menu.
+  static var savedBands: [BandPreset] {
+    get {
+      guard let data = defaults.data(forKey: Key.savedBands) else { return [] }
+      return (try? JSONDecoder().decode([BandPreset].self, from: data)) ?? []
+    }
+    set { defaults.set(try? JSONEncoder().encode(newValue), forKey: Key.savedBands) }
+  }
 }

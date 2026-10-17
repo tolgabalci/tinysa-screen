@@ -5,8 +5,10 @@ for some seconds as an animated GIF, save the seconds the open app keeps, save a
 
 ```bash
 tinysa-screen record --seconds 30 --output ~/Desktop/band.gif
+tinysa-screen record --seconds 20 --start 2.4G --stop 2.4835G --output wifi.gif
 tinysa-screen capture --seconds 15 --output last15.gif
 tinysa-screen screenshot --output screen.png
+tinysa-screen sweep --start 902M --stop 928M
 tinysa-screen status
 ```
 
@@ -28,6 +30,7 @@ its full path without the link.)
 | `record --seconds N --output FILE.gif` | Records the screen from now, for N seconds (1 to 120), as an animated GIF. |
 | `capture [--seconds N] --output FILE.gif` | Saves the last N seconds the open app keeps (Settings › Keep the latest seconds), all of them without `--seconds`. For when something has just happened. Needs the app open. |
 | `screenshot --output FILE.png` | Saves the screen as it is now, at its own size (`--sharp`: twice that). |
+| `sweep [--start F --stop F]` | Says the span the analyzer sweeps, or sets it. Needs the analyzer on USB, a tinySA Ultra. |
 | `status` | Says what tinySA Screen sees: whether the app is open, where its picture comes from, the seconds it keeps, the tinySAs on USB, a program feeding pictures or borrowing the analyzer. |
 | `help`, `--help` | The usage. `--version`: the version. |
 
@@ -37,6 +40,8 @@ Options for the GIFs, the same as in the app:
 | --- | --- |
 | `--small` | The GIF at the screen's own size (480 × 320 for a tinySA Ultra, plus the date strip); without it, twice that, every pixel kept sharp. |
 | `--no-date`, `--no-time` | No date, or no time, in the strip under the screen. With both, no strip. |
+| `--start F --stop F` | With `record`: sweep this span while recording, then put the analyzer's own span back. With `sweep`: set it. Frequencies as `902M`, `2.4G`, `433.92MHz`, `100k` or `915000000`. |
+| `--keep-span` | With `record --start --stop`: leave the analyzer on that span afterwards. |
 | `--name NAME` | Who is asking: the app's window says "recording for NAME" while it records. |
 | `--json` | The result as one line of JSON (below), for programs. |
 
@@ -82,7 +87,8 @@ With `--json`, one line of JSON:
 | `seconds`, `start`, `end` | How long the GIF runs, and the moments it starts and ends (ISO 8601, the Mac's time zone). For a screenshot, `start` is when its picture came. |
 | `frames`, `images` | Frames of the screen in the GIF (one a sweep), and images in the file (frames, and the time ticking on). |
 | `source` | Where the picture came from: the analyzer and its firmware, or "Pictures from" the feeding program. |
-| `notes` | What a viewer should know about the recording: the picture stopping and coming back, with times. |
+| `notes` | What a viewer should know about the recording: the span it swept, the picture stopping and coming back, with times. |
+| `sweep`, `previousSweep` | For `sweep`: the span now, and before a change, as `{"start": 902000000, "stop": 928000000, "points": 450}` (hertz). |
 
 `status --json` answers with `app` (whether the app answered), `version`, `devices` (tinySAs on USB), `feeder` and
 `borrower` (programs feeding pictures, or that borrowed the analyzer), and from the open app `source`, `picture`
@@ -102,8 +108,9 @@ tinysa-screen record -s 20 -o run-42.gif --name "bench agent" --json
 and keep the GIF beside its other results. Things worth knowing:
 
 - A recording takes as long as asked: `record -s 120` returns after two minutes.
-- The GIF shows the analyzer's screen as it was: change the analyzer's settings first (span, markers) if the recording
-  should show something else, with the analyzer's own commands while you [borrow](INTEGRATION.md#borrowing) it.
+- To record a given band, give it: `record -s 20 --start 902M --stop 928M`. The span is set, a whole sweep of it is
+  drawn before the recording begins, and the analyzer's own span is put back afterwards (the notes say so). For other
+  settings (markers, levels), use the analyzer's own commands while you [borrow](INTEGRATION.md#borrowing) it.
 - `capture` is the one to use after the fact: with the app open, it has the last minute (by default) at any moment.
 
 ## The control socket
@@ -120,12 +127,14 @@ the socket means the app isn't open.
 
 | Field | |
 | --- | --- |
-| `command` | `record`, `capture`, `screenshot` or `status`. |
+| `command` | `record`, `capture`, `screenshot`, `sweep` or `status`. |
 | `seconds` | How long to record; for `capture`, how many of the kept seconds (all when left out). |
 | `output` | Where to write the file: an absolute path, in a folder that exists. |
 | `scale` | 1, or 2 (the default for GIFs; screenshots default to 1). |
 | `date`, `time` | The date and time under the screen in a GIF (both by default). |
 | `name` | Who asks, for the window. |
+| `start`, `stop` | A span in hertz: for `sweep`, to set; for `record`, to sweep while recording. |
+| `restore` | For `record` with a span: `false` leaves it set afterwards. |
 
 The reply is the same JSON as `--json` above. In Python, `integrations/python/tinysa_screen.py` has `ask()`:
 

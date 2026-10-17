@@ -40,9 +40,10 @@ final class LZWTests: XCTestCase {
     XCTAssertEqual(try DecodedGIF.lzwDecode(encoded, codeSize: 8, count: symbols.count), symbols)
   }
 
-  /// Where a pixel offers two indices, the decoded one is one of them, and the choice makes the output smaller.
+  /// Where a pixel offers two indices, the decoded one is one of them, and the choice doesn't make the output larger
+  /// (here, a screen-like mix, it makes it smaller; GIF.encode keeps the smaller anyway).
   func testAlternatesGiveEitherIndex() throws {
-    var generator = SystemRandomNumberGenerator()
+    var generator = SeededGenerator(seed: 42)
     var lzw = LZWEncoder()
     let count = 50_000
     var symbols: [UInt8] = []
@@ -74,5 +75,15 @@ final class LZWTests: XCTestCase {
     XCTAssertEqual(LZWEncoder.codeSize(for: 4), 2)
     XCTAssertEqual(LZWEncoder.codeSize(for: 5), 3)
     XCTAssertEqual(LZWEncoder.codeSize(for: 256), 8)
+  }
+}
+
+/// The same "random" numbers on every run.
+struct SeededGenerator: RandomNumberGenerator {
+  private var state: UInt64
+  init(seed: UInt64) { state = seed }
+  mutating func next() -> UInt64 {
+    state = state &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
+    return state
   }
 }

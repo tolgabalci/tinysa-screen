@@ -20,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
     options: .userInitiatedAllowingIdleSystemSleep, reason: "Showing the tinySA's screen live")
 
   private var gifs: GIFController!
+  private var bands: BandController!
   /// Other programs' requests (the command line, scripts, AI agents), through the control socket.
   private var automation: Automation!
   private var control: ControlServer?
@@ -30,6 +31,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
 
   func applicationDidFinishLaunching(_ notification: Notification) {
     Preferences.register()
+    // The toolbar asks for its buttons as soon as it is set: they come first.
+    gifs = GIFController(recorder: session.recorder, window: window, view: view)
+    let bandMenu = NSApp.mainMenu?.items.first { $0.submenu?.title == "Band" }?.submenu
+    bands = BandController(session: session, view: view, window: window, menuBarMenu: bandMenu)
+    gifs.onChange = { [weak self] in self?.updateGIFControls() }
+    setUpToolbarButton(recordButton, "Record", symbol: "record.circle", action: #selector(toggleRecording(_:)))
+    setUpToolbarButton(captureButton, "Capture", symbol: "clock.arrow.circlepath", action: #selector(capture(_:)))
     window.title = "tinySA Screen"
     window.contentView = view
     window.contentAspectRatio = NSSize(width: 480, height: 320)
@@ -48,10 +56,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
     view.onTap = { [weak self] x, y, released in
       if released { self?.session.release(x: x, y: y) } else { self?.session.touch(x: x, y: y) }
     }
-    gifs = GIFController(recorder: session.recorder, window: window, view: view)
-    gifs.onChange = { [weak self] in self?.updateGIFControls() }
-    setUpToolbarButton(recordButton, "Record", symbol: "record.circle", action: #selector(toggleRecording(_:)))
-    setUpToolbarButton(captureButton, "Capture", symbol: "clock.arrow.circlepath", action: #selector(capture(_:)))
     preferencesChanged()
     NotificationCenter.default.addObserver(
       self, selector: #selector(preferencesChanged), name: UserDefaults.didChangeNotification, object: nil)
@@ -88,6 +92,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
     self.status = status
     updateSubtitle()
     gifs.source = status.source
+    bands.status = status
     view.say(status.note)
     view.controllable = status.controllable && Preferences.controlEnabled
   }
@@ -153,11 +158,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
   }
 
   func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-    [.flexibleSpace, .record, .capture]
+    [.flexibleSpace, .band, .record, .capture]
   }
 
   func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-    [.flexibleSpace, .record] + (Preferences.keptSeconds > 0 ? [.capture] : [])
+    [.flexibleSpace, .band, .record] + (Preferences.keptSeconds > 0 ? [.capture] : [])
   }
 
   func toolbar(
@@ -166,6 +171,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
   ) -> NSToolbarItem? {
     let item = NSToolbarItem(itemIdentifier: identifier)
     switch identifier {
+    case .band:
+      item.label = "Band"
+      item.view = bands.makeButton()
     case .record:
       item.label = "Record"
       item.view = recordButton
@@ -305,6 +313,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation, 
 }
 
 extension NSToolbarItem.Identifier {
+  static let band = NSToolbarItem.Identifier("band")
   static let record = NSToolbarItem.Identifier("record")
   static let capture = NSToolbarItem.Identifier("capture")
 }
