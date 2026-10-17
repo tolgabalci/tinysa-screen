@@ -26,6 +26,11 @@ show much. tinySA Screen puts its screen in a Mac window, pixel for pixel, as it
 - **Control from the Mac**: a click on the picture is a tap on the analyzer's screen, to open its menus, change the
   span or move a marker while you talk.
 - **Screenshots**: ⌘S saves the screen to the Desktop, ⌘C copies it.
+- **Animated GIFs**: record the screen as a GIF (⌘R), or, when something odd has just happened, save the last minute
+  that the app always keeps (⇧⌘R). Every pixel exact, the date and time ticking under the screen, and small: only
+  what changes is stored ([Recording GIFs](#recording-gifs)).
+- **A command line for scripts and AI agents**: `tinysa-screen record --seconds 30 --output band.gif`, with or
+  without the app open ([The command line](#the-command-line)).
 - **Works alongside your own programs**: a script that needs the analyzer borrows it and gives it back, and a program
   that keeps the analyzer all day can feed its pictures to the window instead ([Working with other programs](#working-with-other-programs)).
 
@@ -84,10 +89,13 @@ That builds the app and puts it in `~/Applications`, where Spotlight finds it.
 | Menu | Keys | What it does |
 | --- | --- | --- |
 | File › Save Screenshot to Desktop | ⌘S | The analyzer's screen at its own size, as a PNG named `tinySA <date> at <time>.png` |
-| Edit › Copy Screenshot | ⌘C | The same, to paste anywhere |
+| File › Record GIF | ⌘R | Records the screen until you stop it (⌘R again), at most two minutes, and saves the GIF to the Desktop |
+| File › Capture Last 1:00 as GIF… | ⇧⌘R | Saves the last minute, or the last part of it, as a GIF ([below](#recording-gifs)) |
+| Edit › Copy Screenshot | ⌘C | The screenshot, to paste anywhere |
 | View › Actual Size, Double Size, Triple Size | ⌘1, ⌘2, ⌘3 | The window at one, two or three of the Mac's points per analyzer pixel |
 | View › Control the tinySA by Clicking | ⌘K | Clicks become taps on the analyzer (on by default) |
 | View › Enter Full Screen | ⌃⌘F | The picture as large as the screen allows |
+| tinySA Screen › Settings… | ⌘, | What Capture keeps, how GIFs look, clicks as taps |
 
 A click on the picture is a tap on the analyzer's screen, even while the call's window is the active one: here the
 analyzer's DISPLAY menu, opened from the Mac.
@@ -100,11 +108,59 @@ analyzer lent to a program for a while.
 Quit tinySA Screen before you unplug the analyzer or hand it to another program by hand: it turns the analyzer's live
 screen off as it quits.
 
+## Recording GIFs
+
+Two buttons in the window's title bar make animated GIFs of the analyzer's screen, to send after a call, put in a
+report or paste into a chat:
+
+- **Record** (⌘R) records from now until you click Stop, at most two minutes, and saves the GIF to the Desktop as
+  `tinySA <date> at <time>.gif`. The button shows the time recorded.
+- **Capture** (⇧⌘R) is for when something has just happened. tinySA Screen keeps the last minute of the screen all the
+  time (in memory only), and Capture shows a sheet with a slider: keep the whole minute, or drag for the last 15 seconds,
+  say. A picture of the GIF's first frame shows where it starts. Choose whether the date and the time go under the
+  screen, the size, then **Save to Desktop**, or **Copy** to paste it into a chat or an email as an animated GIF. The
+  sheet says how large the file will be before you save it.
+
+What's in a GIF:
+
+- **The screen exactly**, frame by frame as the analyzer drew it: one frame after each sweep, at the real time between
+  sweeps, so the GIF plays as it happened. No dithering, no blur: a tinySA's screen has fewer colours than a GIF holds.
+- **The date and time** in a strip under the screen, at its bottom right, in your Mac's formats, the time to the
+  second and ticking as the GIF plays (both can be turned off).
+- **Small files**: only the part of the screen that changed since the frame before is stored, and a screen that keeps
+  still costs nothing. A minute of a busy band takes about 300 KB at the sharp size (125 KB small); with the
+  analyzer's waterfall on, which changes every sweep, 2 to 4 MB (under half that small).
+- **Two sizes**: Sharp (twice the screen's size, 960 × 672 for a tinySA Ultra, every pixel a sharp 2 × 2 square) or
+  Small (the screen's own size).
+
+Settings (⌘,) sets how many seconds Capture keeps (5 seconds to 2 minutes, or none), and the date, time and size that
+Record uses and Capture starts from.
+
+## The command line
+
+The app is also a command-line tool, for scripts, test benches and AI agents. Link it once:
+
+```bash
+ln -s "/Applications/tinySA Screen.app/Contents/MacOS/tinysa-screen" /usr/local/bin/tinysa-screen
+```
+
+```bash
+tinysa-screen record --seconds 30 --output band.gif     # record 30 seconds from now
+tinysa-screen capture --seconds 15 --output last.gif    # the last 15 seconds the open app kept
+tinysa-screen screenshot --output screen.png
+tinysa-screen status --json                             # what it sees, for programs
+```
+
+With the app open, the app does the work and its window says who is recording; without it, the command works alone,
+sharing the analyzer the same way. Results come as a line of text or, with `--json`, of JSON.
+[docs/COMMAND-LINE.md](docs/COMMAND-LINE.md) has everything, including the socket the app answers on, for other
+languages.
+
 ## Working with other programs
 
-A tinySA's USB console takes one program at a time. tinySA Screen shares it in two ways, both a few lines in any
-language; [docs/INTEGRATION.md](docs/INTEGRATION.md) has the details and Python helpers in
-[integrations/python](integrations/python):
+A tinySA's USB console takes one program at a time. tinySA Screen shares it in two ways, and answers programs that ask
+it for GIFs; each is a few lines in any language. [docs/INTEGRATION.md](docs/INTEGRATION.md) has the details, and
+Python helpers are in [integrations/python](integrations/python):
 
 - **Borrowing.** A script that needs the analyzer for a while writes its process ID and name to `~/.tinysa-busy`.
   tinySA Screen lets go within about half a second, shows who has the analyzer, and takes it back when the file is
@@ -121,7 +177,9 @@ language; [docs/INTEGRATION.md](docs/INTEGRATION.md) has the details and Python 
 - **Feeding.** A program that keeps the analyzer itself (a monitor or logger running all day) can put the analyzer's
   screen in the window: while tinySA Screen is open it touches a file, and the program writes the screen as a PNG and
   a few words about what it is doing to a folder the app watches. While that program runs, tinySA Screen shows its
-  pictures and never touches the analyzer.
+  pictures and never touches the analyzer. Record and Capture work on fed pictures too.
+- **Asking.** A program can ask the open app for a GIF, a screenshot or its status, through the
+  [command line](#the-command-line) or the socket behind it.
 
 ## How it works
 
@@ -129,7 +187,9 @@ tinySA Screen speaks the analyzer's USB console, as a terminal would. When it co
 crashed viewer may have left on, asks for the firmware version and the model, captures the whole screen (`capture rle`:
 the screen packed into about 30 KB), then sends `refresh on`. From then on the analyzer sends every region it draws, as
 it draws it, and the app paints the regions onto its copy of the screen. Clicks go back as `touch x y` and
-`release x y`. [docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md) describes the formats.
+`release x y`. GIFs come from the app's own encoder: a frame once each sweep is drawn, in its exact colours, only the
+rectangle that changed, compressed with GIF's LZW. [docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md) describes the formats
+and the GIFs.
 
 ## Troubleshooting
 

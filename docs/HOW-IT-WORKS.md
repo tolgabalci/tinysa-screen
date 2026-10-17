@@ -88,3 +88,45 @@ turns it off.
 If `refresh on` gets `refresh?` (an unknown command), the app falls back to one picture after each sweep:
 `waitscan 1` (one sweep, then the analyzer pauses) and a capture, in turn. The analyzer's own screen shows PAUSED
 between them, and sweeps on its own again (`resume`) when the app lets go.
+
+## GIFs
+
+### One frame a sweep
+
+The analyzer draws each sweep in a burst of regions a few milliseconds apart (about 140 regions in a quarter of a
+second on a tinySA Ultra with the small waterfall), then sends nothing while it measures the next sweep (about half a
+second at its usual speed). The app takes a frame of its copy of the screen once the regions pause for 100 ms, so each
+frame is a whole sweep, never one half redrawn. A big waterfall makes the analyzer pause for some tens of milliseconds
+inside a burst while it scrolls, which the 100 ms rides over. When the regions never pause, with very fast sweeps, a
+frame is taken every half second. Each picture a feeding program writes is a frame, and so is each capture when the
+firmware has no live screen. A frame the same as the one before isn't kept twice.
+
+### Keeping the last minute
+
+Frames are kept in memory packed with LZFSE, a few tens of kilobytes each. A recording keeps them from its start, and
+Capture keeps the last minute (or what Settings says), each from the screen as it was when it began. Nothing goes to
+the disk until a GIF is saved.
+
+### The file
+
+- **Colours**: the GIF's colour table holds the screen's own colours in the order they first appear, so nothing is
+  dithered. A tinySA's screen uses well under the 256 a GIF holds, waterfall included; a colour beyond those (only a
+  feeding program's pictures could have one) takes the nearest.
+- **Only what changed**: after the first, each image is the smallest rectangle around the pixels that changed since
+  the frame before, drawn over it (disposal: keep). In that rectangle a pixel that didn't change can be transparent,
+  showing the one beneath, or its own colour, and both look the same; the encoder chooses pixel by pixel whichever
+  continues the run it is compressing. It also tries the rectangle with every pixel in its own colour, and keeps the
+  smaller of the two.
+- **Compression**: GIF's LZW, with codes from one bit more than the colours need up to 12 bits, and a fresh table when
+  it fills. Each image's code size is just enough for the colours it uses.
+- **Timing**: each image stays up until the next, in hundredths of a second, rounded from the real times so the GIF
+  lasts as long as the recording. Moments closer than 30 ms are shown as one, since browsers slow down images shorter
+  than 20 ms.
+- **The date and time**: a strip under the screen, the text drawn with the Mac's system font in eight greys, white on
+  black like the analyzer's. Each second the time ticks over adds an image of just the digits that changed, about a
+  hundred bytes, so the clock runs on while the screen keeps still.
+- **A comment** in the file says where the picture came from and when.
+
+Measured on 39 seconds of a tinySA Ultra watching the busy 915 MHz band with its big waterfall on, 51 frames: 578 KB at
+the screen's own size and 1.5 MB at twice that, the waterfall being most of it (it changes all over every sweep). The
+same frames with the waterfall's rows blanked take 81 KB and 202 KB. Making either GIF takes a fifth of a second.

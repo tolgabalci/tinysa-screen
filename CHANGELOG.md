@@ -2,6 +2,23 @@
 
 All notable changes are listed here, newest first. Versions follow [Semantic Versioning](https://semver.org).
 
+## 1.1.0 (unreleased)
+
+- Animated GIFs of the screen. Record (⌘R, in the title bar) records until it is stopped, at most two minutes, and saves
+  to the Desktop. Capture (⇧⌘R) saves the last minute, or the last part of it: the app keeps the latest seconds in
+  memory all the time (5 seconds to 2 minutes, or none, in Settings), and a sheet with a slider, a picture of the
+  first frame and the file's size chooses how many. Save to the Desktop, or Copy to paste into a chat or an email.
+- GIFs show the screen exactly, one frame per sweep at the real time between sweeps, with the date and time ticking in
+  a strip under the screen (each can be turned off), at twice the screen's size or its own. The app's own encoder
+  keeps them small: only the rectangle that changed, unchanged pixels transparent or not whichever compresses better,
+  the screen's own colours.
+- Settings (⌘,): the seconds Capture keeps, the date, time and size of GIFs, clicks as taps.
+- A command line for scripts and AI agents: `tinysa-screen record`, `capture`, `screenshot` and `status`, with results
+  as text or JSON. With the app open the app does the work, through a control socket other programs can use too, and
+  its window says who is recording; without it, the command line works alone, sharing the analyzer the same way. A
+  recording starts only from a live picture.
+- Python: `ask()` asks the open app for recordings, captures, screenshots and its status; `example_record.py`.
+
 ## 1.0.0 (2026-10-16)
 
 The first release.

@@ -22,6 +22,8 @@ public enum Integration {
   public static var watchingFile: URL { feedFolder.appendingPathComponent("watching") }
   public static var pictureFile: URL { feedFolder.appendingPathComponent("screen.png") }
   public static var stateFile: URL { feedFolder.appendingPathComponent("state.json") }
+  /// Asking: the open app's control socket, for recordings, captures, screenshots and its status (docs/INTEGRATION.md).
+  public static var controlSocket: URL { feedFolder.appendingPathComponent("control.sock") }
 }
 
 /// A program that asked to borrow the analyzer.

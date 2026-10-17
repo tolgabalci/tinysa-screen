@@ -6,6 +6,9 @@ next to your script, or add this folder to `PYTHONPATH`.
 - `borrow(name)`: use the tinySA for a `with` block while tinySA Screen is open.
 - `Feeder(name)`: keep the tinySA in your program and show its screen in tinySA Screen's window.
 - `Console()`: the tinySA's USB console (found by its USB name), with `cmd()` and `screen_png()`.
+- `ask(command, ...)`: asks the open app to record a GIF (`'record'`), save the seconds it keeps (`'capture'`), save a
+  screenshot, or say what it sees (`'status'`).
 
-`example_borrow.py` and `example_feeder.py` show each, and run as they are. The protocols themselves are in
-[docs/INTEGRATION.md](../../docs/INTEGRATION.md), for other languages.
+`example_borrow.py`, `example_feeder.py` and `example_record.py` show them, and run as they are. The protocols
+themselves are in [docs/INTEGRATION.md](../../docs/INTEGRATION.md) and [docs/COMMAND-LINE.md](../../docs/COMMAND-LINE.md),
+for other languages.

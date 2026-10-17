@@ -9,9 +9,10 @@ network.
 | --- | --- | --- |
 | [Borrowing](#borrowing) | use the analyzer for a while: a measurement, a script, another app | writes `~/.tinysa-busy`, uses the analyzer, removes the file |
 | [Feeding](#feeding) | keep the analyzer in your program all the time, and still show its screen | writes pictures to `~/Library/Caches/tinySA Screen/` while the window is open |
+| [Asking](#asking) | a GIF of the screen, the last seconds the app kept, a screenshot, what the app sees | runs `tinysa-screen record …`, or sends a line of JSON to the app's control socket |
 
-Python helpers for both are in [integrations/python](../integrations/python): `tinysa_screen.py` (standard library only)
-and two examples that run as they are.
+Python helpers for all three are in [integrations/python](../integrations/python): `tinysa_screen.py` (standard library
+only) and three examples that run as they are.
 
 ## Borrowing
 
@@ -92,6 +93,20 @@ never opens the analyzer, even when the analyzer's port is free for a moment. Yo
 Getting the analyzer's screen is one command: `capture` sends it raw, two bytes a pixel (RGB565, high byte first);
 from firmware v1.4-252 on, `capture rle` sends it packed into about 30 KB ([HOW-IT-WORKS.md](HOW-IT-WORKS.md)).
 With the Python helpers, `integrations/python/example_feeder.py` does all of this in about thirty lines.
+
+## Asking
+
+A program that wants the screen recorded doesn't need the analyzer at all: it asks tinySA Screen. The command line does
+it in one command, with the app open or not:
+
+```bash
+tinysa-screen record --seconds 30 --output /tmp/band.gif --name my-script --json
+```
+
+With the app open, the command line asks the app through its control socket, `~/Library/Caches/tinySA Screen/control.sock`
+(this user only): one line of JSON in, one line of JSON back. Recordings work on whatever the window shows, the analyzer
+over USB or a feeding program's pictures, and the window's title says who is recording. Requests, replies and the rest
+are in [COMMAND-LINE.md](COMMAND-LINE.md); in Python, `ask('record', seconds=30, output='/tmp/band.gif')`.
 
 ## Which program has the analyzer
 

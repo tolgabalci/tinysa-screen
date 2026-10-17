@@ -17,6 +17,8 @@ public struct Status: Equatable, Sendable {
   }
 }
 
+/// Told on the main thread.
+@MainActor
 public protocol SessionDelegate: AnyObject {
   func session(_ session: Session, show image: CGImage)
   func session(_ session: Session, status: Status)
@@ -27,8 +29,15 @@ public protocol SessionDelegate: AnyObject {
 /// program borrows it. Runs on a thread of its own and tells its delegate on the main thread.
 public final class Session {
   public weak var delegate: SessionDelegate?
+  /// Frames of the screen for GIFs: one after each sweep is drawn (or each picture fed).
+  public let recorder = FrameRecorder()
 
   public init() {}
+
+  /// What the window would show besides the picture, now: readable from any thread.
+  public var status: Status {
+    lock.locked { currentStatus } ?? Status(source: "", note: "Starting…", controllable: false)
+  }
 
   // MARK: The main thread's side
 
@@ -51,6 +60,7 @@ public final class Session {
   public func release(x: Int, y: Int) { lock.locked { taps.append("release \(x) \(y)") } }
 
   private let lock = NSLock()
+  private var currentStatus: Status?
   private var stopping = false
   private var taps: [String] = []
   private let finished = DispatchSemaphore(value: 0)
@@ -104,6 +114,10 @@ public final class Session {
   /// When `refresh on` went out to a quiet stream, until its echo comes back; and the latest text between regions.
   private var probeSent: Date?
   private var recentText = ""
+  /// The screen changed and isn't in a frame yet: since when, and when last. A sweep is drawn in a burst of regions a
+  /// few milliseconds apart, then nothing until the next sweep, so a frame is taken once the regions pause.
+  private var frameDue: Date?
+  private var lastChange = Date.distantPast
 
   private var isStopping: Bool { lock.locked { stopping } }
 
@@ -182,6 +196,7 @@ public final class Session {
       deviceSource = [model, Self.shortVersion(version)].filter { !$0.isEmpty }.joined(separator: " · ")
       mode = try startStream() ? .stream : .poll
       publishFrame()
+      recordFrame()
       publish(Status(source: deviceSource, note: nil, controllable: true))
     } catch Failure.interrupted {
       letGo()
@@ -232,8 +247,10 @@ public final class Session {
         _ = try command("waitscan 1", timeout: 30)
         try Capture.apply(capture(screen.size), to: screen)
         dirty = true
+        recordFrame()
       }
       if dirty, Date().timeIntervalSince(lastFrame) >= 1.0 / 25 { publishFrame() }
+      recordFrameWhenDrawn()
     } catch Failure.interrupted {
       letGo()
     } catch {
@@ -256,8 +273,30 @@ public final class Session {
         return
       }
       screen.apply(event)
-      dirty = true
+      changed()
     }
+  }
+
+  /// The screen changed: the window shows it soon, and a frame is taken once the sweep is drawn.
+  private func changed() {
+    dirty = true
+    lastChange = Date()
+    if frameDue == nil { frameDue = lastChange }
+  }
+
+  /// A frame once the regions pause for 100 ms, a sweep drawn (within one they come a few milliseconds apart, with a
+  /// pause of tens of milliseconds while a big waterfall scrolls; between sweeps the analyzer measures, about half a
+  /// second at its usual speed), or every half second while they keep coming.
+  private func recordFrameWhenDrawn() {
+    guard let frameDue else { return }
+    let now = Date()
+    if now.timeIntervalSince(lastChange) >= 0.1 || now.timeIntervalSince(frameDue) >= 0.5 { recordFrame() }
+  }
+
+  private func recordFrame() {
+    frameDue = nil
+    guard let screen else { return }
+    recorder.add(screen.snapshot(), at: Date())
   }
 
   private func sendTaps() throws {
@@ -334,7 +373,7 @@ public final class Session {
     }
     pending.removeAll()
     try Capture.apply(capture(screen.size), to: screen)
-    dirty = true
+    changed()
     guard try startStream() else {
       mode = .poll
       return
@@ -471,6 +510,7 @@ public final class Session {
     screen = nil
     pending.removeAll()
     dirty = false
+    frameDue = nil
     touchHeld = nil
     lock.locked { taps.removeAll() }  // clicks made while letting go aren't replayed on the next connection
   }
@@ -484,9 +524,12 @@ public final class Session {
         feedInterval = feedInterval == 0 ? interval : 0.7 * feedInterval + 0.3 * interval
       }
       feedPicture = date
-      DispatchQueue.main.async { [weak self] in
-        guard let self else { return }
-        self.delegate?.session(self, show: image)
+      if let snapshot = Snapshot(image) { recorder.add(snapshot, at: date) }
+      if delegate != nil {
+        DispatchQueue.main.async { [weak self] in
+          guard let self else { return }
+          self.delegate?.session(self, show: image)
+        }
       }
     }
     let name = feed.name ?? "another program"
@@ -513,6 +556,8 @@ public final class Session {
   private func publish(_ status: Status) {
     guard status != lastStatus else { return }
     lastStatus = status
+    lock.locked { currentStatus = status }
+    guard delegate != nil else { return }
     DispatchQueue.main.async { [weak self] in
       guard let self else { return }
       self.delegate?.session(self, status: status)
@@ -527,9 +572,9 @@ public final class Session {
   }
 
   private func publishFrame() {
-    guard let image = screen?.image() else { return }
     dirty = false
     lastFrame = Date()
+    guard delegate != nil, let image = screen?.image() else { return }
     DispatchQueue.main.async { [weak self] in
       guard let self else { return }
       self.delegate?.session(self, show: image)

@@ -4,8 +4,11 @@
   it back afterwards.
 - Feeder(name): your program keeps the tinySA, and its screen shows in tinySA Screen's window while the window is open.
 - Console(): the tinySA's USB console for this program alone, with commands, replies and the screen as a PNG.
+- ask(command, ...): asks the open app to record a GIF, save the seconds it keeps, save a screenshot, or say what it
+  sees.
 
-The protocols are in docs/INTEGRATION.md; example_borrow.py and example_feeder.py use all three.
+The protocols are in docs/INTEGRATION.md and docs/COMMAND-LINE.md; example_borrow.py and example_feeder.py use the first
+three, example_record.py the last.
 """
 from __future__ import annotations
 
@@ -16,6 +19,7 @@ import json
 import os
 import re
 import select
+import socket
 import struct
 import subprocess
 import termios
@@ -27,6 +31,7 @@ BORROW_FILE = os.path.expanduser('~/.tinysa-busy')
 FEED_FOLDER = os.path.expanduser('~/Library/Caches/tinySA Screen')
 WATCHING = os.path.join(FEED_FOLDER, 'watching')
 WATCHING_FOR = 3  # seconds a touch of WATCHING means the window is open
+CONTROL = os.path.join(FEED_FOLDER, 'control.sock')
 PROMPT = b'ch> '
 
 
@@ -124,6 +129,30 @@ class Feeder:
         with open(part, 'wb') as fh:
             fh.write(data)
         os.replace(part, os.path.join(FEED_FOLDER, name))  # in one step: never half a file
+
+
+# Asking the open app
+
+
+def ask(command: str, **fields) -> dict | None:
+    """Asks the open tinySA Screen: 'record' (seconds=, output=), 'capture' (output=, seconds=), 'screenshot' (output=)
+    or 'status'; also scale=1 or 2, date=, time=, name=. Its reply as a dict ('ok', and 'error' or 'file', 'seconds'...),
+    or None when the app isn't open. Waits as long as the request takes; output paths must be absolute."""
+    request = {'command': command, **fields}
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+        try:
+            connection.connect(CONTROL)
+        except (FileNotFoundError, ConnectionRefusedError):
+            return None
+        connection.sendall((json.dumps(request) + '\n').encode())
+        connection.settimeout(float(fields.get('seconds') or 0) + 120)
+        reply = b''
+        while not reply.endswith(b'\n'):
+            chunk = connection.recv(65536)
+            if not chunk:
+                raise ConnectionError('tinySA Screen closed before answering')
+            reply += chunk
+    return json.loads(reply)
 
 
 # The console

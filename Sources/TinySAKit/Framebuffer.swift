@@ -99,14 +99,9 @@ public final class Framebuffer {
     return (UInt8(value & 0xFF), UInt8(value >> 8 & 0xFF), UInt8(value >> 16 & 0xFF))
   }
 
-  /// A picture of the screen as it is now.
-  public func image() -> CGImage? {
-    let data = pixels.withUnsafeBufferPointer { Data(buffer: $0) }
-    guard let provider = CGDataProvider(data: data as CFData) else { return nil }
-    return CGImage(
-      width: size.width, height: size.height, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: size.width * 4,
-      space: CGColorSpace(name: CGColorSpace.sRGB)!,
-      bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipLast.rawValue | CGBitmapInfo.byteOrder32Big.rawValue),
-      provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)
-  }
+  /// The screen as it is now.
+  public func snapshot() -> Snapshot { Snapshot(width: size.width, height: size.height, pixels: pixels) }
+
+  /// An image of the screen as it is now.
+  public func image() -> CGImage? { snapshot().image() }
 }
