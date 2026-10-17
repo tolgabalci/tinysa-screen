@@ -32,10 +32,10 @@ public struct SweepRange: Equatable, Codable, Sendable {
   /// that never makes start pass stop: the analyzer would take the moment they meet for a zero span and reset its
   /// sweep time.
   public func commands(from current: SweepRange?) -> [String] {
-    let startFirst = current.map { start < $0.stop } ?? true
-    let start = "sweep start \(self.start)"
-    let stop = "sweep stop \(self.stop)"
-    return startFirst ? [start, stop] : [stop, start]
+    let startFirst = current.map { self.start < $0.stop } ?? true
+    let setStart = "sweep start \(self.start)"
+    let setStop = "sweep stop \(self.stop)"
+    return startFirst ? [setStart, setStop] : [setStop, setStart]
   }
 }
 
