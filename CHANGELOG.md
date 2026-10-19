@@ -2,7 +2,7 @@
 
 All notable changes are listed here, newest first. Versions follow [Semantic Versioning](https://semver.org).
 
-## 1.1.1 (unreleased)
+## 1.1.1 (2026-10-19)
 
 - Peak hold: View › Hold Peaks For sets how long it keeps each level (10 or 30 seconds, a minute, 5 minutes, or until
   cleared); a minute by default now, as a monitoring hold keeps the last minute. Its line is cyan by default (it was
