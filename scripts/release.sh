@@ -4,6 +4,11 @@
 # was pushed, or here), and the Homebrew cask brought up to date (tolgabalci/homebrew-tap).
 #
 #   scripts/release.sh
+#   NOTARY_SUBMISSION=<id> scripts/release.sh    carries on with a submission already sent (the build in build/ that was
+#                                                 sent), when the wait for Apple's answer was cut off
+#
+# Apple usually answers in minutes; a team's first submission took over an hour. The wait asks again every half minute
+# and rides over network drops.
 #
 # Needs, on this Mac:
 #   - a "Developer ID Application" certificate in the keychain (Xcode › Settings › Accounts › Manage Certificates);
@@ -25,13 +30,34 @@ IDENTITY=$(security find-identity -v -p codesigning | sed -n 's/.*"\(Developer I
 : "${NOTARY_KEY:?set NOTARY_KEY to the path of the .p8 file}"
 git diff --quiet HEAD -- || { echo "Commit first: the release is built from what is committed" >&2; exit 1; }
 
-echo "Building $VERSION, signed by $IDENTITY"
-SIGN_IDENTITY="$IDENTITY" scripts/build-app.sh
-rm -f "$ZIP"
-ditto -c -k --keepParent "$APP" "$ZIP"
-
-echo "Notarizing (a few minutes)"
-xcrun notarytool submit "$ZIP" --key "$NOTARY_KEY" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID" --wait
+NOTARY=(--key "$NOTARY_KEY" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID")
+if [[ -n "${NOTARY_SUBMISSION:-}" ]]; then
+  [[ -d "$APP" && -f "$ZIP" ]] || { echo "No build to carry on with in build/" >&2; exit 1; }
+  SUBMISSION=$NOTARY_SUBMISSION
+  echo "Carrying on with submission $SUBMISSION"
+else
+  echo "Building $VERSION, signed by $IDENTITY"
+  SIGN_IDENTITY="$IDENTITY" scripts/build-app.sh
+  rm -f "$ZIP"
+  ditto -c -k --keepParent "$APP" "$ZIP"
+  echo "Sending it to Apple to notarize"
+  SUBMISSION=$(xcrun notarytool submit "$ZIP" "${NOTARY[@]}" --output-format json | sed -n 's/.*"id" *: *"\([^"]*\)".*/\1/p')
+  [[ -n "$SUBMISSION" ]] || { echo "Apple didn't take the submission" >&2; exit 1; }
+  echo "Submission $SUBMISSION (if this stops: NOTARY_SUBMISSION=$SUBMISSION scripts/release.sh)"
+fi
+while true; do
+  STATUS=$(xcrun notarytool info "$SUBMISSION" "${NOTARY[@]}" 2>/dev/null | sed -n 's/^ *status: //p' || true)
+  case "$STATUS" in
+    Accepted) break ;;
+    Invalid | Rejected)
+      xcrun notarytool log "$SUBMISSION" "${NOTARY[@]}" >&2 || true
+      echo "Apple didn't notarize it ($STATUS): the log above says why" >&2
+      exit 1
+      ;;
+    *) echo "$(date +%H:%M) ${STATUS:-no answer (the network?)}, asking again in 30 s"; sleep 30 ;;
+  esac
+done
+echo "Notarized"
 xcrun stapler staple "$APP"
 xcrun stapler validate "$APP"
 spctl --assess --type execute --verbose=2 "$APP"
@@ -49,6 +75,8 @@ fi
 echo "Updating the Homebrew cask"
 SHA=$(shasum -a 256 "$ZIP" | cut -d' ' -f1)
 TAP=$(mktemp -d)/homebrew-tap
+# Commits to the tap under this repository's identity (the GitHub no-reply address), not whatever the Mac's is.
+WHO=(-c "user.name=$(git config user.name)" -c "user.email=$(git config user.email)")
 if ! gh repo view tolgabalci/homebrew-tap >/dev/null 2>&1; then
   # The first release: the tap, from packaging/homebrew.
   mkdir -p "$TAP/Casks"
@@ -56,7 +84,7 @@ if ! gh repo view tolgabalci/homebrew-tap >/dev/null 2>&1; then
   cp packaging/homebrew/tinysa-screen.rb "$TAP/Casks/tinysa-screen.rb"
   git -C "$TAP" init -q -b main
   git -C "$TAP" add README.md Casks/tinysa-screen.rb
-  git -C "$TAP" commit -q -m "tinysa-screen"
+  git "${WHO[@]}" -C "$TAP" commit -q -m "tinysa-screen"
   gh repo create tolgabalci/homebrew-tap --public --description "Homebrew casks: tinySA Screen" --source "$TAP" --push
 fi
 rm -rf "$TAP"
@@ -65,6 +93,10 @@ sed -e "s/^  version \".*\"/  version \"$VERSION\"/" -e "s/^  sha256 \".*\"/  sh
   "$TAP/Casks/tinysa-screen.rb" > "$TAP/Casks/tinysa-screen.rb.new"
 mv "$TAP/Casks/tinysa-screen.rb.new" "$TAP/Casks/tinysa-screen.rb"
 git -C "$TAP" add Casks/tinysa-screen.rb
-git -C "$TAP" commit -q -m "tinysa-screen $VERSION"
-git -C "$TAP" push -q
+if git -C "$TAP" diff --cached --quiet; then
+  echo "The cask is up to date"
+else
+  git "${WHO[@]}" -C "$TAP" commit -q -m "tinysa-screen $VERSION"
+  git -C "$TAP" push -q
+fi
 echo "Released $VERSION: brew install --cask tolgabalci/tap/tinysa-screen"

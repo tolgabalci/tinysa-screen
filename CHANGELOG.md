@@ -42,6 +42,8 @@ All notable changes are listed here, newest first. Versions follow [Semantic Ver
   its window says who is recording; without it, the command line works alone, sharing the analyzer the same way. A
   recording starts only from a live picture.
 - Python: `ask()` asks the open app for recordings, captures, screenshots and its status; `example_record.py`.
+- Signed with a Developer ID and notarized by Apple: the download opens like any app. Homebrew:
+  `brew install --cask tolgabalci/tap/tinysa-screen`, which also puts `tinysa-screen` on the `PATH`.
 
 ## 1.0.0 (2026-10-16)
 

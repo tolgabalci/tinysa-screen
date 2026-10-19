@@ -15,7 +15,8 @@ tinysa-screen status
 
 ## Setting it up
 
-The tool is the app's own program, inside the app. Link it into a folder on your `PATH` once:
+The tool is the app's own program, inside the app. Installed with Homebrew (`brew install --cask
+tolgabalci/tap/tinysa-screen`), it's on your `PATH` already. Otherwise link it into a folder on your `PATH` once:
 
 ```bash
 ln -s "/Applications/tinySA Screen.app/Contents/MacOS/tinysa-screen" /usr/local/bin/tinysa-screen

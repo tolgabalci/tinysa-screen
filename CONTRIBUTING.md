@@ -61,7 +61,9 @@ to how the app talks to the analyzer should also be tried on one; say in the pul
    (`~/.config/tinysa-screen/notary.env`: `NOTARY_KEY_ID`, `NOTARY_ISSUER_ID`, `NOTARY_KEY`), run
    `scripts/release.sh`: it builds the same version signed with the Developer ID and the hardened runtime, has Apple
    notarize it, staples the ticket, replaces the release's zip with it, and updates the Homebrew cask in
-   [tolgabalci/homebrew-tap](https://github.com/tolgabalci/homebrew-tap) (creating the tap the first time).
+   [tolgabalci/homebrew-tap](https://github.com/tolgabalci/homebrew-tap) (creating the tap the first time). Apple
+   usually answers in minutes, sometimes in over an hour; if the wait is cut off, `NOTARY_SUBMISSION=<id>
+   scripts/release.sh` carries on with the submission it printed.
 
 By contributing you agree that your work is released under the [MIT License](LICENSE), and to follow the
 [code of conduct](CODE_OF_CONDUCT.md).

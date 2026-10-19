@@ -76,10 +76,18 @@ antenna.
 
 ## Install
 
-**Download**: get `tinySA-Screen-<version>.zip` from the [latest release](https://github.com/tolgabalci/tinysa-screen/releases/latest),
-unzip it and move **tinySA Screen** to your Applications folder. The app isn't signed with an Apple Developer ID, so the
-first time, open it with right-click (or Control-click) › **Open**, then **Open** again; macOS remembers that. On recent
-macOS versions you may need System Settings › Privacy & Security › **Open Anyway** instead.
+**Homebrew**:
+
+```bash
+brew install --cask tolgabalci/tap/tinysa-screen
+```
+
+That puts **tinySA Screen** in your Applications folder and `tinysa-screen` (the [command line](#the-command-line)) on
+your `PATH`; `brew upgrade` brings new versions.
+
+**Or download**: get `tinySA-Screen-<version>.zip` from the [latest release](https://github.com/tolgabalci/tinysa-screen/releases/latest),
+unzip it and move **tinySA Screen** to your Applications folder. It's signed with a Developer ID and notarized by Apple,
+so it opens like any app.
 
 **Or build it yourself** (Xcode or its command line tools):
 
@@ -213,7 +221,8 @@ Record uses and Capture starts from.
 
 ## The command line
 
-The app is also a command-line tool, for scripts, test benches and AI agents. Link it once:
+The app is also a command-line tool, for scripts, test benches and AI agents. Homebrew puts it on your `PATH`;
+otherwise link it once:
 
 ```bash
 ln -s "/Applications/tinySA Screen.app/Contents/MacOS/tinysa-screen" /usr/local/bin/tinysa-screen
@@ -277,7 +286,7 @@ and the GIFs.
 | "The tinySA is in use by another program" | Quit that program (another viewer, a terminal, NanoVNA-Saver or QtTinySA), or make it [borrow](docs/INTEGRATION.md#borrowing) the analyzer. |
 | "The tinySA doesn't answer over USB." | Switch the analyzer off and on. Firmware before v1.4-223 could leave its console unable to answer after hours of use; [update it](#updating-the-firmware). |
 | The analyzer's own screen froze after tinySA Screen crashed | Open tinySA Screen again (it turns the analyzer's live screen off as it connects), or switch the analyzer off and on. |
-| macOS says the app "can't be opened" | Right-click › Open the first time, or System Settings › Privacy & Security › Open Anyway. |
+| macOS says the app "can't be opened" | Only versions before 1.1.0, which weren't notarized: right-click › Open the first time, or System Settings › Privacy & Security › Open Anyway. |
 
 ### Updating the firmware
 
