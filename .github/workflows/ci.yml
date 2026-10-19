@@ -20,6 +20,8 @@ jobs:
         run: swift --version
       - name: Test
         run: swift test
+      - name: Test the Python helpers
+        run: python3 -m unittest discover -s integrations/python -v
       - name: Build the app
         run: scripts/build-app.sh --zip
       - uses: actions/upload-artifact@v7

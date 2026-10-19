@@ -125,7 +125,8 @@ analyzer cut its sweep short, and a feeding program's pictures are all there is 
 
 If `refresh on` gets `refresh?` (an unknown command), the app falls back to one picture after each sweep:
 `waitscan 1` (one sweep, then the analyzer pauses) and a capture, in turn. The analyzer's own screen shows PAUSED
-between them, and sweeps on its own again (`resume`) when the app lets go.
+between them, and sweeps on its own again (`resume`) when the app lets go. `resume` also starts the analyzer's max
+holds over (it recomputes the sweep's frequencies); newer firmware, with the live screen, never needs it.
 
 ## GIFs
 
@@ -136,8 +137,9 @@ second on a tinySA Ultra with the small waterfall), then sends nothing while it 
 second at its usual speed). The app takes a frame of its copy of the screen once the regions pause for 100 ms, so each
 frame is a whole sweep, never one half redrawn. A big waterfall makes the analyzer pause for some tens of milliseconds
 inside a burst while it scrolls, which the 100 ms rides over. When the regions never pause, with very fast sweeps, a
-frame is taken every half second. Each picture a feeding program writes is a frame, and so is each capture when the
-firmware has no live screen. A frame the same as the one before isn't kept twice.
+frame is taken every half second. Each picture a feeding program writes is a frame, at the time the file is dated
+(the app looks for one ten times a second, so a picture replaced sooner than that may not be seen), and so is each
+capture when the firmware has no live screen. A frame the same as the one before isn't kept twice.
 
 ### Keeping the last minute
 

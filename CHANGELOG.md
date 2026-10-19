@@ -2,6 +2,19 @@
 
 All notable changes are listed here, newest first. Versions follow [Semantic Versioning](https://semver.org).
 
+## 1.1.1 (unreleased)
+
+- A feeding program's pictures are looked for ten times a second instead of four: they show sooner, and pictures put
+  a tenth of a second apart or more are each a frame in a GIF (one replaced sooner than that may not be seen).
+- Feeding a picture of every sweep: the Python helpers' `LiveScreen` keeps a copy of the analyzer's screen from its
+  live screen while it sweeps on its own, with commands typed only between sweeps, and `example_feeder.py` uses it (a
+  picture every 0.8 s on a tinySA Ultra, where a capture after each sweep made one every 1.1 s or more). It leaves
+  the analyzer sweeping when it ends, without `resume`, which starts the analyzer's max holds over: `sweep_on` uses
+  the top menu's PAUSE instead. `Feeder.picture` takes the time the screen was drawn, which the app and its GIFs use.
+  The helpers have tests, run by CI.
+- [INTEGRATION.md](docs/INTEGRATION.md) says how a feeder gets a picture of every sweep, and keeps the analyzer's
+  traces.
+
 ## 1.1.0 (2026-10-17)
 
 - Animated GIFs of the screen. Record (⌘R, in the title bar) records until it is stopped, at most two minutes, and saves

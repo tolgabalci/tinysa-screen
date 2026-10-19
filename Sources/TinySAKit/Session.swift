@@ -205,7 +205,9 @@ public final class Session {
           letGo()
           failJobs("\(feed.name ?? "Another program") has the tinySA and feeds its pictures: change it there")
           showFeed(feed)
-          pause(0.25)
+          // Ten times a second: a feeder may put two pictures a moment apart (a sweep's, then the same screen with
+          // PAUSED), and each is a frame.
+          pause(0.1)
           continue
         }
         lastFeeder = nil

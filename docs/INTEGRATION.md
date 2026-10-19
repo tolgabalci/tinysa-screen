@@ -85,14 +85,30 @@ While a feeder runs (its `state.json` isn't `stopped` and its process is alive),
 never opens the analyzer, even when the analyzer's port is free for a moment. Your program:
 
 1. Writes `state.json` when it starts and whenever its state changes.
-2. While `watching` is less than 3 seconds old, puts a new `screen.png` after each sweep. Otherwise it needn't make
-   pictures at all: no one is looking. tinySA Screen shows a picture as live for three times the usual interval
-   between your pictures (at least 6 seconds); after that its note says "No new picture since …".
+2. While `watching` is less than 3 seconds old, puts a new `screen.png` after each sweep, dated when the analyzer drew
+   it (the file's modification time: the app and its GIFs take a picture's time from it). Otherwise it needn't make
+   pictures at all: no one is looking. tinySA Screen looks for a new picture ten times a second and shows one as live
+   for three times the usual interval between your pictures (at least 6 seconds); after that its note says "No new
+   picture since …".
 3. Writes `"state": "stopped"` as it exits.
 
-Getting the analyzer's screen is one command: `capture` sends it raw, two bytes a pixel (RGB565, high byte first);
-from firmware v1.4-252 on, `capture rle` sends it packed into about 30 KB ([HOW-IT-WORKS.md](HOW-IT-WORKS.md)).
-With the Python helpers, `integrations/python/example_feeder.py` does all of this in about thirty lines.
+**A picture of every sweep.** The analyzer's live screen gives one: let the analyzer sweep on its own and turn it on
+(`refresh on`), and the analyzer sends every region of its screen as it draws it, a burst of them for each sweep, then
+nothing while it measures the next ([HOW-IT-WORKS.md](HOW-IT-WORKS.md)). Keep a copy of the screen from a capture and
+the regions, and write it out when a burst ends. Your program's commands share the console with the regions, and one
+typed while the analyzer draws can land inside a region, so type them only when it draws nothing: just after a burst
+(a command that reads the analyzer then cuts the next sweep short) or just after another reply. A capture after each
+sweep instead (`capture rle`, about 30 KB from firmware v1.4-252 on, `capture` raw on older firmware) is simpler but
+slower: the analyzer reads its screen back for it, about 0.4 s, so with a half-second sweep there is a picture about
+every 1.1 s, not every sweep.
+
+With the Python helpers, `LiveScreen` does the live screen's part and `integrations/python/example_feeder.py` feeds a
+picture of every sweep in about forty lines.
+
+**Keep the analyzer's traces.** Don't send `resume` to start the analyzer sweeping again: it recomputes the sweep's
+frequencies, which marks the settings changed, and its next sweep starts every max hold over (a max hold trace loses
+what it held). The top menu's PAUSE only switches the sweep on or off: send `menu 1` when `status` says `Paused`
+(`sweep_on` in the Python helpers). `waitscan` sweeps without starting anything over, but leaves the analyzer paused.
 
 ## Asking
 
