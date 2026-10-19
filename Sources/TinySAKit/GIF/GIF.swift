@@ -37,11 +37,14 @@ public struct GIFResult: Sendable {
 }
 
 /// Animated GIFs of the screen, small without losing a pixel. Every frame is the screen exactly, in its own colours (a
-/// tinySA's screen has fewer than the 256 a GIF holds), so nothing is dithered or blurred. Only what changed since the
-/// frame before is stored, the smallest rectangle around it, and in it a pixel that didn't change is either transparent
-/// or its own colour, whichever compresses better; a screen that keeps still costs nothing. The time in the strip
-/// ticks every second, so it runs on while the screen keeps still. Delays are the real time between frames, so the GIF
-/// plays as it happened.
+/// tinySA's screen has fewer than the 256 a GIF holds), so nothing is dithered or blurred. Only the rows that changed
+/// since the frame before are stored, across the whole width, every pixel in its own colour; a screen that keeps still
+/// costs nothing. Images as wide as the GIF, without transparent pixels, are what a site that shrinks a GIF image by
+/// image still shows rightly: groups.io fits each image to its width, so an image narrower than the GIF came out larger
+/// than the rest and out of place, and the old screen showing through its transparent pixels piled up frame after
+/// frame. (The smallest rectangle around each change, unchanged pixels transparent, made files a fifth to a half
+/// smaller.) The time in the strip ticks every second, so it runs on while the screen keeps still. Delays are the real
+/// time between frames, so the GIF plays as it happened.
 public enum GIF {
   /// Frames closer than this are shown together: browsers slow down frames shorter than 20 ms.
   static let together: TimeInterval = 0.03
@@ -76,42 +79,41 @@ public enum GIF {
       var levels: [UInt8]?
       if let text = caption?.text(at: event.clock) { levels = caption?.levels(for: text) }
 
-      var box: Box?
+      // The rows that changed: the screen's, at the GIF's size, and the strip's under it.
+      var rows: Range<Int>?
       if let shown {
-        box = changedBox(shown, pixels, width: width, height: height)?.scaled(scale)
+        rows = changedRows(shown, pixels, width: width, height: height)
+          .map { $0.lowerBound * scale..<$0.upperBound * scale }
       } else {
-        box = Box(x0: 0, y0: 0, x1: canvasWidth, y1: screenHeight)
+        rows = 0..<screenHeight
       }
       if let levels {
-        let changed = shownCaption.map { changedBox($0, levels, width: canvasWidth, height: levels.count / canvasWidth) }
-          ?? Box(x0: 0, y0: 0, x1: canvasWidth, y1: levels.count / canvasWidth)
-        if let changed { box = box.union(changed.offset(y: screenHeight)) }
+        let stripHeight = levels.count / canvasWidth
+        let changed =
+          shownCaption.map { changedRows($0, levels, width: canvasWidth, height: stripHeight) } ?? 0..<stripHeight
+        if let changed { rows = rows.spanning(changed.lowerBound + screenHeight..<changed.upperBound + screenHeight) }
       }
-      guard let box else { continue }  // nothing changed: the frame before stays up longer
+      guard let rows else { continue }  // nothing changed: the frame before stays up longer
 
-      // Each pixel's own colour, and whether it changed.
-      var own = [UInt8](repeating: 0, count: box.width * box.height)
-      var changed = [Bool](repeating: true, count: own.count)
+      // Each pixel's own colour, across the whole width.
+      var own = [UInt8](repeating: 0, count: canvasWidth * rows.count)
       var i = 0
-      for y in box.y0..<box.y1 {
+      for y in rows {
         if y < screenHeight {
           let row = (y / scale) * width
-          for x in box.x0..<box.x1 {
-            let at = row + x / scale
-            own[i] = palette.index(pixels[at])
-            if let shown { changed[i] = shown[at] != pixels[at] }
+          for x in 0..<canvasWidth {
+            own[i] = palette.index(pixels[row + x / scale])
             i += 1
           }
         } else if let levels {
           let row = (y - screenHeight) * canvasWidth
-          for x in box.x0..<box.x1 {
+          for x in 0..<canvasWidth {
             own[i] = palette.index(CaptionStrip.colors[Int(levels[row + x])])
-            if let shownCaption { changed[i] = shownCaption[row + x] != levels[row + x] }
             i += 1
           }
         }
       }
-      images.append(encode(own, changed: changed, box: box, time: event.time, first: shown == nil, lzw: &lzw))
+      images.append(encode(own, rows: rows, time: event.time, lzw: &lzw))
       shown = pixels
       shownFrame = event.frame
       shownCaption = levels
@@ -185,23 +187,10 @@ public enum GIF {
 
   // MARK: What changed
 
-  struct Box: Equatable {
-    var x0: Int
-    var y0: Int
-    var x1: Int
-    var y1: Int
-    var width: Int { x1 - x0 }
-    var height: Int { y1 - y0 }
-    func scaled(_ scale: Int) -> Box { Box(x0: x0 * scale, y0: y0 * scale, x1: x1 * scale, y1: y1 * scale) }
-    func offset(y: Int) -> Box { Box(x0: x0, y0: y0 + y, x1: x1, y1: y1 + y) }
-  }
-
-  /// The smallest rectangle around the pixels that differ, or nil when none do.
-  static func changedBox<Pixel: Equatable>(_ old: [Pixel], _ new: [Pixel], width: Int, height: Int) -> Box? {
-    var minY = -1
-    var maxY = -1
-    var minX = width
-    var maxX = -1
+  /// The rows from the first where the pixels differ to the last, or nil when none do.
+  static func changedRows<Pixel: Equatable>(_ old: [Pixel], _ new: [Pixel], width: Int, height: Int) -> Range<Int>? {
+    var first = -1
+    var last = -1
     old.withUnsafeBufferPointer { old in
       new.withUnsafeBufferPointer { new in
         for y in 0..<height {
@@ -209,70 +198,28 @@ public enum GIF {
           guard memcmp(old.baseAddress! + row, new.baseAddress! + row, width * MemoryLayout<Pixel>.stride) != 0 else {
             continue
           }
-          if minY < 0 { minY = y }
-          maxY = y
-          var x = 0
-          while x < minX, old[row + x] == new[row + x] { x += 1 }
-          minX = min(minX, x)
-          x = width - 1
-          while x > maxX, old[row + x] == new[row + x] { x -= 1 }
-          maxX = max(maxX, x)
+          if first < 0 { first = y }
+          last = y
         }
       }
     }
-    return minY < 0 ? nil : Box(x0: minX, y0: minY, x1: maxX + 1, y1: maxY + 1)
+    return first < 0 ? nil : first..<(last + 1)
   }
 
   // MARK: Encoding
 
-  /// An image of the GIF: where it goes, its transparent index, and its compressed pixels.
+  /// An image of the GIF: the rows it covers, across the whole width, and its compressed pixels.
   struct Image {
-    var box: Box
-    var transparent: Int?
+    var rows: Range<Int>
     var codeSize: Int
     var data: [UInt8]
     var time: TimeInterval
   }
 
-  /// Ways to store a changed rectangle: every pixel its own colour; unchanged pixels transparent; or each unchanged
-  /// pixel whichever of the two continues the run. The smallest of those tried is kept.
-  enum Way: CaseIterable { case opaque, transparent, either }
-  /// The ways tried (opaque and either do best together, measured on real frames); tests try each alone.
-  static var ways: [Way] = [.opaque, .either]
-
-  /// The image of a changed rectangle, stored the way that comes out smallest.
-  static func encode(_ own: [UInt8], changed: [Bool], box: Box, time: TimeInterval, first: Bool, lzw: inout LZWEncoder)
-    -> Image
-  {
-    var largest = 0
-    var used = [Bool](repeating: false, count: 256)
-    for i in own.indices {
-      largest = max(largest, Int(own[i]))
-      if changed[i] { used[Int(own[i])] = true }
-    }
-    var best: Image?
-    func keep(_ image: Image) {
-      if best == nil || image.data.count < best!.data.count { best = image }
-    }
-    let opaqueSize = LZWEncoder.codeSize(for: largest + 1)
-    // The transparent index: any index no changed pixel needs (a pixel that didn't change may have it: it shows the
-    // same colour either way).
-    let transparent = first ? nil : used.firstIndex(of: false)
-    for way in ways {
-      switch way {
-      case .opaque:
-        keep(Image(box: box, transparent: nil, codeSize: opaqueSize, data: lzw.encode(own, codeSize: opaqueSize), time: time))
-      case .transparent, .either:
-        guard let transparent else { continue }
-        var symbols = own
-        for i in own.indices where !changed[i] { symbols[i] = UInt8(transparent) }
-        let size = LZWEncoder.codeSize(for: max(largest, transparent) + 1)
-        let data = lzw.encode(symbols, alternates: way == .either ? own : nil, codeSize: size)
-        keep(Image(box: box, transparent: transparent, codeSize: size, data: data, time: time))
-      }
-    }
-    if let best { return best }
-    return Image(box: box, transparent: nil, codeSize: opaqueSize, data: lzw.encode(own, codeSize: opaqueSize), time: time)
+  /// The image of the rows that changed, its codes just wide enough for the colours in it.
+  static func encode(_ own: [UInt8], rows: Range<Int>, time: TimeInterval, lzw: inout LZWEncoder) -> Image {
+    let codeSize = LZWEncoder.codeSize(for: Int(own.max() ?? 0) + 1)
+    return Image(rows: rows, codeSize: codeSize, data: lzw.encode(own, codeSize: codeSize), time: time)
   }
 
   /// The whole file: header, colours, the loop, a comment, the images with their delays.
@@ -291,7 +238,7 @@ public enum GIF {
       }
       out.append(0)
     }
-    let largest = max(palette.count - 1, images.compactMap(\.transparent).max() ?? 0, 1)
+    let largest = max(palette.count - 1, 1)
     var tableBits = 1
     while 1 << tableBits <= largest { tableBits += 1 }
 
@@ -312,15 +259,15 @@ public enum GIF {
     for (k, image) in images.enumerated() {
       let next = k + 1 < images.count ? images[k + 1].time : duration
       let delay = min(max(centiseconds(next) - centiseconds(image.time), 2), 65535)
-      // Graphic control: kept under the next image (disposal 1), the delay, the transparent index.
-      out += [0x21, 0xF9, 0x04, 0x04 | (image.transparent == nil ? 0 : 1)]
+      // Graphic control: kept under the next image (disposal 1), the delay, no transparent colour.
+      out += [0x21, 0xF9, 0x04, 0x04]
       le16(delay)
-      out += [UInt8(image.transparent ?? 0), 0]
+      out += [0, 0]
       out.append(0x2C)
-      le16(image.box.x0)
-      le16(image.box.y0)
-      le16(image.box.width)
-      le16(image.box.height)
+      le16(0)
+      le16(image.rows.lowerBound)
+      le16(width)
+      le16(image.rows.count)
       out.append(0)
       out.append(UInt8(image.codeSize))
       blocks(image.data)
@@ -373,10 +320,10 @@ struct Palette {
   }
 }
 
-extension Optional where Wrapped == GIF.Box {
-  func union(_ other: GIF.Box) -> GIF.Box {
+extension Optional where Wrapped == Range<Int> {
+  /// The rows from the first of both to the last of both.
+  func spanning(_ other: Range<Int>) -> Range<Int> {
     guard let self else { return other }
-    return GIF.Box(
-      x0: min(self.x0, other.x0), y0: min(self.y0, other.y0), x1: max(self.x1, other.x1), y1: max(self.y1, other.y1))
+    return min(self.lowerBound, other.lowerBound)..<max(self.upperBound, other.upperBound)
   }
 }

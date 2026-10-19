@@ -40,34 +40,6 @@ final class LZWTests: XCTestCase {
     XCTAssertEqual(try DecodedGIF.lzwDecode(encoded, codeSize: 8, count: symbols.count), symbols)
   }
 
-  /// Where a pixel offers two indices, the decoded one is one of them, and the choice doesn't make the output larger
-  /// (here, a screen-like mix, it makes it smaller; GIF.encode keeps the smaller anyway).
-  func testAlternatesGiveEitherIndex() throws {
-    var generator = SeededGenerator(seed: 42)
-    var lzw = LZWEncoder()
-    let count = 50_000
-    var symbols: [UInt8] = []
-    var alternates: [UInt8] = []
-    // Runs of unchanged pixels (transparent 15, or their own colour), and changed pixels.
-    while symbols.count < count {
-      let n = Int.random(in: 1...60, using: &generator)
-      let color = UInt8.random(in: 0..<4, using: &generator)
-      if Bool.random(using: &generator) {
-        symbols += [UInt8](repeating: 15, count: n)
-        alternates += [UInt8](repeating: color, count: n)
-      } else {
-        symbols += [UInt8](repeating: color, count: n)
-        alternates += [UInt8](repeating: color, count: n)
-      }
-    }
-    let encoded = lzw.encode(symbols, alternates: alternates, codeSize: 4)
-    let decoded = try DecodedGIF.lzwDecode(encoded, codeSize: 4, count: symbols.count)
-    for i in symbols.indices {
-      XCTAssertTrue(decoded[i] == symbols[i] || decoded[i] == alternates[i], "pixel \(i)")
-    }
-    XCTAssertLessThan(encoded.count, lzw.encode(symbols, codeSize: 4).count)
-  }
-
   /// The end code is written at the width a decoder reads it: wider when the table reached the next size with the
   /// last code (a strict decoder found no end code in such streams).
   func testEndCodeWidth() throws {

@@ -152,21 +152,26 @@ the disk until a GIF is saved.
 - **Colours**: the GIF's colour table holds the screen's own colours in the order they first appear, so nothing is
   dithered. A tinySA's screen uses well under the 256 a GIF holds, waterfall included; a colour beyond those (only a
   feeding program's pictures could have one) takes the nearest.
-- **Only what changed**: after the first, each image is the smallest rectangle around the pixels that changed since
-  the frame before, drawn over it (disposal: keep). In that rectangle a pixel that didn't change can be transparent,
-  showing the one beneath, or its own colour, and both look the same; the encoder chooses pixel by pixel whichever
-  continues the run it is compressing. It also tries the rectangle with every pixel in its own colour, and keeps the
-  smaller of the two.
+- **Only what changed**: after the first, each image is the rows that changed since the frame before, from the first
+  to the last, across the whole width, drawn over it (disposal: keep), every pixel in its own colour. The smallest
+  rectangle around the change with its unchanged pixels transparent, as GIFs were made before 1.1.2, is a fifth to a
+  half smaller, but a site that shrinks a GIF image by image, fitting each to a width (groups.io does, as ImageMagick
+  does resizing to a width without `-coalesce`), scales an image narrower than the GIF more than the rest and puts it
+  out of place, and what shows through its transparent pixels piles up frame after frame. Images as wide as the GIF,
+  with nothing transparent, come out right.
 - **Compression**: GIF's LZW, with codes from one bit more than the colours need up to 12 bits, and a fresh table when
   it fills. Each image's code size is just enough for the colours it uses.
 - **Timing**: each image stays up until the next, in hundredths of a second, rounded from the real times so the GIF
   lasts as long as the recording. Moments closer than 30 ms are shown as one, since browsers slow down images shorter
   than 20 ms.
 - **The date and time**: a strip under the screen, the text drawn with the Mac's system font in eight greys, white on
-  black like the analyzer's. Each second the time ticks over adds an image of just the digits that changed, about a
-  hundred bytes, so the clock runs on while the screen keeps still.
+  black like the analyzer's. Each second the time ticks over adds an image of the strip's rows that changed, half a
+  kilobyte at the screen's size and one and a half at twice that, so the clock runs on while the screen keeps still.
 - **A comment** in the file says where the picture came from and when.
 
-Measured on 39 seconds of a tinySA Ultra watching the busy 915 MHz band with its big waterfall on, 51 frames: 578 KB at
-the screen's own size and 1.5 MB at twice that, the waterfall being most of it (it changes all over every sweep). The
-same frames with the waterfall's rows blanked take 81 KB and 202 KB. Making either GIF takes a fifth of a second.
+Measured on 48 seconds of a tinySA Ultra watching the busy 915 MHz band with its big waterfall on, 63 frames, the date
+and time under the screen: 2.0 MB at the screen's own size and 5.0 MB at twice that, the waterfall being most of it (it
+changes all over every sweep). The same frames with the waterfall's rows blanked take 178 KB and 442 KB. The smallest
+rectangles with transparent pixels took 1.7 MB and 4.3 MB, and 121 KB and 303 KB: whole rows cost a fifth more with the
+waterfall and a half more without, the clock's ticks being most of that. Making either GIF takes a quarter of a second
+at most.

@@ -40,23 +40,16 @@ final class GIFBenchmark: XCTestCase {
     print("frames \(frames.count), \(String(format: "%.1f", clip.duration)) s, kept \(frames.reduce(0) { $0 + $1.size } / 1024) KB")
     for scale in [1, 2] {
       for caption in [false, true] {
-        for ways in [[GIF.Way.opaque, .either]] {
-          GIF.ways = ways
-          let began = Date()
-          let gif = try XCTUnwrap(GIF.make(clip, options: GIFOptions(scale: scale, showsDate: caption, showsTime: caption)))
-          let took = Date().timeIntervalSince(began)
-          print(
-            "scale \(scale) caption \(caption) ways \(ways): \(gif.data.count / 1024) KB, \(gif.images) images, \(String(format: "%.2f", took)) s"
-          )
-          if scale == 2, caption, ways == [.opaque, .either] {
-            try gif.data.write(to: URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("bench-2x.gif"))
-          }
-          if scale == 1, caption, ways == [.opaque, .either] {
-            try gif.data.write(to: URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("bench-1x.gif"))
-          }
+        let began = Date()
+        let gif = try XCTUnwrap(GIF.make(clip, options: GIFOptions(scale: scale, showsDate: caption, showsTime: caption)))
+        let took = Date().timeIntervalSince(began)
+        print(
+          "scale \(scale) caption \(caption): \(gif.data.count / 1024) KB, \(gif.images) images, \(String(format: "%.2f", took)) s"
+        )
+        if caption {
+          try gif.data.write(to: URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("bench-\(scale)x.gif"))
         }
       }
     }
-    GIF.ways = [.opaque, .either]
   }
 }

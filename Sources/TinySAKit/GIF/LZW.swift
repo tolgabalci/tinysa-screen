@@ -1,10 +1,6 @@
 /// GIF's LZW compression (GIF89a, appendix F): palette indices in, variable-length codes out, packed least significant
 /// bit first. Codes start one bit wider than the indices and grow to 12 bits; a clear code starts the stream and the
 /// table again whenever it fills, and the end code closes it.
-///
-/// A pixel may offer two indices: one where the frame shows through to the one before it (the transparent index), the
-/// other its own colour; both look the same, and the encoder takes whichever continues the string it is matching, so
-/// runs of unchanged pixels and runs of one colour both stay long.
 struct LZWEncoder {
   private static let slots = 8192  // twice the 4096 codes: short probes
   private var keys = [Int32](repeating: -1, count: LZWEncoder.slots)
@@ -17,9 +13,8 @@ struct LZWEncoder {
     return bits
   }
 
-  /// The compressed codes of `symbols` (each below `1 << codeSize`); where `alternates` differs from `symbols`, either
-  /// index will do for that pixel.
-  mutating func encode(_ symbols: [UInt8], alternates: [UInt8]? = nil, codeSize: Int) -> [UInt8] {
+  /// The compressed codes of `symbols`, each below `1 << codeSize`.
+  mutating func encode(_ symbols: [UInt8], codeSize: Int) -> [UInt8] {
     precondition((2...8).contains(codeSize))
     var out = BitWriter(capacity: symbols.count / 2 + 16)
     let clear = 1 << codeSize
@@ -32,58 +27,34 @@ struct LZWEncoder {
       out.write(end, width)
       return out.finish()
     }
-    let alternates = alternates ?? symbols
-    precondition(alternates.count == symbols.count)
     symbols.withUnsafeBufferPointer { symbols in
-      alternates.withUnsafeBufferPointer { alternates in
-        keys.withUnsafeMutableBufferPointer { keys in
-          codes.withUnsafeMutableBufferPointer { codes in
-            let n = symbols.count
-            var current = Int(first)
-            if alternates[0] != first, n > 1, alternates[0] == symbols[1] { current = Int(alternates[0]) }
-            var i = 1
-            while i < n {
-              let symbol = Int(symbols[i])
-              var slot = Self.slot(current << 8 | symbol, keys)
-              if keys[slot] >= 0 {
-                current = Int(codes[slot])
-                i += 1
-                continue
-              }
-              let alternate = Int(alternates[i])
-              if alternate != symbol {
-                let other = Self.slot(current << 8 | alternate, keys)
-                if keys[other] >= 0 {
-                  current = Int(codes[other])
-                  i += 1
-                  continue
-                }
-              }
-              out.write(current, width)
-              // The next string starts with this pixel: as its own colour when the next pixel has that colour too.
-              var start = symbol
-              if alternate != symbol, i + 1 < n, Int(symbols[i + 1]) == alternate {
-                start = alternate
-                slot = Self.slot(current << 8 | alternate, keys)
-              }
-              keys[slot] = Int32(current << 8 | start)
-              codes[slot] = UInt16(next)
-              next += 1
-              if next > 1 << width, width < 12 { width += 1 }
-              if next == 4096 {
-                out.write(clear, width)
-                keys.update(repeating: -1)
-                width = codeSize + 1
-                next = clear + 2
-              }
-              current = start
-              i += 1
+      keys.withUnsafeMutableBufferPointer { keys in
+        codes.withUnsafeMutableBufferPointer { codes in
+          var current = Int(first)
+          for i in 1..<symbols.count {
+            let symbol = Int(symbols[i])
+            let slot = Self.slot(current << 8 | symbol, keys)
+            if keys[slot] >= 0 {
+              current = Int(codes[slot])
+              continue
             }
             out.write(current, width)
-            // A decoder adds a code to its table after this last one too, widening its codes when the table reaches
-            // the next size: the end code goes at the width it will read.
-            if next == 1 << width, width < 12 { width += 1 }
+            keys[slot] = Int32(current << 8 | symbol)
+            codes[slot] = UInt16(next)
+            next += 1
+            if next > 1 << width, width < 12 { width += 1 }
+            if next == 4096 {
+              out.write(clear, width)
+              keys.update(repeating: -1)
+              width = codeSize + 1
+              next = clear + 2
+            }
+            current = symbol
           }
+          out.write(current, width)
+          // A decoder adds a code to its table after this last one too, widening its codes when the table reaches
+          // the next size: the end code goes at the width it will read.
+          if next == 1 << width, width < 12 { width += 1 }
         }
       }
     }

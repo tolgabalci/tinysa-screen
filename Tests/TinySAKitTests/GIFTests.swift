@@ -25,7 +25,7 @@ final class GIFTests: XCTestCase {
   }
 
   /// Each image of the GIF shows the screen of its moment exactly, kept under the next, for the real time between
-  /// them; only the changed rectangle is stored.
+  /// them; only the rows that changed are stored, across the whole width, with no transparent colour.
   func testFramesComeOutExactly() throws {
     let screens = [Self.screen(blockAt: 10), Self.screen(blockAt: 50), Self.screen(blockAt: 300)]
     let clip = Self.clip([(0, screens[0]), (0.77, screens[1]), (1.54, screens[2])], end: 2.31)
@@ -39,11 +39,40 @@ final class GIFTests: XCTestCase {
     for (image, screen) in zip(decoded.images, screens) {
       XCTAssertEqual(image.canvas, screen.pixels.map(Self.rgb), "screen at image \(image)")
       XCTAssertEqual(image.disposal, 1)
+      XCTAssertNil(image.transparent)
+      XCTAssertEqual([image.x, image.width], [0, 480])
     }
-    // The second image covers only the block's old and new places.
+    // The second image covers the rows the block left and moved to.
     let second = decoded.images[1]
-    XCTAssertEqual([second.x, second.y, second.width, second.height], [10, 200, 60, 10])
+    XCTAssertEqual([second.y, second.height], [200, 10])
     XCTAssertLessThan(gif.data.count, 3000)
+  }
+
+  /// A site that shrinks a GIF image by image, fitting each to the width it wants (groups.io does, as ImageMagick does
+  /// resizing to a width without -coalesce), still shows the screen: every image is as wide as the GIF, so all are
+  /// scaled alike, and none has a transparent pixel for the screen before to show through. An image narrower than the
+  /// GIF would come out larger than the rest and out of place.
+  func testShrinkingImageByImageShowsTheScreen() throws {
+    let screens = [Self.screen(blockAt: 10), Self.screen(blockAt: 50), Self.screen(blockAt: 300)]
+    let clip = Self.clip([(0, screens[0]), (0.77, screens[1]), (1.54, screens[2])], end: 2.31)
+    let gif = try XCTUnwrap(GIF.make(clip, options: GIFOptions(scale: 2, showsDate: false, showsTime: false)))
+    let decoded = try DecodedGIF(gif.data)
+    XCTAssertEqual(decoded.images.count, 3)
+    // Each image fitted to 480 across, nearest pixel, at the place its own scale puts it; off the canvas is cut.
+    var canvas = [UInt32](repeating: 0, count: 480 * 320)
+    for (image, screen) in zip(decoded.images, screens) {
+      let scale = 480.0 / Double(image.width)
+      let left = Int((Double(image.x) * scale).rounded())
+      let top = Int((Double(image.y) * scale).rounded())
+      for y in 0..<Int((Double(image.height) * scale).rounded()) where top + y < 320 {
+        for x in 0..<480 where left + x < 480 {
+          let column = min(Int(Double(x) / scale), image.width - 1)
+          let row = min(Int(Double(y) / scale), image.height - 1)
+          if let pixel = image.pixels[row * image.width + column] { canvas[(top + y) * 480 + left + x] = pixel }
+        }
+      }
+      XCTAssertEqual(canvas, screen.pixels.map(Self.rgb), "screen at image \(image.y)")
+    }
   }
 
   /// At twice the size every pixel is a 2 × 2 square.
@@ -85,10 +114,11 @@ final class GIFTests: XCTestCase {
       XCTAssertGreaterThan(lit.min() ?? 0, 240)
       XCTAssertLessThan(lit.max() ?? 480, 480 - 4)
     }
-    // After the first, each image is only the part of the strip that changed.
+    // After the first, each image is only the rows of the strip that changed, across the whole width.
     for image in decoded.images.dropFirst() {
       XCTAssertGreaterThanOrEqual(image.y, 320)
-      XCTAssertLessThan(image.width, 100)
+      XCTAssertLessThan(image.height, 16)
+      XCTAssertEqual([image.x, image.width], [0, 480])
     }
   }
 

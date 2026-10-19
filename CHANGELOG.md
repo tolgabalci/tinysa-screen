@@ -2,6 +2,13 @@
 
 All notable changes are listed here, newest first. Versions follow [Semantic Versioning](https://semver.org).
 
+## 1.1.2 (2026-10-19)
+
+- GIFs show rightly where a site shrinks them image by image. Posted to groups.io, a GIF's frames piled up on each
+  other: it fits each image of a GIF to its width, so an image narrower than the GIF came out larger than the rest and
+  out of place, and the old screen showing through its transparent pixels stayed. Each image is now the rows that
+  changed, across the whole width, every pixel in its own colour, which makes GIFs a fifth to a half larger.
+
 ## 1.1.1 (2026-10-19)
 
 - Peak hold: View › Hold Peaks For sets how long it keeps each level (10 or 30 seconds, a minute, 5 minutes, or until

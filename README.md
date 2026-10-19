@@ -224,9 +224,11 @@ What's in a GIF:
   sweeps, so the GIF plays as it happened. No dithering, no blur: a tinySA's screen has fewer colours than a GIF holds.
 - **The date and time** in a strip under the screen, at its bottom right, in your Mac's formats, the time to the
   second and ticking as the GIF plays (both can be turned off).
-- **Small files**: only the part of the screen that changed since the frame before is stored, and a screen that keeps
-  still costs nothing. A minute of a busy band takes about 300 KB at the sharp size (125 KB small); with the
-  analyzer's waterfall on, which changes every sweep, 2 to 4 MB (under half that small).
+- **Small files**: only the rows of the screen that changed since the frame before are stored, and a screen that keeps
+  still costs nothing. A minute of a busy band takes about 550 KB at the sharp size (220 KB small); with the
+  analyzer's waterfall on, which changes every sweep, 3 to 6 MB (under half that small).
+- **Right where it's shrunk**: every image in the file is as wide as the GIF and has no transparent pixels, so a forum
+  that shrinks GIFs image by image (groups.io does) still shows the screen, not frames piled on each other.
 - **Two sizes**: Sharp (twice the screen's size, 960 × 672 for a tinySA Ultra, every pixel a sharp 2 × 2 square) or
   Small (the screen's own size).
 
@@ -302,7 +304,7 @@ crashed viewer may have left on, asks for the firmware version and the model, ca
 the screen packed into about 30 KB), then sends `refresh on`. From then on the analyzer sends every region it draws, as
 it draws it, and the app paints the regions onto its copy of the screen. Clicks go back as `touch x y` and
 `release x y`. GIFs come from the app's own encoder: a frame once each sweep is drawn, in its exact colours, only the
-rectangle that changed, compressed with GIF's LZW. [docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md) describes the formats
+rows that changed, compressed with GIF's LZW. [docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md) describes the formats
 and the GIFs.
 
 ## Troubleshooting

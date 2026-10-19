@@ -14,6 +14,8 @@ struct DecodedGIF {
     var transparent: Int?
     var disposal: Int
     var codeSize: Int
+    /// The image's own pixels, row by row, as the canvas holds them; nil where it is transparent.
+    var pixels: [UInt32?]
     /// The canvas after this image, as RGB triples packed in a UInt32 (r | g << 8 | b << 16).
     var canvas: [UInt32]
   }
@@ -93,18 +95,20 @@ struct DecodedGIF {
         let codeSize = try byte()
         let indices = try Self.lzwDecode(subBlocks(), codeSize: codeSize, count: w * h)
         guard x + w <= width, y + h <= height else { throw Failure.bad("image off the canvas") }
+        var pixels = [UInt32?](repeating: nil, count: w * h)
         for row in 0..<h {
           for column in 0..<w {
             let index = Int(indices[row * w + column])
             if index == transparent { continue }
             guard index < colors.count else { throw Failure.bad("index \(index) past the colour table") }
+            pixels[row * w + column] = colors[index]
             canvas[(y + row) * width + x + column] = colors[index]
           }
         }
         images.append(
           Image(
             x: x, y: y, width: w, height: h, delay: delay, transparent: transparent, disposal: disposal,
-            codeSize: codeSize, canvas: canvas))
+            codeSize: codeSize, pixels: pixels, canvas: canvas))
         transparent = nil
         delay = 0
         disposal = 0
