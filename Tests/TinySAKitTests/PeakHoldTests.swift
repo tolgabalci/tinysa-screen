@@ -158,6 +158,59 @@ final class PeakHoldTests: XCTestCase {
     return screen
   }
 
+  /// A screen like `screen(peakAt:row:)` with several peaks.
+  func screen(peaks: [(column: Int, row: Int)]) -> Snapshot {
+    var screen = screen(peakAt: peaks[0].column, row: peaks[0].row)
+    let yellow = Snapshot.pixel(r: 255, g: 255, b: 0)
+    for peak in peaks.dropFirst() {
+      for y in peak.row...200 { screen.pixels[y * 480 + peak.column] = yellow }
+    }
+    return screen
+  }
+
+  /// The numbers of the held peaks, by column.
+  func numbers(_ hold: PeakHold) -> [Int: Int] {
+    Dictionary(uniqueKeysWithValues: (hold.state?.peaks ?? []).map { ($0.column, $0.number) })
+  }
+
+  /// Peaks keep their numbers while they're held, as an analyzer's markers stay on their peaks: a higher one coming
+  /// doesn't renumber them.
+  func testPeaksKeepTheirNumbers() {
+    let hold = PeakHold()
+    let start = Date(timeIntervalSinceReferenceDate: 1000)
+    hold.add(screen(peaks: [(100, 120), (300, 150)]), at: start)
+    XCTAssertEqual(numbers(hold), [100: 1, 300: 2])  // highest first, to begin with
+    hold.add(screen(peaks: [(100, 120), (300, 150), (200, 60)]), at: start.addingTimeInterval(1))
+    XCTAssertEqual(numbers(hold), [100: 1, 300: 2, 200: 3])
+    XCTAssertEqual(hold.state?.peaks.first?.column, 200)  // the list itself stays highest first
+  }
+
+  /// A peak gone frees its number, and a new one takes the lowest free.
+  func testANewPeakTakesTheLowestFreeNumber() {
+    let hold = PeakHold()
+    hold.window = 2
+    let start = Date(timeIntervalSinceReferenceDate: 1000)
+    hold.add(screen(peaks: [(100, 120), (300, 150)]), at: start)
+    XCTAssertEqual(numbers(hold), [100: 1, 300: 2])
+    hold.add(screen(peaks: [(300, 150), (400, 100)]), at: start.addingTimeInterval(3))  // 100 MHz's out of the window
+    XCTAssertEqual(numbers(hold), [300: 2, 400: 1])
+  }
+
+  /// A peak that moves a few columns (2 % of the graph: half a megahertz of 26 MHz) is the same peak; further, another.
+  func testAPeakMovedALittleKeepsItsNumber() {
+    let hold = PeakHold()
+    hold.window = 2
+    let start = Date(timeIntervalSinceReferenceDate: 1000)
+    hold.add(screen(peaks: [(400, 100), (100, 120), (200, 150)]), at: start)
+    XCTAssertEqual(numbers(hold), [400: 1, 100: 2, 200: 3])
+    // 100 gone, 200 moved to 205: still 3, though 2 is free.
+    hold.add(screen(peaks: [(400, 100), (205, 150)]), at: start.addingTimeInterval(3))
+    XCTAssertEqual(numbers(hold), [400: 1, 205: 3])
+    // Moved 95 columns: a new peak, with the lowest free number.
+    hold.add(screen(peaks: [(400, 100), (300, 150)]), at: start.addingTimeInterval(6))
+    XCTAssertEqual(numbers(hold), [400: 1, 300: 2])
+  }
+
   /// With a window, a level is held only that long; without one, until the hold starts over.
   func testWindowForgets() throws {
     let start = Date(timeIntervalSinceReferenceDate: 1000)

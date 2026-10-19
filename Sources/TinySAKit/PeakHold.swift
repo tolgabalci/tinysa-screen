@@ -7,6 +7,9 @@ import Foundation
 /// latest seconds. Frames come from the session's thread; `onChange` is called there.
 public final class PeakHold: @unchecked Sendable {
   public struct Peak: Equatable, Sendable {
+    /// Its number on the screen, as an analyzer's marker stays on its peak: kept while the hold holds the peak (moved
+    /// a few columns at most), the lowest free one for a new peak.
+    public var number = 0
     /// Where on the screen (its own pixels).
     public var column: Int
     public var row: Int
@@ -20,7 +23,7 @@ public final class PeakHold: @unchecked Sendable {
     /// The highest row reached in each column (the top is row 0), nil where nothing has been seen.
     public var rows: [Int?]
     public var scale: GraphScale?
-    /// The highest peaks, highest first.
+    /// The highest peaks, highest first, each with its number.
     public var peaks: [Peak]
     /// When the hold started (over).
     public var since: Date
@@ -56,6 +59,8 @@ public final class PeakHold: @unchecked Sendable {
   /// When the held rows began, and the ones kept apart.
   private var heldSince: Date?
   private var apartSince: Date?
+  /// The peaks last numbered, whose numbers the next ones keep; none when what's shown starts over.
+  private var numbered: [Peak] = []
   /// The labels' fingerprint now, the spans and levels read for each fingerprint seen (a menu over the labels changes it
   /// for a while), and the ones the held rows belong to.
   private var labels: Int?
@@ -102,6 +107,7 @@ public final class PeakHold: @unchecked Sendable {
     apart.removeAll()
     heldSince = nil
     apartSince = nil
+    numbered.removeAll()
     current = nil
     labels = nil
     rowsScale = nil
@@ -121,6 +127,33 @@ public final class PeakHold: @unchecked Sendable {
     }
     buckets = apart
     heldSince = apartSince ?? time
+  }
+
+  /// Numbers for the peaks found (highest first), as an analyzer's markers stay on their peaks: a peak within 2 % of
+  /// the graph's width of one numbered before keeps its number (the nearest, each number once; half a megahertz of a
+  /// 26 MHz span, as the bench's monitor has it), a new one takes the lowest number free, the higher new peak first.
+  private func number(_ found: [Peak], width: Int) -> [Peak] {
+    let near = max(3, width / 50)
+    var numbers = [Int?](repeating: nil, count: found.count)
+    for old in numbered.sorted(by: { $0.number < $1.number }) {
+      let candidates = found.indices.filter { numbers[$0] == nil && abs(found[$0].column - old.column) <= near }
+      if let k = candidates.min(by: { abs(found[$0].column - old.column) < abs(found[$1].column - old.column) }) {
+        numbers[k] = old.number
+      }
+    }
+    var taken = Set(numbers.compactMap { $0 })
+    for k in found.indices where numbers[k] == nil {
+      let free = (1...).first { !taken.contains($0) } ?? 1
+      numbers[k] = free
+      taken.insert(free)
+    }
+    let peaks = found.indices.map { k -> Peak in
+      var peak = found[k]
+      peak.number = numbers[k] ?? 0
+      return peak
+    }
+    numbered = peaks
+    return peaks
   }
 
   /// `rows` into the bucket for `second` (one bucket for the whole hold without a window).
@@ -170,6 +203,7 @@ public final class PeakHold: @unchecked Sendable {
         settle(scale, at: time)
       } else if changed, apartSince == nil, !buckets.isEmpty {
         apartSince = time
+        numbered.removeAll()  // what's shown now may be another span: its peaks aren't the ones before
       }
       if heldSince == nil { heldSince = time }
       let second = Int(time.timeIntervalSinceReferenceDate.rounded(.down))
@@ -188,7 +222,7 @@ public final class PeakHold: @unchecked Sendable {
         quietSpot: Self.quietSpot(
           screen, graph: graph, size: Self.readoutSize(peaks: count),
           staying: current?.graph == graph ? current?.quietSpot : nil))
-      state.peaks = Self.peaks(in: state, count: count)
+      state.peaks = number(Self.peaks(in: state, count: count), width: graph.right - graph.left)
       current = state
       return state
     }
@@ -218,7 +252,7 @@ public final class PeakHold: @unchecked Sendable {
         state.rows = Self.highest(self.buckets, count: state.rows.count)
         state.since = self.heldSince ?? state.since
         state.scale = scale
-        state.peaks = Self.peaks(in: state, count: self.count)
+        state.peaks = self.number(Self.peaks(in: state, count: self.count), width: graph.right - graph.left)
         self.current = state
         return state
       }

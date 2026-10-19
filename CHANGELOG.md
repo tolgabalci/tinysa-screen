@@ -7,7 +7,9 @@ All notable changes are listed here, newest first. Versions follow [Semantic Ver
 - Peak hold: View › Hold Peaks For sets how long it keeps each level (10 or 30 seconds, a minute, 5 minutes, or until
   cleared); a minute by default now, as a monitoring hold keeps the last minute. Its line is cyan by default (it was
   magenta, one of the analyzer's own trace colours, as green, red and yellow are), and Settings › Peak hold › Color
-  chooses another.
+  chooses another. Its peaks keep their numbers while they're held, as an analyzer's markers stay on their peaks (a
+  peak moved a few columns is the same one, a new peak takes the lowest number free), and the box lists them by number;
+  before, they were renumbered by height after every sweep.
 - Peak hold, fixed: a band chosen (or other levels) starts the hold over from the first sweep on it, and the old
   span's levels never show over the new one meanwhile (they could, until its labels were read, and its first seconds
   were then lost); a menu over the labels for a while still keeps what was held. Its readouts came back slowly or not

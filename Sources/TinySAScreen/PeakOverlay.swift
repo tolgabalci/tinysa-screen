@@ -58,9 +58,9 @@ final class PeakOverlay {
 
     // Numbered tags at the right of each peak's top (the analyzer centres its own markers above them).
     let font = NSFont.monospacedDigitSystemFont(ofSize: max(8, 5.5 * scale), weight: .semibold)
-    for (n, peak) in state.peaks.enumerated() {
+    for peak in state.peaks {
       let top = point(peak.column, peak.row)
-      let tag = text("\(n + 1)", font: font, color: .black, contentsScale: contentsScale)
+      let tag = text("\(peak.number)", font: font, color: .black, contentsScale: contentsScale)
       let size = tag.preferredFrameSize()
       let box = CALayer()
       box.backgroundColor = color.cgColor
@@ -76,11 +76,12 @@ final class PeakOverlay {
     guard let scaleRead = state.scale, !state.peaks.isEmpty else { return }
     let span = Double(scaleRead.stop - scaleRead.start)
     let perColumn = span / Double(max(state.graph.right - state.graph.left - 1, 1))
+    // By number, as the analyzer lists its own markers: a peak's line stays where it is while the peak is held.
     var lines = [Self.title(state)]
-    for (n, peak) in state.peaks.enumerated() {
+    for peak in state.peaks.sorted(by: { $0.number < $1.number }) {
       guard let frequency = peak.frequency, let level = peak.level else { continue }
       lines.append(
-        "\(n + 1)  \(Self.frequency(frequency, resolution: perColumn))  \(Self.level(level, resolution: abs(scaleRead.perRow)))")
+        "\(peak.number)  \(Self.frequency(frequency, resolution: perColumn))  \(Self.level(level, resolution: abs(scaleRead.perRow)))")
     }
     let readout = text(lines.joined(separator: "\n"), font: font, color: .white, contentsScale: contentsScale)
     let size = readout.preferredFrameSize()

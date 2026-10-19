@@ -171,7 +171,9 @@ fine as the screen's pixels: a column of the graph (58 kHz for 26 MHz) and a row
 On a sweep that caught a reader's burst, the peak hold read 902.23 MHz and −23 dBm where the analyzer's own marker said
 902.231 MHz and −23.2 dBm.
 
-A peak is a top standing at least 6 dB above the valleys around it and above the trace's noise.
+A peak is a top standing at least 6 dB above the valleys around it and above the trace's noise. Each keeps its number
+while it's held, as an analyzer's markers stay on their peaks: a higher one coming doesn't renumber the others, and a
+new peak takes the lowest number free. The box lists them by number.
 
 - **How long**: each level stays a minute after it was last reached, then goes, as a monitoring hold keeps the last
   minute at full strength. **View › Hold Peaks For** (or Settings) makes that 10 or 30 seconds, 5 minutes, or until

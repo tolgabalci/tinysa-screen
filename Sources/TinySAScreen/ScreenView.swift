@@ -222,9 +222,9 @@ final class ScreenView: NSView {
     }
     if let state = peakState, let scale = state.scale {
       let span = Double(scale.stop - scale.start) / Double(max(state.graph.right - state.graph.left - 1, 1))
-      let peaks = state.peaks.compactMap { peak -> String? in
+      let peaks = state.peaks.sorted { $0.number < $1.number }.compactMap { peak -> String? in
         guard let frequency = peak.frequency, let level = peak.level else { return nil }
-        return PeakOverlay.frequency(frequency, resolution: span) + " "
+        return "\(peak.number) " + PeakOverlay.frequency(frequency, resolution: span) + " "
           + PeakOverlay.level(level, resolution: abs(scale.perRow))
       }
       text += ". " + PeakOverlay.title(state) + ": " + (peaks.isEmpty ? "no peaks" : peaks.joined(separator: "; "))
