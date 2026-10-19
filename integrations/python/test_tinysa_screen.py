@@ -2,6 +2,7 @@
 
     python3 -m unittest discover -s integrations/python
 """
+import contextlib
 import os
 import select
 import socket
@@ -74,6 +75,32 @@ class LiveScreenTests(unittest.TestCase):
         at = (y * WIDTH + x) * 2
         return bytes(self.live.pixels[at : at + 2])
 
+    @contextlib.contextmanager
+    def console_clock(self, due, start=1000.0):
+        """Runs the block on a clock of the test's own, the regions in `due` ((when, bytes), in order) coming when it
+        says. Timed for real, the moments these tests are about move on a busy machine (a CI runner), where this
+        program can be held up for tens of milliseconds."""
+        clock = [start]
+        wall = time.time()
+        real_select = select.select
+
+        def console_select(readers, writers, errors, timeout=None):
+            """Waits as a console does: until the next region comes (sent then), else the whole timeout."""
+            ready, _, _ = real_select(readers, [], [], 0)
+            if ready:
+                return ready, [], []
+            if due and due[0][0] <= clock[0] + (timeout or 0):
+                clock[0] = max(clock[0], due[0][0])
+                self.analyzer.sendall(due.pop(0)[1])
+                return real_select(readers, [], [], 1)
+            clock[0] += timeout or 0
+            return [], [], []
+
+        with mock.patch.object(tinysa_screen.time, 'monotonic', lambda: clock[0]), \
+                mock.patch.object(tinysa_screen.time, 'time', lambda: wall + clock[0] - start), \
+                mock.patch.object(tinysa_screen.select, 'select', console_select):
+            yield clock
+
     def feed(self, data, piece=None):
         piece = piece or len(data)
         for i in range(0, len(data), piece):
@@ -121,12 +148,12 @@ class LiveScreenTests(unittest.TestCase):
 
     def test_a_picture_once_the_burst_pauses(self):
         burst = b''.join(region(b'fill\r\n', x, 0, 1, 1, b'\x01\x01') for x in range(20))
-        threading.Timer(0.05, lambda: self.analyzer.sendall(burst)).start()
-        started, asked = time.monotonic(), time.time()
-        self.assertTrue(self.live.picture(2))
-        self.assertGreaterEqual(time.monotonic() - started, 0.05 + 0.05 - 0.01)
-        self.assertAlmostEqual(self.live.drawn, asked + 0.05, delta=0.03)  # when its last region came
-        self.assertFalse(self.live.picture(0.2))  # nothing more drawn
+        with self.console_clock([(1000.05, burst)]) as clock:
+            asked = time.time()
+            self.assertTrue(self.live.picture(2))
+            self.assertGreaterEqual(clock[0] - 1000.0, 0.05 + 0.05)  # the burst, then a pause as long as `settle`
+            self.assertAlmostEqual(self.live.drawn, asked + 0.05, delta=0.001)  # when its last region came
+            self.assertFalse(self.live.picture(0.2))  # nothing more drawn
 
     def test_bytes_waiting_after_a_delay_are_read_before_the_burst_ends(self):
         self.feed(region(b'fill\r\n', 0, 9, 1, 1, b'\x01\x01'))
@@ -136,30 +163,12 @@ class LiveScreenTests(unittest.TestCase):
         self.assertEqual(self.pixel(1, 9), b'\x02\x02')
 
     def test_a_pause_inside_a_burst_lengthens_the_wait_for_its_end(self):
-        # On a clock of its own, the regions coming when it says: a 30 ms pause timed for real goes unseen on a busy
-        # machine (a CI runner), where this program can be held up long enough to read both regions at once.
-        clock = [1000.0]
         due = [(1000.2, region(b'fill\r\n', 0, 8, 1, 1, b'\x01\x01')),
                (1000.23, region(b'fill\r\n', 1, 8, 1, 1, b'\x02\x02'))]
-        real_select = select.select
-
-        def console_select(readers, writers, errors, timeout=None):
-            """Waits as a console does: until the next region comes (sent then), else the whole timeout."""
-            ready, _, _ = real_select(readers, [], [], 0)
-            if ready:
-                return ready, [], []
-            if due and due[0][0] <= clock[0] + (timeout or 0):
-                clock[0] = max(clock[0], due[0][0])
-                self.analyzer.sendall(due.pop(0)[1])
-                return real_select(readers, [], [], 1)
-            clock[0] += timeout or 0
-            return [], [], []
-
-        with mock.patch.object(tinysa_screen.time, 'monotonic', lambda: clock[0]), \
-                mock.patch.object(tinysa_screen.select, 'select', console_select):
+        with self.console_clock(due):
             self.assertTrue(self.live.picture(3))
         self.assertEqual(self.pixel(1, 8), b'\x02\x02')
-        self.assertGreater(self.live.settle, 0.07)
+        self.assertGreater(self.live.settle, 0.07)  # three times the 30 ms pause
         self.assertLessEqual(self.live.settle, 0.12)
 
     def test_a_header_off_the_screen_is_skipped(self):
