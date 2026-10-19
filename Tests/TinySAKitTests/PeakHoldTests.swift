@@ -89,6 +89,28 @@ final class PeakHoldTests: XCTestCase {
     XCTAssertEqual(fit.1 * 24, -10, accuracy: 0.001)
   }
 
+  /// A trace across the minus signs has the reading on macOS 15 take them for letters: still minus signs, as a label is
+  /// only ever a number. These are its readings of the 2.4 GHz screen, at both zooms.
+  func testLevelFitTakesMinusSignsReadAsLetters() throws {
+    let graph = Graph(left: 30, right: 480, top: 0, bottom: 240, gridRows: stride(from: 0, through: 240, by: 24).map { $0 })
+    let readings = [
+      [(".......", -1), ("10", 2), ("-10", 49), ("H20", 72), ("F30", 95), ("F40", 119), ("H50", 144), (":60", 169),
+        ("H80", 216)],
+      [("OT", 2), ("...... .", -1), ("F10", 48), ("F20", 70), ("F30", 94), ("P40", 119), ("H50", 144), ("60", 169),
+        ("H8O", 216)],
+    ]
+    for reading in readings {
+      let fit = try XCTUnwrap(GraphScale.fitLevels(reading.map { LabelReader.Line(text: $0.0, top: $0.1) }, graph: graph))
+      XCTAssertEqual(fit.0, 10, accuracy: 0.001)
+      XCTAssertEqual(fit.1 * 24, -10, accuracy: 0.001)
+    }
+    XCTAssertEqual(GraphScale.levelValue("H8O"), -80)
+    XCTAssertEqual(GraphScale.levelValue("+10"), 10)
+    XCTAssertNil(GraphScale.levelValue("OT"))
+    XCTAssertNil(GraphScale.levelValue("......."))
+    XCTAssertNil(GraphScale.levelValue("dBm"))
+  }
+
   func testParsesTheSpan() {
     XCTAssertEqual(GraphScale.parseSpan("START 902.000000MHz 2.0MHz/ SToP 928.000000MHz").map { [$0.0, $0.1] }, [902_000_000, 928_000_000])
     XCTAssertEqual(GraphScale.parseSpan("START 2.400000GHz 10.0MHz/ STOP 2.483500GHz").map { [$0.0, $0.1] }, [2_400_000_000, 2_483_500_000])

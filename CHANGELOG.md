@@ -14,8 +14,8 @@ All notable changes are listed here, newest first. Versions follow [Semantic Ver
   span's levels never show over the new one meanwhile (they could, until its labels were read, and its first seconds
   were then lost); a menu over the labels for a while still keeps what was held. Its readouts came back slowly or not
   at all on busy bands: the dots of a waterfall at its strongest touched the labels' fingerprint (2.4 GHz Wi-Fi, say),
-  labels that couldn't be read once weren't tried again, and a level read without its minus sign ("30" for "−30")
-  spoiled the fit; and a change of the reference level went unseen.
+  labels that couldn't be read once weren't tried again, and a level read without its minus sign ("30" for "−30"),
+  or with it taken for a letter where a trace crosses it ("H20", as macOS 15 reads it), spoiled the fit; and a change of the reference level went unseen.
 - Where files go: Settings › Saving › Save to chooses the folder GIFs and screenshots are saved in (the Desktop until
   then), with Show in Finder; the menu and buttons name it. A folder that's moved or renamed is followed; while it
   can't be found or written to, a file goes to the Desktop and the window says so.

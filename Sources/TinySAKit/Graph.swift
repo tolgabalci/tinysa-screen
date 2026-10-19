@@ -191,14 +191,27 @@ public struct GraphScale: Equatable, Sendable {
   }
 
 
+  /// A level label's value. A label is only ever a number, with or without its minus, so one mark before the digits
+  /// that isn't one stands for the minus: a trace across the thin minus has it read as "H", "F", "P" or ":" ("H20" for
+  /// "−20"; the reading on macOS 15 does), and an O among the digits is a zero.
+  static func levelValue(_ label: String) -> Double? {
+    let text = String(
+      LabelReader.plain(label).replacingOccurrences(of: " ", with: "").map { $0 == "O" || $0 == "o" ? "0" : $0 })
+    if let value = Double(text), value.isFinite { return value }
+    guard let first = text.first, !first.isNumber, first != ".", text.dropFirst().first?.isNumber == true,
+      let rest = Double(text.dropFirst()), rest.isFinite, rest >= 0
+    else { return nil }
+    return -rest
+  }
+
   /// The level labels (numbers at grid lines, the top of each at its line) fitted to a straight line: the levels
   /// that agree on one step per grid line, at least three of them. A misread label ("30" for "−30") disagrees and is
   /// left out.
   static func fitLevels(_ labels: [LabelReader.Line], graph: Graph) -> (Double, Double)? {
     var points: [(row: Int, value: Double)] = []
     for label in labels {
-      let text = LabelReader.plain(label.text).replacingOccurrences(of: " ", with: "")
-      guard let value = Double(text), let row = graph.gridRows.min(by: { abs($0 - label.top) < abs($1 - label.top) }),
+      guard let value = levelValue(label.text),
+        let row = graph.gridRows.min(by: { abs($0 - label.top) < abs($1 - label.top) }),
         abs(row - label.top) <= 4
       else { continue }
       points.append((row, value))
