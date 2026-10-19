@@ -3,15 +3,16 @@
     python3 -m unittest discover -s integrations/python
 """
 import os
+import select
 import socket
 import struct
-import subprocess
 import sys
 import tempfile
 import threading
 import time
 import unittest
 import zlib
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import tinysa_screen  # noqa: E402
@@ -135,15 +136,28 @@ class LiveScreenTests(unittest.TestCase):
         self.assertEqual(self.pixel(1, 9), b'\x02\x02')
 
     def test_a_pause_inside_a_burst_lengthens_the_wait_for_its_end(self):
-        # Sent by another process, as by the analyzer: a thread of this one would hold up the reader now and then.
-        first = region(b'fill\r\n', 0, 8, 1, 1, b'\x01\x01').hex()
-        second = region(b'fill\r\n', 1, 8, 1, 1, b'\x02\x02').hex()
-        script = ('import os, sys, time; fd = int(sys.argv[1]); time.sleep(0.2); os.write(fd, bytes.fromhex(sys.argv[2]));'
-                  ' time.sleep(0.03); os.write(fd, bytes.fromhex(sys.argv[3]))')
-        fd = self.analyzer.fileno()
-        sender = subprocess.Popen([sys.executable, '-I', '-c', script, str(fd), first, second], pass_fds=[fd])
-        self.assertTrue(self.live.picture(3))
-        sender.wait()
+        # On a clock of its own, the regions coming when it says: a 30 ms pause timed for real goes unseen on a busy
+        # machine (a CI runner), where this program can be held up long enough to read both regions at once.
+        clock = [1000.0]
+        due = [(1000.2, region(b'fill\r\n', 0, 8, 1, 1, b'\x01\x01')),
+               (1000.23, region(b'fill\r\n', 1, 8, 1, 1, b'\x02\x02'))]
+        real_select = select.select
+
+        def console_select(readers, writers, errors, timeout=None):
+            """Waits as a console does: until the next region comes (sent then), else the whole timeout."""
+            ready, _, _ = real_select(readers, [], [], 0)
+            if ready:
+                return ready, [], []
+            if due and due[0][0] <= clock[0] + (timeout or 0):
+                clock[0] = max(clock[0], due[0][0])
+                self.analyzer.sendall(due.pop(0)[1])
+                return real_select(readers, [], [], 1)
+            clock[0] += timeout or 0
+            return [], [], []
+
+        with mock.patch.object(tinysa_screen.time, 'monotonic', lambda: clock[0]), \
+                mock.patch.object(tinysa_screen.select, 'select', console_select):
+            self.assertTrue(self.live.picture(3))
         self.assertEqual(self.pixel(1, 8), b'\x02\x02')
         self.assertGreater(self.live.settle, 0.07)
         self.assertLessEqual(self.live.settle, 0.12)
