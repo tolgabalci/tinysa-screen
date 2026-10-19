@@ -40,7 +40,7 @@ final class PeakHoldTests: XCTestCase {
     for (name, level0, perRow, start, stop) in cases {
       let screen = try Fixture.screen(name)
       let graph = try XCTUnwrap(Graph.find(on: screen), name)
-      let scale = try XCTUnwrap(GraphScale.read(graph, on: screen), name)
+      let scale = try XCTUnwrap(GraphScale.read(graph, on: screen), "\(name), read as:\n\(readings(graph, on: screen))")
       XCTAssertEqual(scale.level0, level0, accuracy: 0.001, name)
       XCTAssertEqual(scale.perRow, perRow, accuracy: 0.0001, name)
       XCTAssertEqual(scale.start, start, name)
@@ -48,6 +48,22 @@ final class PeakHoldTests: XCTestCase {
       XCTAssertEqual(scale.frequency(column: graph.left, of: graph), start)
       XCTAssertEqual(scale.frequency(column: graph.right - 1, of: graph), stop)
     }
+  }
+
+  /// What the labels were read as at each zoom, for a failure's message: the reading differs between macOS versions.
+  private func readings(_ graph: Graph, on screen: Snapshot) -> String {
+    guard let image = screen.image() else { return "no image" }
+    let regions = graph.labelRegions(screen)
+    let zooms = [4, 8].map { zoom -> String in
+      let levels = LabelReader.lines(in: image, region: regions[0], zoom: zoom)
+      let span = LabelReader.lines(in: image, region: regions[1], zoom: zoom).map(\.text).joined(separator: " ")
+      let fit = GraphScale.fitLevels(levels, graph: graph).map { "\($0.0) + \($0.1)/row" } ?? "none"
+      let parsed = GraphScale.parseSpan(span).map { "\($0.0)–\($0.1)" } ?? "none"
+      let division = GraphScale.parseDivision(span).map { "\($0)" } ?? "none"
+      return "zoom \(zoom): levels \(levels.map { "\($0.text)@\($0.top)" }) fit \(fit); span \"\(span)\" \(parsed), "
+        + "division \(division)"
+    }
+    return zooms.joined(separator: "\n") + "\ngrid spacing \(graph.verticalSpacing(on: screen).map { "\($0)" } ?? "none")"
   }
 
   /// A misread label is outvoted by the others; too few labels, no scale.
