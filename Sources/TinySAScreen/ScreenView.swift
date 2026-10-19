@@ -126,6 +126,16 @@ final class ScreenView: NSView {
 
   private var peakState: PeakHold.State?
 
+  /// The peak hold's colour.
+  var peakColor: NSColor {
+    get { peaks.color }
+    set {
+      guard newValue != peaks.color else { return }
+      peaks.color = newValue
+      drawPeaks()
+    }
+  }
+
   private func drawPeaks() {
     let (rect, scale) = pictureRect
     peaks.show(peakState, in: rect, scale: scale, contentsScale: window?.backingScaleFactor ?? 2)

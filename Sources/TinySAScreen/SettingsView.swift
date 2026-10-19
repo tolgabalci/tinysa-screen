@@ -12,7 +12,8 @@ struct SettingsView: View {
   @AppStorage(Preferences.Key.gifScale) private var scale = 2
   @AppStorage(Preferences.Key.controlEnabled) private var controlEnabled = true
   @AppStorage(Preferences.Key.inkSeconds) private var inkSeconds = 3
-  @AppStorage(Preferences.Key.peakWindow) private var peakWindow = 0
+  @AppStorage(Preferences.Key.peakWindow) private var peakWindow = 60
+  @AppStorage(Preferences.Key.peakColor) private var peakColor = PeakColor.cyan.rawValue
   @AppStorage(Preferences.Key.peakCount) private var peakCount = 5
   @AppStorage(Preferences.Key.savedBands) private var savedBandsData = Data()
   @AppStorage(Preferences.Key.saveFolderPath) private var saveFolderPath = ""
@@ -70,11 +71,19 @@ struct SettingsView: View {
       saving
       Section {
         Picker("Hold each level", selection: $peakWindow) {
-          Text("Until cleared").tag(0)
-          Text("For 10 seconds").tag(10)
-          Text("For 30 seconds").tag(30)
-          Text("For 1 minute").tag(60)
-          Text("For 5 minutes").tag(300)
+          ForEach(Preferences.peakWindows, id: \.self) { seconds in
+            Text(Self.holding(seconds)).tag(seconds)
+          }
+        }
+        Picker("Color", selection: $peakColor) {
+          ForEach(PeakColor.allCases) { color in
+            Label {
+              Text(color.name)
+            } icon: {
+              Image(nsImage: color.swatch)
+            }
+            .tag(color.rawValue)
+          }
         }
         Stepper(value: $peakCount, in: 0...9) {
           HStack {
@@ -88,7 +97,7 @@ struct SettingsView: View {
         Text("Peak hold")
       } footer: {
         Text(
-          "Peak hold (⌥⌘P) reads the analyzer's live trace from its screen after each sweep, so the analyzer's own settings stay as they are. Levels are as fine as the screen's pixels: half a decibel at 10 dB a division."
+          "Peak hold (⌥⌘P) reads the analyzer's live trace from its screen after each sweep, so the analyzer's own settings stay as they are. Levels are as fine as the screen's pixels: half a decibel at 10 dB a division. View › Hold Peaks For sets how long too. Cyan is the one color none of the analyzer's own traces has (yellow, green, red and magenta), so the held line never passes for one of them."
         )
         .foregroundStyle(.secondary)
         .fixedSize(horizontal: false, vertical: true)
@@ -187,6 +196,26 @@ struct SettingsView: View {
       )
       .foregroundStyle(.secondary)
       .fixedSize(horizontal: false, vertical: true)
+    }
+  }
+
+  /// "Until cleared", "For 10 seconds", "For 1 minute"…
+  static func holding(_ seconds: Int) -> String {
+    switch seconds {
+    case 0: return "Until cleared"
+    case ..<60: return "For \(seconds) seconds"
+    case 60: return "For 1 minute"
+    default: return "For \(seconds / 60) minutes"
+    }
+  }
+
+  /// The same as menu items (View › Hold Peaks For): "Until Cleared", "10 Seconds", "1 Minute"…
+  static func holdingTitle(_ seconds: Int) -> String {
+    switch seconds {
+    case 0: return "Until Cleared"
+    case ..<60: return "\(seconds) Seconds"
+    case 60: return "1 Minute"
+    default: return "\(seconds / 60) Minutes"
     }
   }
 

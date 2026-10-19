@@ -328,10 +328,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     peakHold.reset()
   }
 
+  /// View › Hold Peaks For: the item's tag is the seconds (0: until cleared).
+  @objc func setPeakWindow(_ sender: NSMenuItem) {
+    Preferences.defaults.set(sender.tag, forKey: Preferences.Key.peakWindow)
+  }
+
   /// The peak hold on or off, and its settings, as the preferences say.
   private func updatePeakHold() {
     let on = Preferences.peakHold
     peaksButton.state = on ? .on : .off
+    view.peakColor = Preferences.peakColor.color
     let settings = (Preferences.peakWindow, Preferences.peakCount)
     if peakSettings.map({ $0.0 != settings.0 || $0.1 != settings.1 }) ?? true {
       peakSettings = settings
@@ -464,6 +470,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
       return status.instrument != .nanoVNA
     case #selector(clearPeakHold(_:)):
       return Preferences.peakHold && status.instrument != .nanoVNA
+    case #selector(setPeakWindow(_:)):
+      item.state = Preferences.defaults.integer(forKey: Preferences.Key.peakWindow) == item.tag ? .on : .off
+      return status.instrument != .nanoVNA
     case #selector(toggleFloatOnTop(_:)):
       item.state = Preferences.floatOnTop ? .on : .off
       return true

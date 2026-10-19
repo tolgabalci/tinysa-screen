@@ -4,6 +4,16 @@ All notable changes are listed here, newest first. Versions follow [Semantic Ver
 
 ## 1.1.1 (unreleased)
 
+- Peak hold: View › Hold Peaks For sets how long it keeps each level (10 or 30 seconds, a minute, 5 minutes, or until
+  cleared); a minute by default now, as a monitoring hold keeps the last minute. Its line is cyan by default (it was
+  magenta, one of the analyzer's own trace colours, as green, red and yellow are), and Settings › Peak hold › Color
+  chooses another.
+- Peak hold, fixed: a band chosen (or other levels) starts the hold over from the first sweep on it, and the old
+  span's levels never show over the new one meanwhile (they could, until its labels were read, and its first seconds
+  were then lost); a menu over the labels for a while still keeps what was held. Its readouts came back slowly or not
+  at all on busy bands: the dots of a waterfall at its strongest touched the labels' fingerprint (2.4 GHz Wi-Fi, say),
+  labels that couldn't be read once weren't tried again, and a level read without its minus sign ("30" for "−30")
+  spoiled the fit; and a change of the reference level went unseen.
 - Where files go: Settings › Saving › Save to chooses the folder GIFs and screenshots are saved in (the Desktop until
   then), with Show in Finder; the menu and buttons name it. A folder that's moved or renamed is followed; while it
   can't be found or written to, a file goes to the Desktop and the window says so.

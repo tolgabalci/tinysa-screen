@@ -91,19 +91,31 @@ public struct Graph: Equatable, Sendable {
     return gaps[gaps.count / 2]
   }
 
-  /// A fingerprint of the labels around the graph (white text), which changes when the span or the levels do.
+  /// A fingerprint of the labels, which changes when the span or the levels do: the span's text under the graph (its
+  /// own rows only: the strongest dots of a waterfall just above are white too, and change every sweep) and the two
+  /// top levels at the right edge (light grey; traces seldom reach that high, and a trace across a label hides some of
+  /// its pixels), with the grid's rows.
   public func labelPrint(on screen: Snapshot) -> Int {
     var hasher = Hasher()
-    let white = Snapshot.pixel(r: 255, g: 255, b: 255)
-    for region in labelRegions(screen) {
-      for y in region.minY..<region.maxY {
-        for x in region.minX..<region.maxX where screen.pixels[y * screen.width + x] == white {
+    let regions = labelRegions(screen)
+    let span = regions[1]
+    let levels = regions[0]
+    let twoLevels = min(levels.maxY, (gridRows.count > 1 ? gridRows[1] : 24) + 10)
+    for (rows, region) in [(max(span.minY, screen.height - 9)..<span.maxY, span), (levels.minY..<twoLevels, levels)] {
+      for y in rows {
+        for x in region.minX..<region.maxX where Self.isLabel(screen.pixels[y * screen.width + x]) {
           hasher.combine(x &* 31 &+ y)
         }
       }
     }
     hasher.combine(gridRows)
     return hasher.finalize()
+  }
+
+  /// A label's pixel: white (the span) or light grey (the levels), not the darker grid or a trace's colour.
+  static func isLabel(_ pixel: UInt32) -> Bool {
+    let (r, g, b) = (pixel & 0xFF, pixel >> 8 & 0xFF, pixel >> 16 & 0xFF)
+    return r >= 160 && max(r, g, b) - min(r, g, b) <= 8
   }
 
   /// The levels at the right edge, and the span under the graph.
@@ -202,8 +214,14 @@ public struct GraphScale: Equatable, Sendable {
         let fine = [0.1, 0.2, 0.5].contains { abs(abs(perDivision) - $0) < 0.001 }
         guard perRow < 0, abs(perDivision - perDivision.rounded()) < 0.01 || fine else { continue }
         let level0 = points[i].value - perRow * Double(points[i].row)
-        let agreeing = points.filter { abs(level0 + perRow * Double($0.row) - $0.value) < 0.001 + abs(perRow) * 0.01 }
-          .count
+        // A label agrees when it is the line's level at its row, or that level without its minus sign: the reading
+        // loses the screen's thin minus now and then ("30" for "−30"), never a digit that way.
+        let agreeing = points.filter { point in
+          let level = level0 + perRow * Double(point.row)
+          let close = 0.001 + abs(perRow) * 0.01
+          return abs(level - point.value) < close || (level < 0 && abs(-level - point.value) < close)
+        }
+        .count
         if agreeing > (best?.agreeing ?? 0) { best = (level0, perRow, agreeing) }
       }
     }

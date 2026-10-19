@@ -21,6 +21,13 @@ func makeMenuBar() -> NSMenu {
     item.keyEquivalentModifierMask = modifiers
     return item
   }
+  func submenu(_ title: String, _ items: [NSMenuItem]) -> NSMenuItem {
+    let holder = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+    let menu = NSMenu(title: title)
+    items.forEach(menu.addItem)
+    holder.submenu = menu
+    return holder
+  }
 
   _ = menu(
     "tinySA Screen",
@@ -70,6 +77,13 @@ func makeMenuBar() -> NSMenu {
       .separator(),
       item("Peak Hold", #selector(AppDelegate.togglePeakHold(_:)), "p", [.command, .option]),
       item("Clear Peak Hold", #selector(AppDelegate.clearPeakHold(_:)), "\u{8}", [.command, .option]),
+      submenu(
+        "Hold Peaks For",
+        Preferences.peakWindows.map { seconds in
+          let choice = item(SettingsView.holdingTitle(seconds), #selector(AppDelegate.setPeakWindow(_:)))
+          choice.tag = seconds
+          return choice
+        }),
       .separator(),
       item("Enter Full Screen", #selector(NSWindow.toggleFullScreen(_:)), "f", [.command, .control]),
     ])

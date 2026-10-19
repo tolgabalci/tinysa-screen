@@ -34,6 +34,8 @@ final class PeakHoldTests: XCTestCase {
       ("screen-915.png", 10, -10.0 / 24, 902_000_000, 928_000_000),
       ("screen-915-big.png", 10, -10.0 / 18, 902_000_000, 928_000_000),
       ("screen-433.png", 0, -10.0 / 24, 433_050_000, 434_790_000),
+      // Wi-Fi and Bluetooth, a burst at the right edge across the −70 label: read without the minus signs above it.
+      ("screen-2400.png", 10, -10.0 / 24, 2_400_000_000, 2_483_500_000),
     ]
     for (name, level0, perRow, start, stop) in cases {
       let screen = try Fixture.screen(name)
@@ -58,6 +60,17 @@ final class PeakHoldTests: XCTestCase {
     XCTAssertEqual(fit.0, 10, accuracy: 0.001)
     XCTAssertEqual(fit.1 * 24, -10, accuracy: 0.001)
     XCTAssertNil(GraphScale.fitLevels(Array(labels.prefix(2)), graph: graph))
+  }
+
+  /// A minus sign the reading lost ("30" for "−30", it does now and then) still counts, where the label's negative fits.
+  func testLevelFitTakesBackLostMinusSigns() throws {
+    let graph = Graph(left: 30, right: 480, top: 0, bottom: 240, gridRows: stride(from: 0, through: 240, by: 24).map { $0 })
+    // As read from the right side of a 2.4 GHz screen: −70 missing, the four above it without their signs.
+    let labels = [("10", 0), ("0", 24), ("-10", 48), ("-20", 72), ("30", 96), ("40", 120), ("50", 144), ("60", 168),
+      ("-80", 216)].map { LabelReader.Line(text: $0.0, top: $0.1) }
+    let fit = try XCTUnwrap(GraphScale.fitLevels(labels, graph: graph))
+    XCTAssertEqual(fit.0, 10, accuracy: 0.001)
+    XCTAssertEqual(fit.1 * 24, -10, accuracy: 0.001)
   }
 
   func testParsesTheSpan() {
@@ -181,6 +194,98 @@ final class PeakHoldTests: XCTestCase {
     hold.window = 30
     hold.add(screen, at: Date())
     XCTAssertNotNil(hold.state?.scale)
+  }
+
+  /// Another span: until its labels are read, only its own sweeps show (nothing of the old span's levels); read, they
+  /// stay, and the hold counts from when the span changed.
+  func testANewSpansSweepsAreKeptApartUntilItsLabelsAreRead() throws {
+    let band915 = try Fixture.screen("screen-915.png")
+    let band2400 = try Fixture.screen("screen-2400.png")
+    let graph = try XCTUnwrap(Graph.find(on: band2400))
+    XCTAssertEqual(Graph.find(on: band915), graph)  // the same layout: only the labels tell the spans apart
+    let own = graph.traceRows(on: band2400)
+    let mixed = zip(graph.traceRows(on: band915), own).map { a, b in [a, b].compactMap { $0 }.min() }
+    XCTAssertNotEqual(mixed, own)
+
+    let hold = PeakHold()
+    var read = expectation(description: "902–928 MHz read")
+    read.assertForOverFulfill = false
+    hold.onChange = { state in
+      if state?.scale?.start == 902_000_000 { read.fulfill() }
+    }
+    hold.add(band915, at: Date())
+    wait(for: [read], timeout: 20)
+    read = expectation(description: "2.4 GHz read")
+    read.assertForOverFulfill = false
+    hold.onChange = { state in
+      if state?.scale?.start == 2_400_000_000 { read.fulfill() }
+    }
+    let changed = Date()
+    hold.add(band2400, at: changed)
+    XCTAssertEqual(hold.state?.rows, own)
+    wait(for: [read], timeout: 20)
+    hold.onChange = nil
+    XCTAssertEqual(hold.state?.rows, own)
+    XCTAssertEqual(hold.state?.since, changed)
+  }
+
+  /// Labels covered for a while (a menu opened on the analyzer): meanwhile only what comes shows; once they're back
+  /// and the same, what was held before is there again with it.
+  func testLabelsCoveredForAWhileKeepTheHold() throws {
+    let screen = try Fixture.screen("screen-915.png")
+    let graph = try XCTUnwrap(Graph.find(on: screen))
+    var covered = screen
+    let span = graph.labelRegions(screen)[1]
+    for y in span.minY..<min(span.maxY, covered.height) {
+      for x in span.minX..<min(span.maxX, covered.width) {
+        covered.pixels[y * 480 + x] = Snapshot.pixel(r: 200, g: 200, b: 200)
+      }
+    }
+    for y in 0..<graph.bottom {
+      for x in 100..<200 where Graph.isTrace(covered.pixels[y * 480 + x]) {
+        covered.pixels[y * 480 + x] = Snapshot.pixel(r: 0, g: 0, b: 0)
+      }
+    }
+    XCTAssertNotEqual(graph.labelPrint(on: covered), graph.labelPrint(on: screen))
+    let before = graph.traceRows(on: screen)
+    let meanwhile = graph.traceRows(on: covered)
+    XCTAssertNotEqual(before, meanwhile)
+
+    let hold = PeakHold()
+    let read = expectation(description: "labels read")
+    read.assertForOverFulfill = false
+    hold.onChange = { state in
+      if state?.scale != nil { read.fulfill() }
+    }
+    let started = Date()
+    hold.add(screen, at: started)
+    wait(for: [read], timeout: 20)
+    hold.onChange = nil
+    hold.add(covered, at: Date())
+    XCTAssertEqual(hold.state?.rows, meanwhile)
+    hold.add(screen, at: Date())
+    XCTAssertEqual(hold.state?.rows, before)
+    XCTAssertEqual(hold.state?.since, started)
+    XCTAssertNotNil(hold.state?.scale)
+  }
+
+  /// The labels' fingerprint is theirs alone: the same span with another waterfall and other traces has the same one
+  /// (a busy band's waterfall has white dots just above the span's text); another top level changes it, a trace across
+  /// a lower level doesn't.
+  func testTheLabelsPrintChangesWithTheLabelsOnly() throws {
+    let now = try Fixture.screen("screen-2400.png")
+    let later = try Fixture.screen("screen-2400-later.png")
+    let graph = try XCTUnwrap(Graph.find(on: now))
+    XCTAssertNotEqual(now.pixels, later.pixels)
+    XCTAssertEqual(graph.labelPrint(on: later), graph.labelPrint(on: now))
+
+    let levels = graph.labelRegions(now)[0]
+    var otherTop = now
+    otherTop.pixels[4 * 480 + levels.minX + 20] = Snapshot.pixel(r: 197, g: 198, b: 197)
+    XCTAssertNotEqual(graph.labelPrint(on: otherTop), graph.labelPrint(on: now))
+    var traceAcross = now
+    for x in levels.minX..<levels.maxX { traceAcross.pixels[100 * 480 + x] = Snapshot.pixel(r: 65, g: 255, b: 65) }
+    XCTAssertEqual(graph.labelPrint(on: traceAcross), graph.labelPrint(on: now))
   }
 
   /// A peak at the graph's edge counts: nothing on its outer side holds it down.

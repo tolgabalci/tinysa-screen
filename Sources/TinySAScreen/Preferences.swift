@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 import TinySAKit
 
 /// The app's settings, kept in its user defaults (the Settings window binds to the same keys).
@@ -16,6 +16,7 @@ enum Preferences {
     static let peakHold = "peakHold"
     static let peakWindow = "peakWindow"
     static let peakCount = "peakCount"
+    static let peakColor = "peakColor"
     static let saveFolderBookmark = "saveFolderBookmark"
     static let saveFolderPath = "saveFolderPath"
   }
@@ -33,7 +34,8 @@ enum Preferences {
       Key.inkSeconds: 3,
       Key.floatOnTop: false,
       Key.peakHold: false,
-      Key.peakWindow: 0,
+      Key.peakWindow: 60,  // the latest minute, as a monitor holds peaks; 0 keeps them until cleared
+      Key.peakColor: PeakColor.cyan.rawValue,
       Key.peakCount: 5,
     ])
   }
@@ -70,6 +72,12 @@ enum Preferences {
 
   static var peakCount: Int { min(max(defaults.integer(forKey: Key.peakCount), 0), 9) }
 
+  /// How long the peak hold can keep a level, in seconds (0: until cleared), for the menu and Settings.
+  static let peakWindows = [0, 10, 30, 60, 300]
+
+  /// The peak hold's colour.
+  static var peakColor: PeakColor { PeakColor(rawValue: defaults.string(forKey: Key.peakColor) ?? "") ?? .cyan }
+
   /// The window stays above other apps' windows.
   static var floatOnTop: Bool {
     get { defaults.bool(forKey: Key.floatOnTop) }
@@ -100,5 +108,41 @@ enum Preferences {
       return (try? JSONDecoder().decode([BandPreset].self, from: data)) ?? []
     }
     set { defaults.set(try? JSONEncoder().encode(newValue), forKey: Key.savedBands) }
+  }
+}
+
+/// The peak hold's colours. The analyzer draws its own traces yellow, green, red and magenta (traces 1 to 4 on a
+/// tinySA Ultra, 3 and 4 the other way round on the original), so the default is cyan, which none of them is: the held
+/// line never passes for one of the analyzer's (a green max hold, say). Yellow isn't offered: the held line runs along
+/// the yellow live trace.
+enum PeakColor: String, CaseIterable, Identifiable {
+  case cyan, green, magenta, orange, red, white
+
+  var id: String { rawValue }
+  var name: String { rawValue.capitalized }
+
+  var color: NSColor {
+    switch self {
+    case .cyan: return NSColor(srgbRed: 0.15, green: 0.9, blue: 1, alpha: 1)
+    case .green: return NSColor(srgbRed: 0.25, green: 1, blue: 0.25, alpha: 1)
+    case .magenta: return NSColor(srgbRed: 1, green: 0.25, blue: 1, alpha: 1)
+    case .orange: return NSColor(srgbRed: 1, green: 0.6, blue: 0.1, alpha: 1)
+    case .red: return NSColor(srgbRed: 1, green: 0.3, blue: 0.3, alpha: 1)
+    case .white: return NSColor(white: 0.95, alpha: 1)
+    }
+  }
+
+  /// A dot of the colour, for menus.
+  var swatch: NSImage {
+    let color = color
+    let image = NSImage(size: NSSize(width: 12, height: 12), flipped: false) { rect in
+      color.setFill()
+      NSBezierPath(ovalIn: rect.insetBy(dx: 1, dy: 1)).fill()
+      NSColor.black.withAlphaComponent(0.35).setStroke()
+      NSBezierPath(ovalIn: rect.insetBy(dx: 1, dy: 1)).stroke()
+      return true
+    }
+    image.isTemplate = false
+    return image
   }
 }

@@ -46,8 +46,16 @@ public final class PeakHold: @unchecked Sendable {
   private var holdWindow: TimeInterval?
   private var count = 5
   private var current: State?
-  /// The highest rows of each second (or one bucket for the whole hold).
+  /// The highest rows of each second (or one bucket for the whole hold), under the labels `rowsScale` was read from.
   private var buckets: [(second: Int, rows: [Int?])] = []
+  /// The rows since the labels changed to ones not read yet, kept apart (and shown alone) until they are read: then
+  /// they join the held rows under the same span and levels (a menu covered the labels for a while), or replace them
+  /// under others (another span), so neither the old span's levels show over the new one nor the new one's first
+  /// sweeps are lost.
+  private var apart: [(second: Int, rows: [Int?])] = []
+  /// When the held rows began, and the ones kept apart.
+  private var heldSince: Date?
+  private var apartSince: Date?
   /// The labels' fingerprint now, the spans and levels read for each fingerprint seen (a menu over the labels changes it
   /// for a while), and the ones the held rows belong to.
   private var labels: Int?
@@ -55,6 +63,9 @@ public final class PeakHold: @unchecked Sendable {
   private var rowsScale: GraphScale?
   private var reading = false
   private var unread: (Snapshot, Graph, Int)?
+  /// When labels that couldn't be read (a trace across them, say) are read again from a later frame, and the wait
+  /// before the next try, doubling up to 30 s while they still can't.
+  private var retry = (at: Date.distantPast, after: 2.0)
   private let readingQueue = DispatchQueue(label: "Reading the screen's labels", qos: .utility)
 
   public init() {}
@@ -88,9 +99,52 @@ public final class PeakHold: @unchecked Sendable {
   /// Nothing held; the labels read again from the next frame (their fingerprint forgotten, the spans read kept).
   private func startOver() {
     buckets.removeAll()
+    apart.removeAll()
+    heldSince = nil
+    apartSince = nil
     current = nil
     labels = nil
     rowsScale = nil
+  }
+
+  /// Labels read, now or before: the rows kept apart join the held ones under the same span and levels, and replace
+  /// them under others.
+  private func settle(_ scale: GraphScale, at time: Date) {
+    defer {
+      rowsScale = scale
+      apart.removeAll()
+      apartSince = nil
+    }
+    guard let rowsScale, rowsScale != scale else {
+      buckets += apart
+      return
+    }
+    buckets = apart
+    heldSince = apartSince ?? time
+  }
+
+  /// `rows` into the bucket for `second` (one bucket for the whole hold without a window).
+  private static func add(_ rows: [Int?], at second: Int, window: TimeInterval?, to set: inout [(second: Int, rows: [Int?])]) {
+    let key = window == nil ? 0 : second
+    if set.last?.second != key || set.last?.rows.count != rows.count {
+      set.append((key, Array(repeating: nil, count: rows.count)))
+    }
+    var last = set[set.count - 1].rows
+    for i in rows.indices {
+      if let row = rows[i] { last[i] = min(last[i] ?? row, row) }
+    }
+    set[set.count - 1].rows = last
+  }
+
+  /// The highest row of each column over some buckets.
+  private static func highest(_ set: [(second: Int, rows: [Int?])], count: Int) -> [Int?] {
+    var held = [Int?](repeating: nil, count: count)
+    for bucket in set where bucket.rows.count == count {
+      for i in held.indices {
+        if let row = bucket.rows[i] { held[i] = min(held[i] ?? row, row) }
+      }
+    }
+    return held
   }
 
   /// The screen after a sweep.
@@ -101,36 +155,36 @@ public final class PeakHold: @unchecked Sendable {
     let state = lock.locked { () -> State? in
       if let current, current.graph != graph { startOver() }  // another layout (the waterfall's size changed)
       // The labels: read before for this fingerprint, or to be read now (nil meanwhile, so no readouts from labels
-      // that have changed). Levels held under other labels start over.
+      // that have changed, and what comes meanwhile is kept apart from what was held).
+      let changed = print != labels && labels != nil
       if print != labels {
         labels = print
+        retry = (time.addingTimeInterval(2), 2)
         if scales[print] == nil { unread = (screen, graph, print) }
+      } else if scales[print] == nil, !reading, unread == nil, time >= retry.at {
+        retry = (time.addingTimeInterval(min(2 * retry.after, 30)), min(2 * retry.after, 30))
+        unread = (screen, graph, print)
       }
       let scale = scales[print]
-      if let scale, let rowsScale, scale != rowsScale {
-        buckets.removeAll()
-        current = nil
+      if let scale {
+        settle(scale, at: time)
+      } else if changed, apartSince == nil, !buckets.isEmpty {
+        apartSince = time
       }
-      if let scale { rowsScale = scale }
+      if heldSince == nil { heldSince = time }
       let second = Int(time.timeIntervalSinceReferenceDate.rounded(.down))
-      let key = holdWindow == nil ? 0 : second
-      if buckets.last?.second != key || buckets.last?.rows.count != rows.count {
-        buckets.append((key, Array(repeating: nil, count: rows.count)))
+      if apartSince == nil {
+        Self.add(rows, at: second, window: holdWindow, to: &buckets)
+      } else {
+        Self.add(rows, at: second, window: holdWindow, to: &apart)
       }
-      var last = buckets[buckets.count - 1].rows
-      for i in rows.indices {
-        if let row = rows[i] { last[i] = min(last[i] ?? row, row) }
-      }
-      buckets[buckets.count - 1].rows = last
-      if let holdWindow { buckets.removeAll { Double(second - $0.second) >= holdWindow } }
-      var held = [Int?](repeating: nil, count: rows.count)
-      for bucket in buckets where bucket.rows.count == held.count {
-        for i in held.indices {
-          if let row = bucket.rows[i] { held[i] = min(held[i] ?? row, row) }
-        }
+      if let holdWindow {
+        buckets.removeAll { Double(second - $0.second) >= holdWindow }
+        apart.removeAll { Double(second - $0.second) >= holdWindow }
       }
       var state = State(
-        graph: graph, rows: held, scale: scale, peaks: [], since: current?.since ?? time, window: holdWindow,
+        graph: graph, rows: Self.highest(apartSince == nil ? buckets : apart, count: rows.count), scale: scale,
+        peaks: [], since: apartSince ?? heldSince ?? time, window: holdWindow,
         quietSpot: Self.quietSpot(
           screen, graph: graph, size: Self.readoutSize(peaks: count),
           staying: current?.graph == graph ? current?.quietSpot : nil))
@@ -160,13 +214,9 @@ public final class PeakHold: @unchecked Sendable {
         self.scales[print] = scale
         // Labels that changed again meanwhile are read next.
         guard var state = self.current, state.graph == graph, print == self.labels else { return nil }
-        if let rowsScale = self.rowsScale, rowsScale != scale {
-          // Another span or other levels: what was held belongs to the old ones.
-          self.buckets.removeAll()
-          state.rows = Array(repeating: nil, count: state.rows.count)
-          state.since = Date()
-        }
-        self.rowsScale = scale
+        self.settle(scale, at: Date())
+        state.rows = Self.highest(self.buckets, count: state.rows.count)
+        state.since = self.heldSince ?? state.since
         state.scale = scale
         state.peaks = Self.peaks(in: state, count: self.count)
         self.current = state

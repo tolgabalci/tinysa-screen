@@ -119,6 +119,7 @@ That builds the app and puts it in `~/Applications`, where Spotlight finds it.
 | View › Pen | ⌘D | Draw on the picture; strokes fade after a few seconds; Esc ends it |
 | View › Peak Hold | ⌥⌘P | The peak hold over the picture ([below](#peak-hold)) |
 | View › Clear Peak Hold | ⌥⌘⌫ | Starts the peak hold over |
+| View › Hold Peaks For | | How long the peak hold keeps each level: 10 or 30 seconds, a minute (the default), 5 minutes, or until cleared |
 | View › Enter Full Screen | ⌃⌘F | The picture as large as the screen allows |
 | Band › (a band) | | Sets the analyzer to sweep that band ([below](#bands)) |
 | Window › Float on Top | | The window stays above other apps' windows |
@@ -152,12 +153,12 @@ window above other apps' windows while you work in another one (a call's, say), 
 
 ## Peak hold
 
-**Peaks** (⌥⌘P) holds the highest level the analyzer's live trace (the yellow one) reaches at each frequency, as a
-magenta line over the picture, and numbers its highest peaks with their frequency and level in a small box, which
-finds itself an empty spot of the graph:
+**Peaks** (⌥⌘P) holds the highest level the analyzer's live trace (the yellow one) reaches at each frequency over the
+last minute, as a cyan line over the picture, and numbers its highest peaks with their frequency and level in a small
+box, which finds itself an empty spot of the graph:
 
 ```
-Peak hold since 10:14 AM
+Peak hold, last 1:00
 1  906.17 MHz  −23 dBm
 2  911.27 MHz  −55 dBm
 ```
@@ -169,9 +170,18 @@ fine as the screen's pixels: a column of the graph (58 kHz for 26 MHz) and a row
 On a sweep that caught a reader's burst, the peak hold read 902.23 MHz and −23 dBm where the analyzer's own marker said
 902.231 MHz and −23.2 dBm.
 
-A peak is a top standing at least 6 dB above the valleys around it and above the trace's noise. The hold starts over
-when the span or the levels change, or with View › Clear Peak Hold; Settings can make it keep each level for 10
-seconds to 5 minutes instead, and choose how many peaks to label (up to 9). Like the pointer and the pen, it isn't in
+A peak is a top standing at least 6 dB above the valleys around it and above the trace's noise.
+
+- **How long**: each level stays a minute after it was last reached, then goes, as a monitoring hold keeps the last
+  minute at full strength. **View › Hold Peaks For** (or Settings) makes that 10 or 30 seconds, 5 minutes, or until
+  cleared (View › Clear Peak Hold, ⌥⌘⌫).
+- **Its colour**: cyan, the one colour none of the analyzer's own traces has (they're yellow, green, red and magenta),
+  so the held line never passes for one of them, a green max hold say. Settings › Peak hold › Color chooses another.
+- **Another span or other levels** (a band chosen, the reference level changed) start it over, from the first sweep
+  on them: until their labels are read, the line shows only what came since, never the old span's levels. A menu
+  opened over the labels for a while doesn't lose what was held.
+
+Settings also chooses how many peaks to label (up to 9). Like the pointer and the pen, the peak hold isn't in
 screenshots or GIFs. `tinysa-screen peaks` gives the same for scripts ([The command line](#the-command-line)).
 
 ## Bands

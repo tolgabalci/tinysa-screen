@@ -1,8 +1,9 @@
 import AppKit
 import TinySAKit
 
-/// The peak hold, drawn over the analyzer's picture: the held trace as a magenta line, its highest peaks numbered,
-/// and their frequencies and levels in a box at the top of the graph, in the corner the analyzer leaves emptier.
+/// The peak hold, drawn over the analyzer's picture: the held trace as a line in its colour (cyan unless another is
+/// chosen), its highest peaks numbered, and their frequencies and levels in a box at the top of the graph, in the corner
+/// the analyzer leaves emptier.
 @MainActor
 final class PeakOverlay {
   let layer = CALayer()
@@ -10,11 +11,11 @@ final class PeakOverlay {
   private let marks = CALayer()
   private(set) var state: PeakHold.State?
 
-  static let color = NSColor(srgbRed: 1, green: 0.25, blue: 1, alpha: 1)
+  /// The line's colour, its tags' and its box's edge.
+  var color = PeakColor.cyan.color
 
   init() {
     line.fillColor = nil
-    line.strokeColor = Self.color.cgColor
     line.lineWidth = 1.5
     line.lineJoin = .round
     line.shadowColor = NSColor.black.cgColor
@@ -37,6 +38,7 @@ final class PeakOverlay {
       line.path = nil
       return
     }
+    line.strokeColor = color.cgColor
     func point(_ column: Int, _ row: Int) -> CGPoint {
       CGPoint(x: rect.minX + (CGFloat(column) + 0.5) * scale, y: rect.maxY - (CGFloat(row) + 0.5) * scale)
     }
@@ -61,7 +63,7 @@ final class PeakOverlay {
       let tag = text("\(n + 1)", font: font, color: .black, contentsScale: contentsScale)
       let size = tag.preferredFrameSize()
       let box = CALayer()
-      box.backgroundColor = Self.color.cgColor
+      box.backgroundColor = color.cgColor
       box.cornerRadius = 2 * scale
       box.frame = CGRect(
         x: top.x + 3 * scale, y: top.y - size.height / 2, width: size.width + 4 * scale, height: size.height)
@@ -84,7 +86,7 @@ final class PeakOverlay {
     let size = readout.preferredFrameSize()
     let box = CALayer()
     box.backgroundColor = NSColor(white: 0, alpha: 0.72).cgColor
-    box.borderColor = Self.color.withAlphaComponent(0.8).cgColor
+    box.borderColor = color.withAlphaComponent(0.8).cgColor
     box.borderWidth = 1
     box.cornerRadius = 3 * scale
     let padding = 3 * scale
