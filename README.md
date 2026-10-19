@@ -9,11 +9,12 @@ The screen of your [tinySA](https://tinysa.org) spectrum analyzer, live in a win
 Teams, Zoom or Meet and everyone sees the band as you do. Click the picture and the analyzer takes it as a tap on its
 own screen.
 
-![tinySA Screen on a Mac, showing a tinySA Ultra+ with a UHF RFID reader hopping across 902–928 MHz and the peak hold](docs/images/window-live.jpg)
+![tinySA Screen on a Mac, showing a tinySA Ultra+ on the 902–928 MHz RFID band with the peak hold](docs/images/window-live.jpg)
 
-_tinySA Screen with a tinySA Ultra+ watching a UHF RFID reader hop across the 902–928 MHz band. In two minutes the peak
-hold (magenta) has caught five of its channels, numbered with their frequency and level; each hop is a dash in the
-waterfall. The title bar has the pointer and pen, the peak hold, bands, Record and Capture._
+_tinySA Screen with a tinySA Ultra+ on the 902–928 MHz RFID band. The peak hold (cyan), here keeping five minutes, has
+caught three bursts from RFID readers, numbered with their frequency and level; the analyzer's own traces are its
+yellow sweep and its green max decay, and each burst is a dash in the waterfall. The title bar has the pointer and pen,
+the peak hold, bands, Record and Capture._
 
 ## Why
 
