@@ -79,7 +79,7 @@ struct CaptureSheet: View {
         Button("Copy") { done(Choice(seconds: seconds, action: .copy)) }
           .keyboardShortcut("c")
           .help("Copy the GIF to paste into a chat or an email (⌘C)")
-        Button("Save to Desktop") { done(Choice(seconds: seconds, action: .save)) }
+        Button("Save to \(Preferences.saveFolderName)") { done(Choice(seconds: seconds, action: .save)) }
           .keyboardShortcut(.defaultAction)
         // ⌘S saves too, as the screenshot's does outside the sheet.
         Button("") { done(Choice(seconds: seconds, action: .save)) }

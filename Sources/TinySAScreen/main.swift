@@ -38,7 +38,7 @@ func makeMenuBar() -> NSMenu {
   _ = menu(
     "File",
     [
-      item("Save Screenshot to Desktop", #selector(AppDelegate.saveScreenshot(_:)), "s"),
+      item("Save Screenshot", #selector(AppDelegate.saveScreenshot(_:)), "s"),  // "to <the folder>" when shown
       .separator(),
       item("Record GIF", #selector(AppDelegate.toggleRecording(_:)), "r"),
       item("Capture as GIF…", #selector(AppDelegate.capture(_:)), "r", [.command, .shift]),

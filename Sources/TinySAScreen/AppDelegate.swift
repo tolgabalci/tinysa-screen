@@ -278,13 +278,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
       recordButton.title = CaptureSheet.duration(gifs.elapsed.rounded(.down))
       recordButton.image = NSImage(systemSymbolName: "stop.fill", accessibilityDescription: nil)
       recordButton.contentTintColor = .systemRed
-      recordButton.toolTip = "Stop recording and save the GIF to the Desktop (⌘R). A recording stops by itself at 2:00."
+      recordButton.toolTip =
+        "Stop recording and save the GIF to \(Preferences.saveFolderName) (⌘R). A recording stops by itself at 2:00."
       recordButton.setAccessibilityLabel("Stop recording, \(Int(gifs.elapsed)) seconds recorded")
     } else {
       recordButton.title = "Record"
       recordButton.image = NSImage(systemSymbolName: "record.circle", accessibilityDescription: nil)
       recordButton.contentTintColor = nil
-      recordButton.toolTip = "Record a GIF of the screen until you stop it, up to 2 minutes, saved to the Desktop (⌘R)"
+      recordButton.toolTip =
+        "Record a GIF of the screen until you stop it, up to 2 minutes, saved to \(Preferences.saveFolderName) (⌘R)"
       recordButton.setAccessibilityLabel("Record a GIF")
     }
     let kept = Preferences.keptSeconds
@@ -373,16 +375,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
   @objc func saveScreenshot(_ sender: Any?) {
     guard let image else { return }
-    // Named after when its picture came (not now: the picture may have stopped coming), never over another file.
-    let url = GIFController.desktopURL(for: session.recorder.latestSnapshot()?.time ?? Date(), extension: "png")
-    let name = url.lastPathComponent
-    guard let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil)
-    else { return }
-    CGImageDestinationAddImage(destination, image, nil)
-    if CGImageDestinationFinalize(destination) {
-      view.flash("Saved to the Desktop: \(name)")
-    } else {
-      view.flash("The screenshot couldn't be saved.")
+    do {
+      // Named after when its picture came (not now: the picture may have stopped coming), never over another file.
+      let start = session.recorder.latestSnapshot()?.time ?? Date()
+      let saved = try Preferences.saveFolder.save(for: start, extension: "png") { url in
+        guard
+          let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil)
+        else { throw CocoaError(.fileWriteUnknown) }
+        CGImageDestinationAddImage(destination, image, nil)
+        guard CGImageDestinationFinalize(destination) else { throw CocoaError(.fileWriteUnknown) }
+      }
+      if let moved = saved.moved { Preferences.saveFolder = moved }
+      view.flash(saved.note())
+    } catch {
+      view.flash("The screenshot couldn't be saved: \(error.localizedDescription)")
     }
   }
 
@@ -439,8 +445,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
   func validateMenuItem(_ item: NSMenuItem) -> Bool {
     switch item.action {
-    case #selector(saveScreenshot(_:)), #selector(copy(_:)):
-      return image != nil && window.attachedSheet == nil  // ⌘S and ⌘C in the Capture sheet aren't screenshots
+    case #selector(saveScreenshot(_:)):
+      item.title = "Save Screenshot to \(Preferences.saveFolderName)"
+      return image != nil && window.attachedSheet == nil  // ⌘S in the Capture sheet saves its GIF
+    case #selector(copy(_:)):
+      return image != nil && window.attachedSheet == nil  // ⌘C in the Capture sheet copies its GIF
     case #selector(toggleControl(_:)):
       item.state = Preferences.controlEnabled ? .on : .off
       return true

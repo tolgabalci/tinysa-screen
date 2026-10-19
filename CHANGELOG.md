@@ -4,6 +4,9 @@ All notable changes are listed here, newest first. Versions follow [Semantic Ver
 
 ## 1.1.1 (unreleased)
 
+- Where files go: Settings › Saving › Save to chooses the folder GIFs and screenshots are saved in (the Desktop until
+  then), with Show in Finder; the menu and buttons name it. A folder that's moved or renamed is followed; while it
+  can't be found or written to, a file goes to the Desktop and the window says so.
 - A feeding program's pictures are looked for ten times a second instead of four: they show sooner, and pictures put
   a tenth of a second apart or more are each a frame in a GIF (one replaced sooner than that may not be seen).
 - Feeding a picture of every sweep: the Python helpers' `LiveScreen` keeps a copy of the analyzer's screen from its

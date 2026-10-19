@@ -32,7 +32,7 @@ show much. tinySA Screen puts its screen in a Mac window, pixel for pixel, as it
   Top ([Presenting](#presenting)).
 - **Peak hold on the Mac**: the highest level at each frequency held as a line over the picture, the highest peaks
   numbered with their frequency and level, without changing anything on the analyzer ([Peak hold](#peak-hold)).
-- **Screenshots**: ⌘S saves the screen to the Desktop, ⌘C copies it.
+- **Screenshots**: ⌘S saves the screen (to the Desktop, or a folder you choose), ⌘C copies it.
 - **Animated GIFs**: record the screen as a GIF (⌘R), or, when something odd has just happened, save the last minute
   that the app always keeps (⇧⌘R). Every pixel exact, the date and time ticking under the screen, and small: only
   what changes is stored ([Recording GIFs](#recording-gifs)).
@@ -109,8 +109,8 @@ That builds the app and puts it in `~/Applications`, where Spotlight finds it.
 
 | Menu | Keys | What it does |
 | --- | --- | --- |
-| File › Save Screenshot to Desktop | ⌘S | The analyzer's screen at its own size, as a PNG named `tinySA <date> at <time>.png` |
-| File › Record GIF | ⌘R | Records the screen until you stop it (⌘R again), at most two minutes, and saves the GIF to the Desktop |
+| File › Save Screenshot | ⌘S | The analyzer's screen at its own size, as a PNG named `tinySA <date> at <time>.png`, on the Desktop or in the folder chosen in Settings |
+| File › Record GIF | ⌘R | Records the screen until you stop it (⌘R again), at most two minutes, and saves the GIF there too |
 | File › Capture Last 1:00 as GIF… | ⇧⌘R | Saves the last minute, or the last part of it, as a GIF ([below](#recording-gifs)) |
 | Edit › Copy Screenshot | ⌘C | The screenshot, to paste anywhere |
 | View › Actual Size, Double Size, Triple Size | ⌘1, ⌘2, ⌘3 | The window at one, two or three of the Mac's points per analyzer pixel |
@@ -122,7 +122,7 @@ That builds the app and puts it in `~/Applications`, where Spotlight finds it.
 | View › Enter Full Screen | ⌃⌘F | The picture as large as the screen allows |
 | Band › (a band) | | Sets the analyzer to sweep that band ([below](#bands)) |
 | Window › Float on Top | | The window stays above other apps' windows |
-| tinySA Screen › Settings… | ⌘, | What Capture keeps, how GIFs look, saved bands, clicks and the pen |
+| tinySA Screen › Settings… | ⌘, | What Capture keeps, how GIFs look, where files are saved, saved bands, clicks and the pen |
 
 A click on the picture is a tap on the analyzer's screen, even while the call's window is the active one: here the
 analyzer's DISPLAY menu, opened from the Mac.
@@ -191,12 +191,13 @@ the analyzer on USB here and a tinySA Ultra; when a feeding program has the anal
 Two buttons in the window's title bar make animated GIFs of the analyzer's screen, to send after a call, put in a
 report or paste into a chat:
 
-- **Record** (⌘R) records from now until you click Stop, at most two minutes, and saves the GIF to the Desktop as
-  `tinySA <date> at <time>.gif`. The button shows the time recorded.
+- **Record** (⌘R) records from now until you click Stop, at most two minutes, and saves the GIF as
+  `tinySA <date> at <time>.gif`, on the Desktop or in the folder you chose ([below](#where-files-go)). The button shows
+  the time recorded.
 - **Capture** (⇧⌘R) is for when something has just happened. tinySA Screen keeps the last minute of the screen all the
   time (in memory only), and Capture shows a sheet with a slider: keep the whole minute, or drag for the last 15 seconds,
   say. A picture of the GIF's first frame shows where it starts. Choose whether the date and the time go under the
-  screen, the size, then **Save to Desktop**, or **Copy** to paste it into a chat or an email as an animated GIF. The
+  screen, the size, then **Save**, or **Copy** to paste it into a chat or an email as an animated GIF. The
   sheet says how large the file will be before you save it.
 
 ![A GIF made by tinySA Screen: the 2.4 GHz band, Wi-Fi bursts, the date and time ticking under the screen](docs/images/gif-2400mhz-wifi.gif)
@@ -218,6 +219,19 @@ What's in a GIF:
 
 Settings (⌘,) sets how many seconds Capture keeps (5 seconds to 2 minutes, or none), and the date, time and size that
 Record uses and Capture starts from.
+
+### Where files go
+
+GIFs and screenshots go to the Desktop until you choose a folder: **Settings › Saving › Save to › Other…**, then any
+folder (New Folder works there too). From then on Record, Capture and ⌘S save there, and the menu and buttons name it
+("Save Screenshot to Band recordings"). **Show in Finder** opens it; **Save to › Desktop** goes back.
+
+- A folder that's moved or renamed is followed there.
+- While the folder can't be found (on a drive that's unplugged, say) or can't be written to, the file goes to the
+  Desktop and the window says so: a recording is never lost for want of its folder. Once the folder is back, files go
+  there again.
+- Files are named after when they start and never replace one: a second file from the same second gets " (2)".
+- The command line writes where its `--output` says.
 
 ## The command line
 

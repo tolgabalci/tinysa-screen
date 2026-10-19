@@ -16,6 +16,8 @@ enum Preferences {
     static let peakHold = "peakHold"
     static let peakWindow = "peakWindow"
     static let peakCount = "peakCount"
+    static let saveFolderBookmark = "saveFolderBookmark"
+    static let saveFolderPath = "saveFolderPath"
   }
 
   static let defaults = UserDefaults.standard
@@ -73,6 +75,23 @@ enum Preferences {
     get { defaults.bool(forKey: Key.floatOnTop) }
     set { defaults.set(newValue, forKey: Key.floatOnTop) }
   }
+
+  /// Where GIFs and screenshots are saved (Settings › Save to): the Desktop unless another folder was chosen.
+  static var saveFolder: SaveFolder {
+    get {
+      let bookmark = defaults.data(forKey: Key.saveFolderBookmark)
+      let path = defaults.string(forKey: Key.saveFolderPath)
+      return SaveFolder(
+        bookmark: bookmark?.isEmpty == false ? bookmark : nil, path: path?.isEmpty == false ? path : nil)
+    }
+    set {
+      defaults.set(newValue.bookmark ?? Data(), forKey: Key.saveFolderBookmark)
+      defaults.set(newValue.path ?? "", forKey: Key.saveFolderPath)
+    }
+  }
+
+  /// The name of the folder files go to now, as Finder shows it ("Desktop" while a chosen folder can't be found).
+  static var saveFolderName: String { saveFolder.place().name }
 
   /// The bands the user saved (Band › Save Current Span as a Band), at the top of the Band menu.
   static var savedBands: [BandPreset] {

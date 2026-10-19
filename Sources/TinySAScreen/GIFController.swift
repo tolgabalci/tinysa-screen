@@ -3,7 +3,8 @@ import SwiftUI
 import TinySAKit
 
 /// Record and Capture: GIFs of the analyzer's screen. Record runs from ⌘R until it is stopped (or for two minutes, the
-/// longest a GIF runs) and saves to the Desktop; Capture saves the latest seconds kept, as many of them as wanted.
+/// longest a GIF runs) and saves to the folder chosen in Settings (the Desktop at first); Capture saves the latest
+/// seconds kept, as many of them as wanted.
 @MainActor
 final class GIFController {
   private let recorder: FrameRecorder
@@ -179,11 +180,14 @@ final class GIFController {
     view.flash(note + "Making the GIF…")
     make(clip, options: options) { [weak self] result in
       guard let self else { return }
-      let url = Self.desktopURL(for: clip.start)  // named now: another GIF may have been saved meanwhile
       do {
         guard let result else { throw CocoaError(.fileWriteUnknown) }
-        try result.data.write(to: url, options: .atomic)
-        self.view.flash(note + "Saved to the Desktop: \(url.lastPathComponent) (\(Self.size(result.data.count)))")
+        // Named now: another GIF may have been saved meanwhile.
+        let saved = try Preferences.saveFolder.save(for: clip.start, extension: "gif") {
+          try result.data.write(to: $0, options: .atomic)
+        }
+        if let moved = saved.moved { Preferences.saveFolder = moved }
+        self.view.flash(note + saved.note(size: Self.size(result.data.count)))
       } catch {
         self.view.flash("The GIF couldn't be saved: \(error.localizedDescription)")
       }
@@ -200,7 +204,7 @@ final class GIFController {
         guard let result else { throw CocoaError(.fileWriteUnknown) }
         let folder = Self.copiesFolder
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        let url = folder.appendingPathComponent(Self.name(for: clip.start))
+        let url = folder.appendingPathComponent(SaveFolder.fileName(for: clip.start))
         try result.data.write(to: url, options: .atomic)
         let item = NSPasteboardItem()
         item.setString(url.absoluteString, forType: .fileURL)
@@ -215,26 +219,6 @@ final class GIFController {
   }
 
   // MARK: Files
-
-  /// "tinySA 2026-10-17 at 10.15.32.gif", named after the clip's start like the Mac's screen recordings (whatever the
-  /// Mac's calendar and digits).
-  static func name(for start: Date, number: Int = 1, extension kind: String = "gif") -> String {
-    let formatter = DateFormatter()
-    formatter.locale = Locale(identifier: "en_US_POSIX")
-    formatter.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
-    return "tinySA \(formatter.string(from: start))" + (number > 1 ? " (\(number))" : "") + ".\(kind)"
-  }
-
-  /// A new file on the Desktop, never one already there.
-  static func desktopURL(for start: Date, extension kind: String = "gif") -> URL {
-    let desktop = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask)[0]
-    var number = 1
-    while true {
-      let url = desktop.appendingPathComponent(name(for: start, number: number, extension: kind))
-      if !FileManager.default.fileExists(atPath: url.path) { return url }
-      number += 1
-    }
-  }
 
   static func size(_ bytes: Int) -> String {
     ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
@@ -253,5 +237,17 @@ final class GIFController {
       let modified = (try? file.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
       if let modified, Date().timeIntervalSince(modified) > 86_400 { try? manager.removeItem(at: file) }
     }
+  }
+}
+
+extension SaveFolder.Saved {
+  /// What the window says once the file is written: where it went, and why not to the chosen folder when it didn't.
+  func note(size: String? = nil) -> String {
+    let onDesktop =
+      url.deletingLastPathComponent().resolvingSymlinksInPath().path
+      == SaveFolder.desktopURL.resolvingSymlinksInPath().path
+    let file = url.lastPathComponent + (size.map { " (\($0))" } ?? "")
+    if let instead { return "\(instead), so it went to the Desktop: \(file)" }
+    return "Saved to \(onDesktop ? "the Desktop" : folder): \(file)"
   }
 }
