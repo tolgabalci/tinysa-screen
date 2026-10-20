@@ -44,7 +44,8 @@ show much. tinySA Screen puts its screen in a Mac window, pixel for pixel, as it
 
 ![The tinySA's screen in tinySA Screen, live: the reader hopping, sweep after sweep](docs/images/live-915mhz.gif)
 
-_Live: each sweep (yellow) as it comes, the green line holding the recent maximum, the waterfall filling with hops._
+_Live, recorded by tinySA Screen itself (`tinysa-screen record -s 20 --no-date --no-time`, 1.5 MB): each sweep (yellow)
+as it comes, the green line holding the recent maximum, the waterfall filling with the reader's hops._
 
 ## What it looks like
 
