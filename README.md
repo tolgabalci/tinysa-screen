@@ -16,6 +16,31 @@ caught three bursts from RFID readers, numbered with their frequency and level; 
 yellow sweep and its green max decay, and each burst is a dash in the waterfall. The title bar has the pointer and pen,
 the peak hold, bands, Record and Capture._
 
+## Install
+
+**Homebrew**:
+
+```bash
+brew install --cask tolgabalci/tap/tinysa-screen
+```
+
+That puts **tinySA Screen** in your Applications folder and `tinysa-screen` (the [command line](#the-command-line)) on
+your `PATH`; `brew upgrade` brings new versions.
+
+**Or download**: get `tinySA-Screen-<version>.zip` from the [latest release](https://github.com/tolgabalci/tinysa-screen/releases/latest),
+unzip it and move **tinySA Screen** to your Applications folder. It's signed with a Developer ID and notarized by Apple,
+so it opens like any app.
+
+**Or build it yourself** (Xcode or its command line tools):
+
+```bash
+git clone https://github.com/tolgabalci/tinysa-screen.git
+cd tinysa-screen
+scripts/install.sh
+```
+
+That builds the app and puts it in `~/Applications`, where Spotlight finds it.
+
 ## Why
 
 The tinySA is a small, capable spectrum analyzer with a 4-inch screen. Pointing a webcam at it during a call doesn't
@@ -76,31 +101,6 @@ antenna.
   presenter's tools work; bands and the peak hold are for the tinySA's spectrum. Built from NanoVNA-D's source, not yet
   tried on a NanoVNA: [tell us](https://github.com/tolgabalci/tinysa-screen/issues) how it goes. With a tinySA and a
   NanoVNA both connected, the tinySA is shown.
-
-## Install
-
-**Homebrew**:
-
-```bash
-brew install --cask tolgabalci/tap/tinysa-screen
-```
-
-That puts **tinySA Screen** in your Applications folder and `tinysa-screen` (the [command line](#the-command-line)) on
-your `PATH`; `brew upgrade` brings new versions.
-
-**Or download**: get `tinySA-Screen-<version>.zip` from the [latest release](https://github.com/tolgabalci/tinysa-screen/releases/latest),
-unzip it and move **tinySA Screen** to your Applications folder. It's signed with a Developer ID and notarized by Apple,
-so it opens like any app.
-
-**Or build it yourself** (Xcode or its command line tools):
-
-```bash
-git clone https://github.com/tolgabalci/tinysa-screen.git
-cd tinysa-screen
-scripts/install.sh
-```
-
-That builds the app and puts it in `~/Applications`, where Spotlight finds it.
 
 ## Use
 
