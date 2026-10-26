@@ -139,7 +139,10 @@ struct SettingsView: View {
       } header: {
         Text("Clicks")
       } footer: {
-        Text("The pointer (⌘L) and the pen (⌘D) take the mouse while they're on, for presenting in a call; Esc ends them.")
+        Text(
+          "Clicks reach the tinySA over USB, and through a program that feeds the pictures when it passes them on. "
+            + "The pointer (⌘L) and the pen (⌘D) take the mouse while they're on, for presenting in a call; Esc ends "
+            + "them.")
           .foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
       }

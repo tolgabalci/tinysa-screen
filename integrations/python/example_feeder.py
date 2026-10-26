@@ -1,6 +1,7 @@
-"""A program that keeps the tinySA and feeds its screen to tinySA Screen, a picture of every sweep. Here it only watches;
-a monitor or a logger would read its measurements where the comment says. Run it, then open tinySA Screen: the window
-shows "Pictures from example_feeder.py". Control-C stops it, and tinySA Screen takes the analyzer itself.
+"""A program that keeps the tinySA and feeds its screen to tinySA Screen, a picture of every sweep, and passes the
+window's clicks on to the analyzer as taps. Here it only watches; a monitor or a logger would read its measurements
+where the comment says. Run it, then open tinySA Screen: the window shows "Pictures from example_feeder.py", and a click
+on the picture taps the tinySA. Control-C stops it, and tinySA Screen takes the analyzer itself.
 
     python3 example_feeder.py
 """
@@ -21,7 +22,7 @@ signal.signal(signal.SIGINT, stop)
 signal.signal(signal.SIGTERM, stop)
 
 # The feeder first: seeing it, tinySA Screen lets go of the analyzer, and Console() waits until it has.
-with Feeder('example_feeder.py') as feeder, Console() as tinysa:
+with Feeder('example_feeder.py', taps=True) as feeder, Console() as tinysa:
     print('Feeding tinySA Screen; Control-C stops.')
     sweep_on(tinysa)  # sweeping on its own, whatever it was left doing
     live = None
@@ -29,6 +30,7 @@ with Feeder('example_feeder.py') as feeder, Console() as tinysa:
         while not stopping:
             if not feeder.watched():  # no one watching: no pictures, and the analyzer's screen needn't stream
                 if live:
+                    feeder.release_touch(live)
                     live.stop()
                     live = None
                 time.sleep(0.5)
@@ -36,7 +38,8 @@ with Feeder('example_feeder.py') as feeder, Console() as tinysa:
             if live is None:
                 live = LiveScreen(tinysa)  # its screen streaming in, from a capture
                 feeder.picture(live.png(), live.drawn)
-            if not live.picture(timeout=5):
+            # The window's clicks are typed while the analyzer draws nothing; a touch down stops its sweep meanwhile.
+            if not live.picture(timeout=5, between=lambda: feeder.pass_taps(live)):
                 print('No sweep drawn in 5 s: paused on the analyzer?')
                 continue
             if live.damaged:  # a command's echo landed inside a region: part of the screen is stale
@@ -46,5 +49,6 @@ with Feeder('example_feeder.py') as feeder, Console() as tinysa:
             # next sweep short); with no window open, tinysa.cmd('data 2') does ...
     finally:
         if live:
+            feeder.release_touch(live)
             live.stop()  # the analyzer goes on sweeping on its own
 print('Stopped.')

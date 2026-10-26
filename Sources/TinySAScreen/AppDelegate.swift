@@ -87,6 +87,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     view.onTap = { [weak self] x, y, released in
       if released { self?.session.release(x: x, y: y) } else { self?.session.touch(x: x, y: y) }
     }
+    view.onUntappable = { [weak self] in self?.untappable() }
     preferencesChanged()
     NotificationCenter.default.addObserver(
       self, selector: #selector(preferencesChanged), name: UserDefaults.didChangeNotification, object: nil)
@@ -153,6 +154,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     bands.status = status
     view.say(status.note)
     view.controllable = status.controllable && Preferences.controlEnabled
+    view.tapEcho = status.feeder != nil
+  }
+
+  /// A click on the picture that can't tap the analyzer: why, for a moment, when clicks are on and the window's note
+  /// doesn't say it already (a feeder that doesn't pass taps on has the analyzer).
+  private func untappable() {
+    guard Preferences.controlEnabled, !status.controllable, status.note == nil, let feeder = status.feeder else {
+      return
+    }
+    view.flash("Clicks don't reach the tinySA: \(feeder) has it and doesn't pass them on.")
   }
 
   /// The window's subtitle: where the picture comes from, and who records it from outside.

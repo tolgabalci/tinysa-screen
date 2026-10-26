@@ -26,7 +26,8 @@ show much. tinySA Screen puts its screen in a Mac window, pixel for pixel, as it
 - **Sharp at any size**: twice the analyzer's size to start with, larger or full screen if you like, its pixels kept
   sharp.
 - **Control from the Mac**: a click on the picture is a tap on the analyzer's screen, to open its menus, change the
-  span or move a marker while you talk.
+  span or move a marker while you talk; holding the button holds the touch, and a right-click is a long press. It works
+  while a monitoring program feeds the pictures too, when the program passes clicks on.
 - **Bands in one click**: the Band menu sets the analyzer to FM radio, 433, 868 or 915 MHz, 2.4 GHz and more, or a
   band you saved, and back ([Bands](#bands)).
 - **For presenting**: a red pointer everyone in the call sees, a pen whose strokes fade by themselves, and Float on
@@ -128,7 +129,10 @@ That builds the app and puts it in `~/Applications`, where Spotlight finds it.
 | tinySA Screen › Settings… | ⌘, | What Capture keeps, how GIFs look, where files are saved, saved bands, clicks and the pen |
 
 A click on the picture is a tap on the analyzer's screen, even while the call's window is the active one: here the
-analyzer's DISPLAY menu, opened from the Mac.
+analyzer's DISPLAY menu, opened from the Mac. The mouse is your finger on the analyzer's glass: holding the button down
+holds the touch (drag a marker along the trace), and a touch held half a second is a long press (on the keypad, the
+erase key clears the whole entry; a value in a form menu slides while you hold it). A right-click (a two-finger click,
+or Control-click) is a long press without holding the button.
 
 ![The analyzer's DISPLAY menu, opened by a click in tinySA Screen](docs/images/window-menu.jpg)
 
@@ -294,7 +298,9 @@ Python helpers are in [integrations/python](integrations/python):
 - **Feeding.** A program that keeps the analyzer itself (a monitor or logger running all day) can put the analyzer's
   screen in the window: while tinySA Screen is open it touches a file, and the program writes the screen as a PNG and
   a few words about what it is doing to a folder the app watches. While that program runs, tinySA Screen shows its
-  pictures and never touches the analyzer. Record and Capture work on fed pictures too.
+  pictures and never touches the analyzer. Record and Capture work on fed pictures too, and clicks reach the analyzer
+  through the program when it passes them on: the app writes them to the same folder and the program types them as
+  taps, a small ring in the window showing where each went until the next picture shows the answer.
 - **Asking.** A program can ask the open app for a GIF, a screenshot or its status, through the
   [command line](#the-command-line) or the socket behind it.
 

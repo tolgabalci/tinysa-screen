@@ -4,7 +4,9 @@
 next to your script, or add this folder to `PYTHONPATH`.
 
 - `borrow(name)`: use the tinySA for a `with` block while tinySA Screen is open.
-- `Feeder(name)`: keep the tinySA in your program and show its screen in tinySA Screen's window.
+- `Feeder(name)`: keep the tinySA in your program and show its screen in tinySA Screen's window; with `taps=True` the
+  window's clicks come back as taps, typed on the analyzer by `pass_taps(live)` (made to be `LiveScreen.picture`'s
+  `between`).
 - `Console()`: the tinySA's USB console (found by its USB name), with `cmd()` and `screen_png()`.
 - `LiveScreen(console)`: the analyzer's screen as it is drawn while it sweeps on its own, for a picture of every sweep
   (`picture()`, `png()`), with commands between sweeps (`cmd()`); `sweep_on(console)` starts the analyzer sweeping

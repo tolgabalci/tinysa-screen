@@ -2,6 +2,18 @@
 
 All notable changes are listed here, newest first. Versions follow [Semantic Versioning](https://semver.org).
 
+## 1.2.0 (2026-10-26)
+
+- Clicks reach the tinySA while a program feeds the pictures too, when it says it passes them on: tinySA Screen writes
+  each click to `taps` in the feed folder, and the program types it on the analyzer as a tap (docs/INTEGRATION.md,
+  Clicks as taps). Before, clicks did nothing while a feeder had the analyzer. A small ring shows where a click went
+  until the feeder's next picture shows the analyzer's answer, and a click that can't reach the analyzer says why for a
+  moment. The Python helpers pass taps on (`Feeder(name, taps=True)`, `pass_taps`, and `LiveScreen.picture`'s
+  `between`), and so does example_feeder.py.
+- A right-click (a two-finger click, or Control-click) is a long press on the analyzer's screen: its touch stays down
+  at least 0.6 s, and the analyzer takes half a second as a long press (on its keypad the erase key clears the whole
+  entry; a value in a form menu slides while held). Holding the button down does the same.
+
 ## 1.1.2 (2026-10-19)
 
 - GIFs show rightly where a site shrinks them image by image. Posted to groups.io, a GIF's frames piled up on each

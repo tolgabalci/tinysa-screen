@@ -92,7 +92,15 @@ turns it off.
 ## Taps
 
 `touch x y` presses the analyzer's touch screen at a pixel (0, 0 at the top left), again as the finger moves, and
-`release x y` lifts it. The firmware handles them as touches on its own screen, menus included.
+`release x y` lifts it. The firmware handles them as touches on its own screen, menus included, and times them as it
+does a finger: a touch held half a second (its `BUTTON_DOWN_LONG_TICKS`) is a long press, which on the keypad's erase
+key clears the whole entry and on a value in a form menu turns it into a slider. The mouse is the finger: the button
+down is a touch, each move while it is down (at most 25 a second) another, and the button up the release. A right-click
+holds its touch at least 0.6 s, a long press without holding the button.
+
+While a feeding program has the analyzer, the app writes the same commands to `taps` in the feed folder, each with the
+time it was clicked, and the program types them (docs/INTEGRATION.md, Clicks as taps); it keeps each touch down as long
+as it was clicked, so a long press stays one when it reads a touch and its release together.
 
 ## Bands
 

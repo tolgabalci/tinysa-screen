@@ -14,13 +14,19 @@ public struct Status: Equatable, Sendable {
   public var tunable: Bool
   /// The instrument on USB (nil for a feeding program's pictures, or none): only a tinySA's screen is a spectrum.
   public var instrument: Instrument?
+  /// The program feeding the pictures, by name; nil when they come from the analyzer on USB (or none come).
+  public var feeder: String?
 
-  public init(source: String, note: String?, controllable: Bool, tunable: Bool = false, instrument: Instrument? = nil) {
+  public init(
+    source: String, note: String?, controllable: Bool, tunable: Bool = false, instrument: Instrument? = nil,
+    feeder: String? = nil
+  ) {
     self.source = source
     self.note = note
     self.controllable = controllable
     self.tunable = tunable
     self.instrument = instrument
+    self.feeder = feeder
   }
 }
 
@@ -74,9 +80,22 @@ public final class Session {
   }
 
   /// A tap on the analyzer's screen, at a pixel of it: `touch` while the button is down (again as it moves),
-  /// `release` when it comes up.
-  public func touch(x: Int, y: Int) { lock.locked { taps.append("touch \(x) \(y)") } }
-  public func release(x: Int, y: Int) { lock.locked { taps.append("release \(x) \(y)") } }
+  /// `release` when it comes up. Typed on the analyzer's console over USB, or, while a feeder that passes taps on has
+  /// the analyzer, written for it to type (`FeedTaps`).
+  public func touch(x: Int, y: Int) { tap("touch", x, y) }
+  public func release(x: Int, y: Int) { tap("release", x, y) }
+
+  private func tap(_ kind: String, _ x: Int, _ y: Int) {
+    let command = "\(kind) \(x) \(y)"
+    lock.locked {
+      if feedTaps {
+        FeedTaps.add(command)
+        feedTouch = kind == "touch" ? (x, y) : nil
+      } else {
+        taps.append(command)
+      }
+    }
+  }
 
   /// The span the analyzer sweeps, and with a `target` the span it is set to: the span before and after. Done on the
   /// session's thread with the live screen paused for a moment; `done` is called there. Fails without the analyzer on
@@ -119,6 +138,10 @@ public final class Session {
   private var currentStatus: Status?
   private var stopping = false
   private var taps: [String] = []
+  /// Whether taps go to the feeder: its pictures show, and it passes taps on.
+  private var feedTaps = false
+  /// A touch given to the feeder and not released yet: released when taps stop going there.
+  private var feedTouch: (x: Int, y: Int)?
   private let finished = DispatchSemaphore(value: 0)
 
   // MARK: The session thread's side
@@ -190,6 +213,7 @@ public final class Session {
   private var isStopping: Bool { lock.locked { stopping } }
 
   private func run() {
+    FeedTaps.startOver()  // taps clicked before this run are no one's to type
     while !isStopping {
       let now = Date()
       if now.timeIntervalSince(lastWatching) >= 1 {
@@ -204,12 +228,16 @@ public final class Session {
         if let feed = current ?? recentFeeder(now) {
           letGo()
           failJobs("\(feed.name ?? "Another program") has the tinySA and feeds its pictures: change it there")
-          showFeed(feed)
+          let passing = feed.state == "holding" && feed.taps == true
+          passTaps(passing)
+          lock.locked { taps.removeAll() }  // clicked as the feeder came: never typed later, on a port
+          showFeed(feed, taps: passing)
           // Ten times a second: a feeder may put two pictures a moment apart (a sweep's, then the same screen with
           // PAUSED), and each is a frame.
           pause(0.1)
           continue
         }
+        passTaps(false)
         lastFeeder = nil
         feedPicture = nil
         feedInterval = 0
@@ -232,6 +260,7 @@ public final class Session {
       }
     }
     failJobs("tinySA Screen is quitting")
+    passTaps(false)
     letGo()
     FeedState.stopWatching()
     finished.signal()
@@ -681,7 +710,19 @@ public final class Session {
 
   // MARK: Feeding
 
-  private func showFeed(_ feed: FeedState) {
+  /// Whether taps go to the feeder from now on. A touch it was given is released when they stop going there (the
+  /// analyzer waits for the release, its sweep stopped).
+  private func passTaps(_ on: Bool) {
+    lock.locked {
+      if !on, let held = feedTouch {
+        FeedTaps.add("release \(held.x) \(held.y)")
+        feedTouch = nil
+      }
+      feedTaps = on
+    }
+  }
+
+  private func showFeed(_ feed: FeedState, taps: Bool) {
     if let (image, date) = FeedState.picture(newerThan: feedPicture) {
       if let previous = feedPicture, date > previous, date.timeIntervalSince(previous) < 60 {
         let interval = date.timeIntervalSince(previous)
@@ -716,7 +757,7 @@ public final class Session {
         note = "Waiting for a picture from \(name)…"
       }
     }
-    publish(Status(source: "Pictures from \(name)", note: note, controllable: false))
+    publish(Status(source: "Pictures from \(name)", note: note, controllable: taps, feeder: name))
   }
 
   // MARK: Telling the window

@@ -3,14 +3,17 @@
     python3 -m unittest discover -s integrations/python
 """
 import contextlib
+import json
 import os
 import select
+import shutil
 import socket
 import struct
 import sys
 import tempfile
 import threading
 import time
+import types
 import unittest
 import zlib
 from unittest import mock
@@ -171,6 +174,21 @@ class LiveScreenTests(unittest.TestCase):
         self.assertGreater(self.live.settle, 0.07)  # three times the 30 ms pause
         self.assertLessEqual(self.live.settle, 0.12)
 
+    def test_between_runs_while_nothing_is_drawn_and_keeps_the_wait_open(self):
+        busy = [True, True]
+        calls = []
+
+        def between():
+            calls.append(1)
+            return busy.pop(0) if busy else False
+
+        self.live._last_byte = 0.0  # nothing has come for long: the console is quiet
+        with self.console_clock([]) as clock:
+            self.assertFalse(self.live.picture(0.1, between=between))
+            waited = clock[0] - 1000.0
+        self.assertGreaterEqual(len(calls), 3)
+        self.assertGreater(waited, 0.1)  # each busy call started the wait over
+
     def test_a_header_off_the_screen_is_skipped(self):
         self.feed(b'bulk\r\n' + struct.pack('<hhhh', 470, 0, 32, 32) + region(b'fill\r\n', 2, 2, 1, 1, b'\x07\x08'))
         self.assertEqual(self.pixel(2, 2), b'\x07\x08')
@@ -224,6 +242,113 @@ class FeederTests(unittest.TestCase):
                 self.assertAlmostEqual(os.path.getmtime(os.path.join(folder, 'screen.png')), 1792000000.25, places=3)
             finally:
                 tinysa_screen.FEED_FOLDER = original
+
+
+class FeederTapsTests(unittest.TestCase):
+    """The window's clicks for a feeder that passes them on: the `taps` file, read like a log that starts over."""
+
+    def setUp(self):
+        self.folder = tempfile.mkdtemp()
+        self.original = tinysa_screen.FEED_FOLDER
+        tinysa_screen.FEED_FOLDER = self.folder
+        self.path = os.path.join(self.folder, 'taps')
+        self.feeder = Feeder('tests', taps=True)
+
+    def tearDown(self):
+        tinysa_screen.FEED_FOLDER = self.original
+        shutil.rmtree(self.folder, ignore_errors=True)
+
+    def add(self, text):
+        with open(self.path, 'a') as fh:
+            fh.write(text)
+
+    def new_file(self, text=''):
+        """The app starting a new file, in one step (another inode)."""
+        part = self.path + '.part'
+        with open(part, 'w') as fh:
+            fh.write(text)
+        os.replace(part, self.path)
+
+    def commands(self):
+        return [tap.command for tap in self.feeder.taps()]
+
+    def test_the_state_says_whether_it_passes_taps_on(self):
+        self.feeder.state('holding')
+        with open(os.path.join(self.folder, 'state.json')) as fh:
+            self.assertIs(json.load(fh)['taps'], True)
+        Feeder('other').state('holding')
+        with open(os.path.join(self.folder, 'state.json')) as fh:
+            self.assertIs(json.load(fh)['taps'], False)
+
+    def test_clicks_from_before_are_old_and_lines_are_read_whole(self):
+        now = time.time()
+        self.add(f'touch 1 2 {now:.3f}\n')
+        self.assertEqual(self.commands(), [])  # there before the first look
+        self.add(f'touch 3 4 {now:.3f}\nrelease 3 4 ')
+        self.assertEqual(self.commands(), ['touch 3 4'])
+        self.add(f'{now:.3f}\n')
+        self.assertEqual(self.commands(), ['release 3 4'])
+        self.assertEqual(self.commands(), [])
+
+    def test_a_new_file_is_read_from_its_start(self):
+        self.new_file()
+        self.commands()
+        now = time.time()
+        self.add(f'touch 1 1 {now:.3f}\nrelease 1 1 {now:.3f}\n')
+        self.assertEqual(self.commands(), ['touch 1 1', 'release 1 1'])
+        self.new_file(f'touch 5 6 {now:.3f}\n')
+        self.assertEqual(self.commands(), ['touch 5 6'])
+
+    def test_a_file_that_comes_after_the_first_look_is_all_new(self):
+        self.assertEqual(self.commands(), [])
+        self.add(f'touch 7 8 {time.time():.3f}\n')
+        self.assertEqual(self.commands(), ['touch 7 8'])
+
+    def test_old_clicks_are_left_out_but_never_the_release_of_a_touch_down(self):
+        self.commands()
+        now = time.time()
+        self.add(f'touch 1 2 {now - 60:.3f}\nrelease 1 2 {now - 60:.3f}\n')
+        self.assertEqual(self.commands(), [])  # clicked while it couldn't be passed on
+        self.add(f'touch 3 4 {now:.3f}\n')
+        self.assertEqual(self.commands(), ['touch 3 4'])
+        self.add(f'release 3 4 {now - 60:.3f}\n')
+        self.assertEqual(self.commands(), ['release 3 4'])
+
+    def test_a_touch_left_down_is_released(self):
+        self.commands()
+        self.add(f'touch 9 9 {time.time():.3f}\n')
+        clock = [1000.0]
+        with mock.patch.object(tinysa_screen.time, 'monotonic', lambda: clock[0]):
+            self.assertEqual(self.commands(), ['touch 9 9'])
+            clock[0] += tinysa_screen.TAP_HELD - 1
+            self.assertEqual(self.commands(), [])
+            clock[0] += 2
+            self.assertEqual(self.commands(), ['release 9 9'])
+            self.assertEqual(self.commands(), [])
+
+    def test_passing_them_on_keeps_a_long_press_long(self):
+        self.commands()
+        now = time.time()
+        self.add(f'touch 10 20 {now:.3f}\ntouch 12 20 {now + 0.3:.3f}\nrelease 12 20 {now + 0.7:.3f}\n')
+        typed, waits = [], []
+        live = types.SimpleNamespace(cmd=typed.append)
+        with mock.patch.object(tinysa_screen.time, 'sleep', waits.append):
+            self.assertTrue(self.feeder.pass_taps(live))
+        self.assertEqual(typed, ['touch 10 20', 'touch 12 20', 'release 12 20'])
+        self.assertEqual(len(waits), 1)  # read together: the release waits as long as the button was held
+        self.assertAlmostEqual(waits[0], 0.7, delta=0.05)
+        self.assertFalse(self.feeder.pass_taps(live))  # nothing new, nothing down
+
+    def test_a_touch_down_keeps_it_busy_until_released_before_letting_go(self):
+        self.commands()
+        self.add(f'touch 1 2 {time.time():.3f}\n')
+        typed = []
+        live = types.SimpleNamespace(cmd=typed.append)
+        self.assertTrue(self.feeder.pass_taps(live))
+        self.assertTrue(self.feeder.pass_taps(live))  # still down: the analyzer waits for the release
+        self.feeder.release_touch(live)
+        self.assertEqual(typed, ['touch 1 2', 'release 1 2'])
+        self.assertFalse(self.feeder.pass_taps(live))
 
 
 if __name__ == '__main__':

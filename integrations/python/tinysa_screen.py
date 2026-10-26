@@ -2,7 +2,8 @@
 
 - borrow(name): use the tinySA while tinySA Screen is open. tinySA Screen lets go of it for the `with` block and takes
   it back afterwards.
-- Feeder(name): your program keeps the tinySA, and its screen shows in tinySA Screen's window while the window is open.
+- Feeder(name): your program keeps the tinySA, and its screen shows in tinySA Screen's window while the window is open;
+  with taps=True the window's clicks come back to type on the analyzer as taps (pass_taps).
 - Console(): the tinySA's USB console for this program alone, with commands, replies and the screen as a PNG.
 - LiveScreen(console): the analyzer's screen as it is drawn while it sweeps on its own, for a picture of every sweep
   (a feeder's, say), with commands between sweeps; sweep_on(console) starts it sweeping with its traces kept.
@@ -36,6 +37,13 @@ WATCHING = os.path.join(FEED_FOLDER, 'watching')
 WATCHING_FOR = 3  # seconds a touch of WATCHING means the window is open
 CONTROL = os.path.join(FEED_FOLDER, 'control.sock')
 PROMPT = b'ch> '
+TAP_STALE = 5  # seconds: a touch clicked longer ago isn't typed (it came while the feeder couldn't pass it on)
+TAP_HELD = 10  # seconds a touch stays down with no news before the feeder lets go of it (the app went mid-click)
+TAP_HOLD_MOST = 3  # seconds at most a feeder waits to keep a touch held as long as it was clicked
+
+Tap = collections.namedtuple('Tap', 'command at')
+Tap.__doc__ = """A click in tinySA Screen's window for the analyzer: the console command ('touch 240 160' while the
+button is down, again as it moves; 'release 240 160' when it comes up) and when it was clicked (seconds since 1970)."""
 
 
 def _running(pid: int) -> bool:
@@ -98,10 +106,19 @@ def borrow(name: str):
 class Feeder:
     """Feeds tinySA Screen the analyzer's screen while your program keeps the analyzer. As a context manager it says
     "holding" when it starts and "stopped" when it ends; in between, put a picture with `picture()` whenever
-    `watched()` (the window is open), and say what you're doing with `state()`."""
+    `watched()` (the window is open), and say what you're doing with `state()`.
 
-    def __init__(self, name: str):
+    With `taps=True` it also says it passes the window's clicks on, and tinySA Screen writes them for it: type them on
+    the analyzer with `pass_taps(live)` (made to be `LiveScreen.picture`'s `between`), and call `release_touch(live)`
+    before you let go of the analyzer. A touch down stops the analyzer's sweep until its release."""
+
+    def __init__(self, name: str, taps: bool = False):
         self.name = name
+        self.passes_taps = taps
+        self._read_to = None  # (inode, offset) of the taps file read so far; None before the first look
+        self._down = None  # the touch handed out and not released yet: (x, y)
+        self._pressed = None  # its press: (when clicked, when typed on the monotonic clock)
+        self._news = 0.0  # when a tap last came, on the monotonic clock
         os.makedirs(FEED_FOLDER, exist_ok=True)
 
     def __enter__(self) -> 'Feeder':
@@ -125,8 +142,94 @@ class Feeder:
 
     def state(self, state: str, program: str = '') -> None:
         """'holding', 'lent' (to `program`), 'waiting' (for the analyzer) or 'stopped'."""
-        body = {'state': state, 'program': program, 'pid': os.getpid(), 'name': self.name, 'since': time.time()}
+        body = {
+            'state': state,
+            'program': program,
+            'pid': os.getpid(),
+            'name': self.name,
+            'since': time.time(),
+            'taps': self.passes_taps,
+        }
         self._put('state.json', json.dumps(body).encode())
+
+    def taps(self) -> list:
+        """The clicks in tinySA Screen's window since the last call, in order, as Taps. The first call starts at the end
+        of the file: clicks from before are old. A touch clicked more than TAP_STALE seconds ago is left out (it came
+        while you couldn't pass it on), and a touch down TAP_HELD seconds with no news gets its release."""
+        found = []
+        now = time.time()
+        for line in self._tap_lines():
+            parts = line.split()
+            if len(parts) != 4 or parts[0] not in ('touch', 'release'):
+                continue
+            try:
+                x, y, at = int(parts[1]), int(parts[2]), float(parts[3])
+            except ValueError:
+                continue
+            if now - at > TAP_STALE and (parts[0] == 'touch' or self._down is None):
+                continue  # a release is never left out while its touch is down
+            self._down = (x, y) if parts[0] == 'touch' else None
+            found.append(Tap(f'{parts[0]} {x} {y}', at))
+        if found:
+            self._news = time.monotonic()
+        elif self._down is not None and time.monotonic() - self._news > TAP_HELD:
+            found.append(Tap(f'release {self._down[0]} {self._down[1]}', now))
+            self._down = None
+        return found
+
+    def pass_taps(self, live: 'LiveScreen') -> bool:
+        """Types the window's clicks on the analyzer through `live.cmd`, which waits until it draws nothing, each touch
+        held as long as it was clicked: a press and its release read together wait the difference (at most
+        TAP_HOLD_MOST s), so a long press stays one. True when it typed something or a touch is down, the analyzer busy
+        with them (it doesn't sweep while a touch is down). Made to be `LiveScreen.picture`'s `between`."""
+        taps = self.taps()
+        for tap in taps:
+            release = tap.command.startswith('release')
+            if release and self._pressed is not None:
+                clicked, typed = self._pressed
+                wait = min(TAP_HOLD_MOST, tap.at - clicked - (time.monotonic() - typed))
+                if wait > 0:
+                    time.sleep(wait)
+            live.cmd(tap.command)
+            if release:
+                self._pressed = None
+            elif self._pressed is None:  # the press; the touches after it move it
+                self._pressed = (tap.at, time.monotonic())
+        return bool(taps) or self._down is not None
+
+    def release_touch(self, live: 'LiveScreen') -> None:
+        """A touch still down is released: call it before you let go of the analyzer (lent, or stopping)."""
+        if self._down is not None:
+            live.cmd(f'release {self._down[0]} {self._down[1]}')
+            self._down = None
+            self._pressed = None
+
+    def _tap_lines(self) -> list:
+        """Whole lines added to the taps file since the last look: from its end at the first look, from its start when
+        it is another file (tinySA Screen starts a new one when it opens, and when it has grown large)."""
+        try:
+            fd = os.open(os.path.join(FEED_FOLDER, 'taps'), os.O_RDONLY)
+        except FileNotFoundError:
+            if self._read_to is None:
+                self._read_to = (None, 0)  # the first file to come is all new
+            return []
+        try:
+            st = os.fstat(fd)
+            if self._read_to is None:
+                self._read_to = (st.st_ino, st.st_size)
+                return []
+            inode, offset = self._read_to
+            if inode != st.st_ino or st.st_size < offset:
+                offset = 0
+            data = b''
+            if st.st_size > offset:
+                os.lseek(fd, offset, os.SEEK_SET)
+                data = os.read(fd, st.st_size - offset)
+        finally:
+            os.close(fd)
+        end = data.rfind(b'\n') + 1  # whole lines: the rest is still being written
+        self._read_to = (st.st_ino, offset + end)
+        return data[:end].decode(errors='replace').splitlines()
 
     def _put(self, name: str, data: bytes, made: float | None = None) -> None:
         part = os.path.join(FEED_FOLDER, f'.{name}.{os.getpid()}.part')
@@ -382,9 +485,10 @@ class LiveScreen:
             self.console.resync()
         self._buf.clear()
 
-    def picture(self, timeout: float = 5) -> bool:
+    def picture(self, timeout: float = 5, between=None) -> bool:
         """Waits for the analyzer to draw something (a sweep) and then pause: True with the screen up to date, False when
-        it drew nothing in `timeout` seconds (paused, say)."""
+        it drew nothing in `timeout` seconds (paused, say). `between` is called while the analyzer draws nothing
+        (`Feeder.pass_taps`, say): when it returns True the analyzer is busy with it, and the wait starts over."""
         end = time.monotonic() + timeout
         self._new = False
         while time.monotonic() < end:
@@ -395,6 +499,8 @@ class LiveScreen:
                 self.settle = min(0.12, max(0.05, 3 * max(self._pauses)))
                 self.drawn = time.time() - (time.monotonic() - self._last_region)
                 return True
+            if between is not None and not self._new and self._idle() and between():
+                end = time.monotonic() + timeout
         return False
 
     def png(self) -> bytes:

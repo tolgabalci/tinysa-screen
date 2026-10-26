@@ -11,7 +11,8 @@ import ImageIO
 /// - **Feeding**: a program that keeps the analyzer itself (a monitor running all day, say) feeds tinySA Screen its
 ///   pictures: while `watching` in the feed folder is less than three seconds old (the app touches it every second
 ///   while open), it puts the screen in `screen.png` there, and what it is doing in `state.json`. A feeder whose process
-///   runs comes first: the app shows its pictures and leaves the analyzer to it.
+///   runs comes first: the app shows its pictures and leaves the analyzer to it. One that says it passes taps on
+///   (`"taps": true`) gets the window's clicks in `taps` there (`FeedTaps`) and types them on the analyzer.
 public enum Integration {
   /// The home folder the files are in (another one in tests).
   public internal(set) static var home = FileManager.default.homeDirectoryForCurrentUser
@@ -22,6 +23,7 @@ public enum Integration {
   public static var watchingFile: URL { feedFolder.appendingPathComponent("watching") }
   public static var pictureFile: URL { feedFolder.appendingPathComponent("screen.png") }
   public static var stateFile: URL { feedFolder.appendingPathComponent("state.json") }
+  public static var tapsFile: URL { feedFolder.appendingPathComponent("taps") }
   /// Asking: the open app's control socket, for recordings, captures, screenshots and its status (docs/INTEGRATION.md).
   public static var controlSocket: URL { feedFolder.appendingPathComponent("control.sock") }
 }
@@ -72,6 +74,8 @@ public struct FeedState: Decodable, Equatable, Sendable {
   public let pid: Int32?
   /// The feeder's name, for the window ("Pictures from …").
   public let name: String?
+  /// Whether it passes the window's clicks on to the analyzer as taps (`FeedTaps`).
+  public let taps: Bool?
 
   /// The feeder, when one runs: its state says so and its process is alive.
   public static func current() -> FeedState? {
@@ -108,5 +112,35 @@ public struct FeedState: Decodable, Equatable, Sendable {
       let image = CGImageSourceCreateImageAtIndex(source, 0, nil)
     else { return nil }
     return (image, modified)
+  }
+}
+
+/// The window's clicks for a feeder that passes them on (`taps` in the feed folder): a line for each, the command for
+/// the feeder to type and when it was clicked, in seconds since 1970 ("touch 240 160 1792452000.125"). The file is a
+/// log that starts over: a new one when the app starts and when it grows past `limit`, so a feeder reads on from where
+/// it was until the file is another one (docs/INTEGRATION.md).
+public enum FeedTaps {
+  static let limit = 64 * 1024
+
+  /// An empty file in its place, in one step: a feeder reads the new one from its start.
+  public static func startOver() {
+    let manager = FileManager.default
+    try? manager.createDirectory(at: Integration.feedFolder, withIntermediateDirectories: true)
+    let part = Integration.feedFolder.appendingPathComponent(".taps.\(getpid()).part")
+    guard manager.createFile(atPath: part.path, contents: Data()) else { return }
+    if rename(part.path, Integration.tapsFile.path) != 0 { try? manager.removeItem(at: part) }
+  }
+
+  /// A command for the feeder to type ("touch 240 160", "release 240 160"), clicked at `date`.
+  public static func add(_ command: String, at date: Date = Date()) {
+    let path = Integration.tapsFile.path
+    if let size = (try? FileManager.default.attributesOfItem(atPath: path))?[.size] as? Int, size > limit {
+      startOver()
+    }
+    let fd = open(path, O_WRONLY | O_APPEND | O_CREAT, 0o644)
+    guard fd >= 0 else { return }
+    defer { close(fd) }
+    let line = command + " " + String(format: "%.3f", date.timeIntervalSince1970) + "\n"
+    _ = line.withCString { write(fd, $0, strlen($0)) }  // one write: a feeder reads whole lines
   }
 }

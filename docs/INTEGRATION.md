@@ -8,7 +8,7 @@ network.
 | | You want to | Your program |
 | --- | --- | --- |
 | [Borrowing](#borrowing) | use the analyzer for a while: a measurement, a script, another app | writes `~/.tinysa-busy`, uses the analyzer, removes the file |
-| [Feeding](#feeding) | keep the analyzer in your program all the time, and still show its screen | writes pictures to `~/Library/Caches/tinySA Screen/` while the window is open |
+| [Feeding](#feeding) | keep the analyzer in your program all the time, and still show its screen | writes pictures to `~/Library/Caches/tinySA Screen/` while the window is open, and can type its clicks as taps |
 | [Asking](#asking) | a GIF of the screen, the last seconds the app kept, a screenshot, what the app sees | runs `tinysa-screen record …`, or sends a line of JSON to the app's control socket |
 
 Python helpers for all three are in [integrations/python](../integrations/python): `tinysa_screen.py` (standard library
@@ -63,6 +63,7 @@ Screen's window. tinySA Screen and the program meet in one folder, `~/Library/Ca
 | `watching` | tinySA Screen | Touched every second while the window is open; removed when it closes. |
 | `screen.png` | your program | The analyzer's screen, any size (480 × 320 for the Ultra models). |
 | `state.json` | your program | What your program is doing, with its process ID (below). |
+| `taps` | tinySA Screen | The window's clicks, when your program passes them on ([Clicks as taps](#clicks-as-taps)). |
 
 Replace both files in one step: write another file in the folder, then rename it over the old one, so tinySA Screen
 never reads half of one.
@@ -70,7 +71,7 @@ never reads half of one.
 `state.json`:
 
 ```json
-{ "state": "holding", "pid": 48211, "name": "Band Monitor", "program": "", "since": 1792121828.13 }
+{ "state": "holding", "pid": 48211, "name": "Band Monitor", "program": "", "since": 1792121828.13, "taps": true }
 ```
 
 | Field | |
@@ -80,6 +81,7 @@ never reads half of one.
 | `name` | Your program's name, for the window ("Pictures from Band Monitor"). |
 | `program` | Who has the analyzer, when `state` is `lent`. |
 | `since` | When the state began (seconds since 1970); optional. |
+| `taps` | `true` when you pass the window's clicks on to the analyzer as taps ([below](#clicks-as-taps)); optional. |
 
 While a feeder runs (its `state.json` isn't `stopped` and its process is alive), tinySA Screen shows its pictures and
 never opens the analyzer, even when the analyzer's port is free for a moment. Your program:
@@ -109,6 +111,50 @@ picture of every sweep in about forty lines.
 frequencies, which marks the settings changed, and its next sweep starts every max hold over (a max hold trace loses
 what it held). The top menu's PAUSE only switches the sweep on or off: send `menu 1` when `status` says `Paused`
 (`sweep_on` in the Python helpers). `waitscan` sweeps without starting anything over, but leaves the analyzer paused.
+
+### Clicks as taps
+
+Say `"taps": true` in `state.json` and tinySA Screen passes on the clicks on its picture, as it does over USB: the
+pointer becomes a hand over the picture, and each click goes in `taps`, a line for each, the console command to type
+and when it was clicked (seconds since 1970):
+
+```
+touch 240 160 1792452000.125
+touch 244 160 1792452000.205
+release 244 160 1792452000.610
+```
+
+`touch x y` while the button is down, again as it moves; `release x y` when it comes up. x and y are pixels of the
+analyzer's screen from its top left, as the console takes them. Type each command without the time and the analyzer
+acts as on its glass: a tap opens the menu or picks an item, a touch held drags a marker or slides a value, and a touch
+held half a second is a long press (a right-click in the window is one). Your program:
+
+1. Reads `taps` like a log that starts over: at first from its end (clicks from before are old), then on from where it
+   was, whole lines only (the last one may still be on its way). When the file is another one (its inode changed: the
+   app starts a new one when it opens, and when it has grown large) or shorter than where you were, from its start.
+2. Types the commands while the analyzer draws nothing, as any command, each touch held as long as it was clicked: when
+   a touch and its release come together (your program was busy), wait the difference before the release, or a long
+   press becomes a tap.
+3. Doesn't wait for a sweep while a touch is down: the analyzer stops sweeping until the release.
+4. Leaves out a touch clicked more than 5 seconds ago (it came while you couldn't pass it on), but never the release of
+   a touch it typed. A touch down 10 seconds with nothing new is released by your program (the app quit mid-click), and
+   so is a touch down when you lend the analyzer or stop.
+5. Holds back its own changes while someone clicks, and for a few seconds after: a command that redraws the screen, or
+   `menu` (which closes an open menu first), pulls the menu from under them.
+
+A click in the window shows a small ring where it went, since the analyzer's answer comes with your next picture. With
+the Python helpers, `Feeder(name, taps=True)` says so in `state.json`, `feeder.pass_taps(live)` types the clicks, made
+to be `LiveScreen.picture`'s `between` (it runs while the analyzer draws nothing, and holds the wait open while a touch
+is down), and `feeder.release_touch(live)` goes before you let go of the analyzer:
+
+```python
+with Feeder('Band Monitor', taps=True) as feeder:
+    ...
+    if live.picture(5, between=lambda: feeder.pass_taps(live)):
+        feeder.picture(live.png(), live.drawn)
+```
+
+`example_feeder.py` passes them on.
 
 ## Asking
 

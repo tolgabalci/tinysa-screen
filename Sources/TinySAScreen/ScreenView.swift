@@ -28,14 +28,20 @@ final class ScreenView: NSView {
   var inkSeconds: TimeInterval = 3
   /// Escape pressed: leave the tool.
   var onEscape: (() -> Void)?
-  /// Whether clicks become taps: the picture is live over USB and control is on.
+  /// Whether clicks become taps: the picture is live over USB, or comes from a feeder that passes taps on, and control
+  /// is on.
   var controllable = false {
     didSet {
       if controllable != oldValue { window?.invalidateCursorRects(for: self) }
     }
   }
+  /// Whether a tap shows where it went, a small ring: through a feeder the analyzer's answer comes with its next
+  /// picture, up to a second later.
+  var tapEcho = false
   /// A tap at a pixel of the analyzer's screen: `released` when the button comes up.
   var onTap: ((_ x: Int, _ y: Int, _ released: Bool) -> Void)?
+  /// A click on the picture that can't tap the analyzer.
+  var onUntappable: (() -> Void)?
 
   private let picture = CALayer()
   private var pictureSize = CGSize(width: 480, height: 320)
@@ -281,14 +287,15 @@ final class ScreenView: NSView {
     pointer.isHidden = true
   }
 
-  /// A ring that grows and fades where the pointer clicks: look here.
-  private func ripple(at point: CGPoint) {
+  /// A ring that grows and fades where the pointer clicks (look here), or smaller where a tap went.
+  private func ripple(at point: CGPoint, radius: CGFloat = 30, color: NSColor = .systemRed, width: CGFloat = 3) {
     let ring = CAShapeLayer()
-    ring.path = CGPath(ellipseIn: CGRect(x: -30, y: -30, width: 60, height: 60), transform: nil)
+    ring.path = CGPath(
+      ellipseIn: CGRect(x: -radius, y: -radius, width: 2 * radius, height: 2 * radius), transform: nil)
     ring.position = point
     ring.fillColor = nil
-    ring.strokeColor = NSColor.systemRed.cgColor
-    ring.lineWidth = 3
+    ring.strokeColor = color.cgColor
+    ring.lineWidth = width
     ring.opacity = 0
     layer?.addSublayer(ring)
     let grow = CABasicAnimation(keyPath: "transform.scale")
@@ -375,6 +382,14 @@ final class ScreenView: NSView {
   /// Where the button went down or last moved to, while it is down: a release always follows a touch, even when the
   /// pointer comes up off the picture.
   private var touching: (x: Int, y: Int)?
+  /// A long press: the tinySA acts on a touch held half a second (on its keypad the erase key clears the entry; a
+  /// value in a form slides while held). Holding the button is one; a right-click (a two-finger click, Control-click)
+  /// is one without holding it, its touch released no sooner than this after it went down.
+  static let longPress: TimeInterval = 0.6
+  private var pressedAt = Date.distantPast
+  private var longPressing = false
+  /// Counts presses, so a long press's late release is for its own press only.
+  private var pressID = 0
 
   override func mouseDown(with event: NSEvent) {
     let point = convert(event.locationInWindow, from: nil)
@@ -388,8 +403,31 @@ final class ScreenView: NSView {
     case .none:
       break
     }
-    guard controllable, let p = pixel(at: event) else { return }
+    press(event, long: event.modifierFlags.contains(.control))
+  }
+
+  override func rightMouseDown(with event: NSEvent) {
+    if tool == .none { press(event, long: true) }
+  }
+
+  override func rightMouseDragged(with event: NSEvent) { mouseDragged(with: event) }
+  override func rightMouseUp(with event: NSEvent) { mouseUp(with: event) }
+
+  /// A touch down where the button went down, held at least `longPress` when `long`.
+  private func press(_ event: NSEvent, long: Bool) {
+    let point = convert(event.locationInWindow, from: nil)
+    guard controllable, let p = pixel(at: event) else {
+      if pictureRect.rect.contains(point) { onUntappable?() }
+      return
+    }
+    if let held = touching {  // a long press still down for its half second: let go of it first
+      pressID += 1
+      onTap?(held.x, held.y, true)
+    }
     touching = p
+    longPressing = long
+    pressedAt = Date()
+    if tapEcho { ripple(at: point, radius: 14, color: .white, width: 2) }
     onTap?(p.x, p.y, false)
   }
 
@@ -412,6 +450,19 @@ final class ScreenView: NSView {
     if tool == .pen { endStroke() }
     guard let last = touching else { return }  // a touch is always released, whatever the tool now
     let p = pixel(at: event) ?? last
+    let held = Date().timeIntervalSince(pressedAt)
+    if longPressing, held < Self.longPress {
+      // A right-click: the analyzer lets go once it has held the touch long enough.
+      pressID += 1
+      let id = pressID
+      touching = p
+      DispatchQueue.main.asyncAfter(deadline: .now() + Self.longPress - held) { [weak self] in
+        guard let self, self.pressID == id, self.touching != nil else { return }
+        self.touching = nil
+        self.onTap?(p.x, p.y, true)
+      }
+      return
+    }
     touching = nil
     onTap?(p.x, p.y, true)
   }
