@@ -364,7 +364,7 @@ public final class Session {
           _ = try command("waitscan 1", timeout: 30)
         } else {
           // A NanoVNA has no waitscan, and a tinySA doesn't sweep while a touch is down or its keypad is open (a
-          // waitscan then would wait for ever, the console with it): a picture every half second.
+          // waitscan then would hold the console until the keypad closes): a picture every half second.
           try waitWithoutReading(0.5)
         }
         try Capture.apply(capture(screen.size), to: screen)

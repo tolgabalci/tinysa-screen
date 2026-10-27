@@ -112,11 +112,13 @@ and the strip along the top (y under 25), which gives the jog wheel to the marke
 it was last left: after a quick menu, a tap on the graph opens that quick menu again, not the top menu.
 
 **The keypad.** A number is typed on a keypad that covers the analyzer's screen, and the firmware runs it as a loop of
-its own (`ui_process_keypad`): no sweep until it closes, so a command that waits for a sweep, or that the sweep runs,
-waits as long, and the console with it. The app reads what the screen shows (`ScreenState`: the graph, a menu, the
-number keypad, another keypad) from its pixels, and sends no such command while a keypad is open: a band waits, and
-older firmware's picture after each sweep becomes a picture every half second. Nothing is drawn until a key is pressed,
-so a feeder's picture of the keypad stays live however old it gets, with no "No new picture" note.
+its own (`ui_process_keypad`): no sweep until it closes. `waitscan`, which waits on the console's own thread for a
+sweep to end, then holds the console until the keypad closes (or the jog wheel moves), and a command the sweep runs
+(`sweep`, `menu`, `pause`, `data`) gives up after 20 s (four waits of 5 s) with "Command timeout" and no prompt.
+Firmware v1.4-255 (2026-10-23) keeps the keypad as it was. The app reads what the screen shows (`ScreenState`: the
+graph, a menu, the number keypad, another keypad) from its pixels, and sends no such command while a keypad is open: a
+band waits, and older firmware's picture after each sweep becomes a picture every half second. Nothing is drawn until
+a key is pressed, so a feeder's picture of the keypad stays live however old it gets, with no "No new picture" note.
 
 **Escape** takes the analyzer back to its graph with the analyzer's own touches, one at a time: on the number keypad
 its erase key (`touch 300 252`; a character a press, then, with nothing typed, the keypad, nothing changed), on a menu

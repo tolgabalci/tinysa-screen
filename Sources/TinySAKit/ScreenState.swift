@@ -4,9 +4,9 @@
 /// typed, the keypad, nothing changed), and for a menu a tap on the graph beside it (the firmware closes a menu on a
 /// touch outside it).
 ///
-/// The keypad matters beyond Escape: while it is open the analyzer doesn't sweep, and a command that waits for a sweep
-/// (`waitscan`), or that the sweep has to run (`sweep`, `menu`, `pause`), waits for ever, and the console with it;
-/// `touch`, `release`, `status` and `capture` still answer.
+/// The keypad matters beyond Escape: while it is open the analyzer doesn't sweep, so `waitscan` holds its console until
+/// the keypad closes (or its jog wheel moves), and a command the sweep runs (`sweep`, `menu`, `pause`, `data`) gives up
+/// after 20 s with "Command timeout" and no prompt; `touch`, `release`, `status` and `capture` still answer.
 public enum ScreenState: Equatable, Sendable {
   case graph
   case menu
