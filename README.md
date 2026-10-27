@@ -118,6 +118,7 @@ antenna.
 | Edit › Copy Screenshot | ⌘C | The screenshot, to paste anywhere |
 | View › Actual Size, Double Size, Triple Size | ⌘1, ⌘2, ⌘3 | The window at one, two or three of the Mac's points per analyzer pixel |
 | View › Control the tinySA by Clicking | ⌘K | Clicks become taps on the analyzer (on by default) |
+| View › Back to the tinySA's Main Screen | Esc | Closes what is open on the analyzer's screen, with its own touches: a number being typed is cancelled, a menu closed |
 | View › Pointer | ⌘L | A red dot follows the mouse over the picture; Esc ends it ([Presenting](#presenting)) |
 | View › Pen | ⌘D | Draw on the picture; strokes fade after a few seconds; Esc ends it |
 | View › Peak Hold | ⌥⌘P | The peak hold over the picture ([below](#peak-hold)) |
@@ -132,7 +133,8 @@ A click on the picture is a tap on the analyzer's screen, even while the call's 
 analyzer's DISPLAY menu, opened from the Mac. The mouse is your finger on the analyzer's glass: holding the button down
 holds the touch (drag a marker along the trace), and a touch held half a second is a long press (on the keypad, the
 erase key clears the whole entry; a value in a form menu slides while you hold it). A right-click (a two-finger click,
-or Control-click) is a long press without holding the button.
+or Control-click) is a long press without holding the button. **Esc** takes the analyzer back to its main screen: a
+number being typed is cancelled with its erase key (nothing changes), and a menu is closed with a tap beside it.
 
 ![The analyzer's DISPLAY menu, opened by a click in tinySA Screen](docs/images/window-menu.jpg)
 

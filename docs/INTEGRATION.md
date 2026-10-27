@@ -141,6 +141,12 @@ held half a second is a long press (a right-click in the window is one). Your pr
    so is a touch down when you lend the analyzer or stop.
 5. Holds back its own changes while someone clicks, and for a few seconds after: a command that redraws the screen, or
    `menu` (which closes an open menu first), pulls the menu from under them.
+6. Minds the keypad. While the analyzer's keypad is open (a number being typed, light keys over its whole screen) it
+   doesn't sweep, and a command that waits for a sweep (`waitscan`), or that the sweep has to run (`sweep`, `menu`,
+   `pause`, `data`), waits for ever, and the analyzer's console with it, taps included, until someone closes the
+   keypad on the analyzer itself. `touch`, `release`, `status` and `capture` still answer. So don't take the missing
+   sweeps for a failure while a keypad is open: keep the live screen on and keep passing taps (the window's Escape
+   cancels a number keypad with its erase key).
 
 A click in the window shows a small ring where it went, since the analyzer's answer comes with your next picture. With
 the Python helpers, `Feeder(name, taps=True)` says so in `state.json`, `feeder.pass_taps(live)` types the clicks, made

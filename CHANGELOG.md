@@ -2,6 +2,17 @@
 
 All notable changes are listed here, newest first. Versions follow [Semantic Versioning](https://semver.org).
 
+## 1.3.0 (2026-10-27)
+
+- Escape takes the tinySA back to its main screen, with its own touches: a number being typed is cancelled with the
+  keypad's erase key (nothing changes), and a menu is closed with a tap on the graph beside it, one touch at a time,
+  each once the screen shows what the last one did (View › Back to the tinySA's Main Screen). With the pointer or the
+  pen on, Escape ends it, as before.
+- While the analyzer's keypad is open it doesn't sweep, and a command waiting for a sweep held its console until the
+  keypad closed on the analyzer itself. tinySA Screen now reads what the analyzer's screen shows and sends none then:
+  a band waits, and on firmware without the live screen the picture comes every half second. docs/INTEGRATION.md tells
+  feeders the same (Clicks as taps).
+
 ## 1.2.0 (2026-10-27)
 
 - Clicks reach the tinySA while a program feeds the pictures too, when it says it passes them on: tinySA Screen writes

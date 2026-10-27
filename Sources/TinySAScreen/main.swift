@@ -72,6 +72,7 @@ func makeMenuBar() -> NSMenu {
       item("Triple Size", #selector(AppDelegate.tripleSize(_:)), "3"),
       .separator(),
       item("Control the tinySA by Clicking", #selector(AppDelegate.toggleControl(_:)), "k"),
+      item("Back to the tinySA's Main Screen", #selector(AppDelegate.escape(_:)), "\u{1b}", []),
       item("Pointer", #selector(AppDelegate.togglePointer(_:)), "l"),
       item("Pen", #selector(AppDelegate.togglePen(_:)), "d"),
       .separator(),

@@ -15,6 +15,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
   private let view = ScreenView(frame: NSRect(x: 0, y: 0, width: 960, height: 640))
   private let session = Session()
   private var image: CGImage?
+  /// Escape's way back to the analyzer's graph, while it runs.
+  private var escapeRun: EscapeRun?
   private var status = Status(source: "", note: nil, controllable: false)
   /// Shared in a call, the window often sits behind the call's own window, where App Nap would slow the app down and
   /// the picture would freeze.
@@ -63,7 +65,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
     pointerButton.toolTip = "A red dot follows the mouse over the picture, for everyone in a call to see (⌘L). Esc ends it."
     penButton.toolTip = "Draw on the picture; each stroke fades after a few seconds (⌘D). Esc ends it."
-    view.onEscape = { [weak self] in self?.setTool(.none) }
+    view.onEscape = { [weak self] in self?.escape(nil) }
     window.title = "tinySA Screen"
     window.contentView = view
     window.contentAspectRatio = NSSize(width: 480, height: 320)
@@ -85,6 +87,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
     window.makeKeyAndOrderFront(nil)
     view.onTap = { [weak self] x, y, released in
+      self?.stopEscape()  // a click takes the analyzer's screen back
       if released { self?.session.release(x: x, y: y) } else { self?.session.touch(x: x, y: y) }
     }
     view.onUntappable = { [weak self] in self?.untappable() }
@@ -322,6 +325,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
   /// The pointer or the pen takes the mouse (clicks no longer tap the analyzer), or neither.
   private func setTool(_ tool: ScreenView.Tool) {
+    if tool != .none { stopEscape() }
     if tool != .pen { view.clearInk() }
     view.tool = tool
     pointerButton.state = tool == .pointer ? .on : .off
@@ -440,6 +444,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     Preferences.controlEnabled.toggle()
   }
 
+  /// Escape (the key, or View › Back to the tinySA's Main Screen): the pointer or the pen ends when one is on, else the
+  /// analyzer goes back to its graph by its own touches (`EscapeRun`): a number being typed cancelled, a menu closed.
+  @objc func escape(_ sender: Any?) {
+    if view.tool != .none {
+      setTool(.none)
+      return
+    }
+    guard Preferences.controlEnabled else {
+      view.flash("Clicks are off, so Escape can't reach the tinySA: View › Control the tinySA by Clicking.")
+      return
+    }
+    guard status.controllable else {
+      if status.note == nil { untappable() }  // otherwise the note over the picture says why
+      return
+    }
+    stopEscape()
+    escapeRun = EscapeRun(session: session, current: image.flatMap { Snapshot($0) }) { [weak self] message in
+      self?.escapeRun = nil
+      if let message { self?.view.flash(message) }
+    }
+  }
+
+  private func stopEscape() {
+    escapeRun?.stop()
+    escapeRun = nil
+  }
+
   @objc func openRepository(_ sender: Any?) {
     NSWorkspace.shared.open(Self.repository)
   }
@@ -473,6 +504,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     case #selector(togglePointer(_:)):
       item.state = view.tool == .pointer ? .on : .off
       return true
+    case #selector(escape(_:)):
+      return window.isKeyWindow && window.attachedSheet == nil  // elsewhere Escape does what it does there
     case #selector(togglePen(_:)):
       item.state = view.tool == .pen ? .on : .off
       return true

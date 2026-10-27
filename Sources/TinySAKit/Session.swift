@@ -344,7 +344,8 @@ public final class Session {
     guard let port, let screen else { return }
     do {
       try sendTaps()
-      if touchHeld == nil { try runJobs() }
+      // A band waits while a keypad is open on the analyzer: its `sweep` would wait for a sweep, the console with it.
+      if touchHeld == nil, !lock.locked({ jobs.isEmpty }), !ScreenState.of(screen.snapshot()).isKeypad { try runJobs() }
       switch mode {
       case .stream:
         let bytes = try port.read(timeout: 0.03)
@@ -354,10 +355,11 @@ public final class Session {
         }
         try checkStream()
       case .poll:
-        if instrument == .tinySA, touchHeld == nil {
+        if instrument == .tinySA, touchHeld == nil, !ScreenState.of(screen.snapshot()).isKeypad {
           _ = try command("waitscan 1", timeout: 30)
         } else {
-          // A NanoVNA has no waitscan, and a tinySA doesn't sweep while a touch is down: a picture every half second.
+          // A NanoVNA has no waitscan, and a tinySA doesn't sweep while a touch is down or its keypad is open (a
+          // waitscan then would wait for ever, the console with it): a picture every half second.
           try waitWithoutReading(0.5)
         }
         try Capture.apply(capture(screen.size), to: screen)

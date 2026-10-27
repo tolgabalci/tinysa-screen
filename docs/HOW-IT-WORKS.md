@@ -102,6 +102,19 @@ While a feeding program has the analyzer, the app writes the same commands to `t
 time it was clicked, and the program types them (docs/INTEGRATION.md, Clicks as taps); it keeps each touch down as long
 as it was clicked, so a long press stays one when it reads a touch and its release together.
 
+**The keypad.** A number is typed on a keypad that covers the analyzer's screen, and the firmware runs it as a loop of
+its own (`ui_process_keypad`): no sweep until it closes, so a command that waits for a sweep, or that the sweep runs,
+waits as long, and the console with it. The app reads what the screen shows (`ScreenState`: the graph, a menu, the
+number keypad, another keypad) from its pixels, and sends no such command while a keypad is open: a band waits, and
+older firmware's picture after each sweep becomes a picture every half second.
+
+**Escape** takes the analyzer back to its graph with the analyzer's own touches, one at a time: on the number keypad
+its erase key (`touch 300 252`; a character a press, then, with nothing typed, the keypad, nothing changed), on a menu
+a tap on the graph beside it (the firmware closes a menu on a touch outside it). Each waits until the part of the
+screen it touched has changed, as through a feeder the next picture may still be a sweep from before the touch was
+typed, and it stops at the graph, after 24 touches or after 15 s. A form menu, which ignores a touch outside it, and a
+keypad for a name are left to the analyzer's own keys.
+
 ## Bands
 
 A band is two commands, `sweep start <Hz>` and `sweep stop <Hz>`, sent with the live screen paused for a moment (`refresh

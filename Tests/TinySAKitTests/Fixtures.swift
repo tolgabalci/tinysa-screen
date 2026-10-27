@@ -14,7 +14,8 @@ import ImageIO
 /// - `screen-915-big.png`: the same band with a reader hopping, the green holding its channels, a taller waterfall;
 /// - `screen-433.png`: 433.05–434.79 MHz, 0 dBm at the top;
 /// - `screen-915-burst.png`: a sweep that caught the reader's burst at 902.231 MHz, −23.2 dBm by the analyzer's own
-///   marker 2 (fed by a monitor program, its markers on the green).
+///   marker 2 (fed by a monitor program, its markers on the green);
+/// - `screen-keypad.png`: its number keypad, START being typed, nothing typed yet (opened by a click in the window).
 enum Fixture {
   static func data(_ name: String) throws -> Data {
     let url = Bundle.module.url(forResource: name, withExtension: nil, subdirectory: "Fixtures")!

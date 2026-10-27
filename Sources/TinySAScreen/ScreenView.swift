@@ -26,7 +26,7 @@ final class ScreenView: NSView {
   }
   /// Seconds a pen stroke stays before it fades.
   var inkSeconds: TimeInterval = 3
-  /// Escape pressed: leave the tool.
+  /// Escape pressed: the tool ends, or the analyzer goes back to its graph.
   var onEscape: (() -> Void)?
   /// Whether clicks become taps: the picture is live over USB, or comes from a feeder that passes taps on, and control
   /// is on.
@@ -163,7 +163,7 @@ final class ScreenView: NSView {
   override var acceptsFirstResponder: Bool { true }
 
   override func keyDown(with event: NSEvent) {
-    if event.keyCode == 53, tool != .none {  // Escape
+    if event.keyCode == 53 {  // Escape
       onEscape?()
     } else {
       super.keyDown(with: event)
