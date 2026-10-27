@@ -106,10 +106,13 @@ as it was clicked, so a long press stays one when it reads a touch and its relea
 a tap beside a menu closes it (a form menu ignores it). With no menu open the firmware tries, in this order: the SD card
 icon on the left, which saves a screenshot to the card when the analyzer is set to; the labels down the left edge
 (x under 30), each opening its quick menu or keypad (the Scan label opens SPEED); a marker near the tap, picked up to
-drag; the line along the bottom (y over 300), whose left part gives the jog wheel to START and right part to STOP, a
-second tap there opening its keypad, while its middle (x from 310 to 410) switches between START/STOP and CENTER/SPAN;
-and the strip along the top (y under 25), which gives the jog wheel to the markers. Anywhere else opens the menu where
-it was last left: after a quick menu, a tap on the graph opens that quick menu again, not the top menu.
+drag; the line along the bottom, whose left part gives the jog wheel to START and right part to STOP, a second tap
+there opening its keypad, while its middle (x from 310 to 410) switches between START/STOP and CENTER/SPAN; and the
+strip along the top (y under 25), which gives the jog wheel to the markers. The bottom line's part starts 10 pixels
+above the graph's bottom: y over 300 with no waterfall, but a waterfall shortens the graph (to 240 pixels with the
+small one, 180 with the big one), and everything below it counts as the bottom line, y over 230 or 170, the waterfall
+included: a tap on the waterfall at x 360 switches to CENTER/SPAN. Anywhere else opens the menu where it was last
+left: after a quick menu, a tap on the graph opens that quick menu again, not the top menu.
 
 **The keypad.** A number is typed on a keypad that covers the analyzer's screen, and the firmware runs it as a loop of
 its own (`ui_process_keypad`): no sweep until it closes. `waitscan`, which waits on the console's own thread for a
