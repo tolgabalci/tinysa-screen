@@ -10,7 +10,7 @@ final class GIFController {
   private let recorder: FrameRecorder
   private weak var window: NSWindow?
   private let view: ScreenView
-  /// Where the picture comes from (the window's subtitle), kept in the GIF's comment.
+  /// Where the picture comes from (the analyzer and its firmware, or the feeding program), kept in the GIF's comment.
   var source = ""
   /// Why no live picture comes (the window's note), or nil while it's live; and since when it hasn't come. A GIF never
   /// shows an old picture as if it were live: Record starts only from a live picture, and a GIF ends where it stopped.

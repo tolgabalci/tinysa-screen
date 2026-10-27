@@ -3,7 +3,8 @@ import Foundation
 
 /// What the window shows besides the picture.
 public struct Status: Equatable, Sendable {
-  /// Where the picture comes from, for the window's subtitle: the analyzer and its firmware, or the feeding program.
+  /// Where the picture comes from, for `tinysa-screen status` and a GIF's comment: the analyzer and its firmware, or
+  /// the feeding program.
   public var source: String
   /// Why no live picture comes, shown over the picture; nil while it is live.
   public var note: String?

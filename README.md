@@ -5,6 +5,8 @@
 ![macOS 13+](https://img.shields.io/badge/macOS-13%2B-blue)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
+**The big screen your tinySA deserves**
+
 The screen of your [tinySA](https://tinysa.org) spectrum analyzer, live in a window on your Mac. Share that window in
 Teams, Zoom or Meet and everyone sees the band as you do. Click the picture and the analyzer takes it as a tap on its
 own screen.
@@ -106,7 +108,7 @@ antenna.
 
 1. Connect the tinySA by USB and switch it on.
 2. Open **tinySA Screen**. It finds the analyzer by itself (by its USB name, so no other serial device is touched), and
-   the window's title names it and its firmware: "tinySA Screen – tinySA ULTRA+ ZS406 · v1.4-252".
+   `tinysa-screen status` names it and its firmware: "tinySA ULTRA+ ZS406 · v1.4-252".
 3. In a call, share the window: in Teams, **Share › Window › tinySA Screen**; in Zoom, **Share Screen** and pick the
    window; in Meet, **Present › A window**. The window keeps updating when it's behind the call's own window.
 

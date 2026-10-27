@@ -1,7 +1,8 @@
 """A program that keeps the tinySA and feeds its screen to tinySA Screen, a picture of every sweep, and passes the
 window's clicks on to the analyzer as taps. Here it only watches; a monitor or a logger would read its measurements
-where the comment says. Run it, then open tinySA Screen: the window shows "Pictures from example_feeder.py", and a click
-on the picture taps the tinySA. Control-C stops it, and tinySA Screen takes the analyzer itself.
+where the comment says. Run it, then open tinySA Screen: the window shows the analyzer's screen (`tinysa-screen status`
+says "Pictures from example_feeder.py"), and a click on the picture taps the tinySA. Control-C stops it, and tinySA
+Screen takes the analyzer itself.
 
     python3 example_feeder.py
 """

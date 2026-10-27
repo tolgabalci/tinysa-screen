@@ -2,6 +2,14 @@
 
 All notable changes are listed here, newest first. Versions follow [Semantic Versioning](https://semver.org).
 
+## 1.3.2 (2026-10-27)
+
+- The window's title has the app's version, "tinySA Screen v1.3.2", which the app reads from its own Info.plist (the
+  build writes the repository's VERSION there), and the subtitle under it is the app's tagline, "The big screen your
+  tinySA deserves". While another program records the screen, the subtitle says which. The analyzer and its firmware,
+  or the program feeding the pictures, which the subtitle showed before, are in `tinysa-screen status` and in each
+  GIF's comment.
+
 ## 1.3.1 (2026-10-27)
 
 - While the analyzer's keypad is open, the window no longer says "No new picture from …" over a feeder's pictures. The

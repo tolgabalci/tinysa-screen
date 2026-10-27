@@ -66,7 +66,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     pointerButton.toolTip = "A red dot follows the mouse over the picture, for everyone in a call to see (⌘L). Esc ends it."
     penButton.toolTip = "Draw on the picture; each stroke fades after a few seconds (⌘D). Esc ends it."
     view.onEscape = { [weak self] in self?.escape(nil) }
-    window.title = "tinySA Screen"
+    window.title = TitleBar.title(Bundle.main.infoDictionary)
+    updateSubtitle()
     window.contentView = view
     window.contentAspectRatio = NSSize(width: 480, height: 320)
     window.contentMinSize = NSSize(width: 480, height: 320)
@@ -152,7 +153,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     self.status = status
     peaksButton.isEnabled = status.instrument != .nanoVNA
     if status.instrument == .nanoVNA { view.showPeaks(nil) }
-    updateSubtitle()
     gifs.source = status.source
     bands.status = status
     view.say(status.note)
@@ -169,10 +169,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     view.flash("Clicks don't reach the tinySA: \(feeder) has it and doesn't pass them on.")
   }
 
-  /// The window's subtitle: where the picture comes from, and who records it from outside.
+  /// The window's subtitle: the tagline, or who records the screen from outside while they do.
   private func updateSubtitle() {
-    let recording = otherRecordings.isEmpty ? "" : " · recording for \(otherRecordings.joined(separator: ", "))"
-    window.subtitle = status.source + recording
+    window.subtitle = TitleBar.subtitle(recordingFor: otherRecordings)
   }
 
   // MARK: Other programs

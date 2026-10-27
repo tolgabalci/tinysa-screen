@@ -78,7 +78,7 @@ never reads half of one.
 | --- | --- |
 | `state` | `holding`: you have the analyzer, and pictures come while someone watches. `lent`: you lent it to `program` for a while. `waiting`: you're waiting for the analyzer (switched off or unplugged). `stopped`: you're done (write it as you exit). |
 | `pid` | Your process ID. tinySA Screen uses your pictures only while this process runs, so a crash can't leave the window showing an old picture as if live. |
-| `name` | Your program's name, for the window ("Pictures from Band Monitor"). |
+| `name` | Your program's name, for the window's notes ("No new picture from Band Monitor since …") and `tinysa-screen status` ("Pictures from Band Monitor"). |
 | `program` | Who has the analyzer, when `state` is `lent`. |
 | `since` | When the state began (seconds since 1970); optional. |
 | `taps` | `true` when you pass the window's clicks on to the analyzer as taps ([below](#clicks-as-taps)); optional. |
@@ -174,7 +174,7 @@ tinysa-screen record --seconds 30 --output /tmp/band.gif --name my-script --json
 
 With the app open, the command line asks the app through its control socket, `~/Library/Caches/tinySA Screen/control.sock`
 (this user only): one line of JSON in, one line of JSON back. Recordings work on whatever the window shows, the analyzer
-over USB or a feeding program's pictures, and the window's title says who is recording. Requests, replies and the rest
+over USB or a feeding program's pictures, and the window's subtitle says who is recording. Requests, replies and the rest
 are in [COMMAND-LINE.md](COMMAND-LINE.md); in Python, `ask('record', seconds=30, output='/tmp/band.gif')`.
 
 ## Which program has the analyzer

@@ -72,7 +72,7 @@ public struct FeedState: Decodable, Equatable, Sendable {
   public let program: String?
   /// The feeder's process: its pictures count while it runs.
   public let pid: Int32?
-  /// The feeder's name, for the window ("Pictures from …").
+  /// The feeder's name, for the window's notes and the status ("Pictures from …").
   public let name: String?
   /// Whether it passes the window's clicks on to the analyzer as taps (`FeedTaps`).
   public let taps: Bool?

@@ -14,7 +14,7 @@ public final class Automation: @unchecked Sendable {
   public let version: String
   /// Says something in the window: a recording starting or saved.
   public var announce: ((String) -> Void)?
-  /// The names of the programs recording now, for the window's title.
+  /// The names of the programs recording now, for the window's subtitle.
   public var onRecordingsChange: (([String]) -> Void)?
   /// How long to wait for a live picture before giving up.
   public var pictureWait: TimeInterval = 15
