@@ -13,10 +13,10 @@ own screen.
 
 ![tinySA Screen on a Mac, showing a tinySA Ultra+ on the 902–928 MHz RFID band with the peak hold](docs/images/window-live.jpg)
 
-_tinySA Screen with a tinySA Ultra+ on the 902–928 MHz RFID band. The peak hold (cyan), here keeping five minutes, has
-caught three bursts from RFID readers, numbered with their frequency and level; the analyzer's own traces are its
-yellow sweep and its green max decay, and each burst is a dash in the waterfall. The title bar has the pointer and pen,
-the peak hold, bands, Record and Capture._
+_tinySA Screen with a tinySA Ultra+ on the 902–928 MHz RFID band. The peak hold (cyan), here keeping a minute, has
+caught bursts from RFID readers, its peaks numbered with their frequency and level; the analyzer's own traces are its
+yellow sweep and its green max decay, and each burst is a dash in the waterfall. The title bar has the app's version
+and tagline, the pointer and pen, the peak hold, bands, Record and Capture._
 
 ## Install
 
