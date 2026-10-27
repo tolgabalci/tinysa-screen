@@ -2,7 +2,7 @@
 
 All notable changes are listed here, newest first. Versions follow [Semantic Versioning](https://semver.org).
 
-## 1.2.0 (2026-10-26)
+## 1.2.0 (2026-10-27)
 
 - Clicks reach the tinySA while a program feeds the pictures too, when it says it passes them on: tinySA Screen writes
   each click to `taps` in the feed folder, and the program types it on the analyzer as a tap (docs/INTEGRATION.md,
