@@ -187,6 +187,10 @@ public final class Session {
   /// The usual time between a feeder's pictures: a picture is stale after three of them (and at least 6 s), so a feeder
   /// with slow sweeps isn't shown as stopped between pictures.
   private var feedInterval: TimeInterval = 0
+  /// Whether the feeder's latest picture, live when it came, shows the analyzer's keypad. The analyzer doesn't sweep
+  /// while its keypad is open and draws nothing until a key is pressed, so no picture comes and the last one is still
+  /// what it shows: never stale.
+  private var feedKeypad = false
   private var deviceSource = ""
   private var lastStatus: Status?
   /// Regions of the live screen skipped so far (damaged by a command's echo), and when that was last looked at.
@@ -241,6 +245,7 @@ public final class Session {
         lastFeeder = nil
         feedPicture = nil
         feedInterval = 0
+        feedKeypad = false
         if let request = BorrowRequest.current() {
           letGo()
           failJobs("The tinySA is lent to \(request.name)")
@@ -726,14 +731,18 @@ public final class Session {
 
   private func showFeed(_ feed: FeedState, taps: Bool) {
     if let (image, date) = FeedState.picture(newerThan: feedPicture) {
-      if let previous = feedPicture, date > previous, date.timeIntervalSince(previous) < 60 {
+      // The time spent on the keypad isn't the feeder's pace.
+      if let previous = feedPicture, !feedKeypad, date > previous, date.timeIntervalSince(previous) < 60 {
         let interval = date.timeIntervalSince(previous)
         feedInterval = feedInterval == 0 ? interval : 0.7 * feedInterval + 0.3 * interval
       }
       feedPicture = date
       // A picture older than a live one can be (left on the disk by an earlier run) is shown, as the window does with
       // its note, but not recorded as if it were live.
-      if Date().timeIntervalSince(date) < max(6, 3 * feedInterval), let snapshot = Snapshot(image) {
+      let live = Date().timeIntervalSince(date) < max(6, 3 * feedInterval)
+      let snapshot = Snapshot(image)
+      feedKeypad = live && snapshot.map { ScreenState.of($0).isKeypad } == true
+      if live, let snapshot {
         took(snapshot, at: date)
       }
       if delegate != nil {
@@ -751,7 +760,7 @@ public final class Session {
     case "waiting":
       note = "Waiting for the tinySA: switched off, or its USB cable out."
     default:
-      if let feedPicture, Date().timeIntervalSince(feedPicture) < max(6, 3 * feedInterval) {
+      if let feedPicture, feedKeypad || Date().timeIntervalSince(feedPicture) < max(6, 3 * feedInterval) {
         note = nil
       } else if let feedPicture {
         note = "No new picture from \(name) since \(feedPicture.formatted(date: .omitted, time: .standard))."

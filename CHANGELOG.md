@@ -2,6 +2,14 @@
 
 All notable changes are listed here, newest first. Versions follow [Semantic Versioning](https://semver.org).
 
+## 1.3.1 (2026-10-27)
+
+- While the analyzer's keypad is open, the window no longer says "No new picture from …" over a feeder's pictures. The
+  analyzer doesn't sweep while its keypad is open and draws nothing until a key is pressed, so no new picture comes,
+  but the last one is still what it shows; the note also covered part of the line under the keys. The time spent on
+  the keypad no longer counts toward the feeder's usual pace either, which made a real pause after it take longer to
+  show.
+
 ## 1.3.0 (2026-10-27)
 
 - Escape takes the tinySA back to its main screen, with its own touches: a number being typed is cancelled with the

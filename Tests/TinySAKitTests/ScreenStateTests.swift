@@ -23,10 +23,10 @@ final class ScreenStateTests: XCTestCase {
     XCTAssertEqual([tap.x, tap.y], [300, 252])
   }
 
-  /// Menus down the right edge, over the graph, as the analyzer drew them (the main menu, and FREQUENCY, which the
-  /// number keypad for START goes back to): Escape taps the graph beside them.
+  /// Menus down the right edge, over the graph, as the analyzer drew them (the main menu, FREQUENCY, and SPEED, the
+  /// quick menu of the Scan label, which stops short of the bottom): Escape taps the graph beside them.
   func testRealMenus() throws {
-    for name in ["screen-menu.png", "screen-menu-frequency.png"] {
+    for name in ["screen-menu.png", "screen-menu-frequency.png", "screen-menu-speed.png"] {
       let menu = try Fixture.screen(name)
       XCTAssertEqual(ScreenState.of(menu), .menu, name)
       XCTAssertFalse(ScreenState.of(menu).isKeypad, name)

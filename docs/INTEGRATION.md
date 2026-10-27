@@ -91,7 +91,8 @@ never opens the analyzer, even when the analyzer's port is free for a moment. Yo
    it (the file's modification time: the app and its GIFs take a picture's time from it). Otherwise it needn't make
    pictures at all: no one is looking. tinySA Screen looks for a new picture ten times a second and shows one as live
    for three times the usual interval between your pictures (at least 6 seconds); after that its note says "No new
-   picture since …".
+   picture since …". A picture of the analyzer's keypad stays live however old it gets: the analyzer doesn't sweep
+   while its keypad is open and draws nothing until a key is pressed, so no picture comes after it.
 3. Writes `"state": "stopped"` as it exits.
 
 **A picture of every sweep.** The analyzer's live screen gives one: let the analyzer sweep on its own and turn it on

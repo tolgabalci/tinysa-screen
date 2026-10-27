@@ -135,6 +135,36 @@ final class IntegrationTests: XCTestCase {
     XCTAssertEqual(try lines().last, "release 5 6", "Nothing for a feeder that doesn't pass taps on")
   }
 
+  /// A feeder's picture of the analyzer's keypad never goes stale: the analyzer doesn't sweep while its keypad is open
+  /// and draws nothing until a key is pressed, so no picture comes after it. A graph's picture does go stale.
+  func testAKeypadPictureNeverGoesStale() throws {
+    try FileManager.default.createDirectory(at: Integration.feedFolder, withIntermediateDirectories: true)
+    let other = try otherProcess()
+    try #"{"state": "holding", "pid": \#(other.processIdentifier), "name": "Monitor"}"#
+      .write(to: Integration.stateFile, atomically: true, encoding: .utf8)
+    /// A fixture as the feeder's picture, put 3 s ago (live when the session sees it: under the 6 s a picture stays
+    /// new); returns when it is 7 s old.
+    func picture(_ name: String) throws -> Date {
+      let url = try XCTUnwrap(Bundle.module.url(forResource: name, withExtension: nil, subdirectory: "Fixtures"))
+      try? FileManager.default.removeItem(at: Integration.pictureFile)
+      try FileManager.default.copyItem(at: url, to: Integration.pictureFile)
+      let put = Date() - 3
+      try FileManager.default.setAttributes([.modificationDate: put], ofItemAtPath: Integration.pictureFile.path)
+      return put + 7
+    }
+    let keypadStale = try picture("screen-keypad.png")
+    let session = Session()
+    session.start()
+    defer { session.stop() }
+    Thread.sleep(until: keypadStale)
+    XCTAssertEqual(session.status.feeder, "Monitor")
+    XCTAssertNil(session.status.note, "The keypad, still what the analyzer shows")
+
+    Thread.sleep(until: try picture("screen-915.png"))
+    let note = try XCTUnwrap(session.status.note, "A graph with no picture after it for 7 s")
+    XCTAssertTrue(note.hasPrefix("No new picture from Monitor since"), note)
+  }
+
   func testWatching() throws {
     FeedState.touchWatching()
     let first = try FileManager.default.attributesOfItem(atPath: Integration.watchingFile.path)[.modificationDate]

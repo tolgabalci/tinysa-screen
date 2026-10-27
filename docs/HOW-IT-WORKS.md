@@ -102,11 +102,21 @@ While a feeding program has the analyzer, the app writes the same commands to `t
 time it was clicked, and the program types them (docs/INTEGRATION.md, Clicks as taps); it keeps each touch down as long
 as it was clicked, so a long press stays one when it reads a touch and its release together.
 
+**Where a tap lands** (the tinySA Ultra's firmware, `ui_process_touch`). Over a menu a tap picks the item under it, and
+a tap beside a menu closes it (a form menu ignores it). With no menu open the firmware tries, in this order: the SD card
+icon on the left, which saves a screenshot to the card when the analyzer is set to; the labels down the left edge
+(x under 30), each opening its quick menu or keypad (the Scan label opens SPEED); a marker near the tap, picked up to
+drag; the line along the bottom (y over 300), whose left part gives the jog wheel to START and right part to STOP, a
+second tap there opening its keypad, while its middle (x from 310 to 410) switches between START/STOP and CENTER/SPAN;
+and the strip along the top (y under 25), which gives the jog wheel to the markers. Anywhere else opens the menu where
+it was last left: after a quick menu, a tap on the graph opens that quick menu again, not the top menu.
+
 **The keypad.** A number is typed on a keypad that covers the analyzer's screen, and the firmware runs it as a loop of
 its own (`ui_process_keypad`): no sweep until it closes, so a command that waits for a sweep, or that the sweep runs,
 waits as long, and the console with it. The app reads what the screen shows (`ScreenState`: the graph, a menu, the
 number keypad, another keypad) from its pixels, and sends no such command while a keypad is open: a band waits, and
-older firmware's picture after each sweep becomes a picture every half second.
+older firmware's picture after each sweep becomes a picture every half second. Nothing is drawn until a key is pressed,
+so a feeder's picture of the keypad stays live however old it gets, with no "No new picture" note.
 
 **Escape** takes the analyzer back to its graph with the analyzer's own touches, one at a time: on the number keypad
 its erase key (`touch 300 252`; a character a press, then, with nothing typed, the keypad, nothing changed), on a menu
