@@ -148,7 +148,10 @@ analyzer cut its sweep short, and a feeding program's pictures are all there is 
   evenly spaced run of them is the graph's grid (24 rows a division with the small waterfall, 18 with the big one),
   and its left edge is the first column with a grid line down it.
 - **The trace**: in each column of the graph, the highest pixel of trace 1's yellow, alone or where it's ORed with the
-  grid or another trace (red and green full, blue not). One column a sweep point on a tinySA Ultra.
+  grid or another trace (red and green full, blue not). One column a sweep point on a tinySA Ultra. The analyzer
+  writes its markers' readouts ("1: 166.4MHz -55.4dBm") in the same yellow at the top of the graph; the trace is one
+  unbroken line, so yellow in the top two divisions that ends there, with more yellow below it, is that text and is
+  passed over.
 - **The labels**: the level labels at the graph's right and the span under it, enlarged smoothly, dark on light, and
   read with the Mac's text recognition (Vision) at four and at eight times, the two reads having to agree. Look-alike
   letters are taken for what they look like ("$TART", a Cyrillic "М", "Ö" for an O), each level label belongs to the

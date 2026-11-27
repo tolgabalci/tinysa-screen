@@ -4,6 +4,9 @@ All notable changes are listed here, newest first. Versions follow [Semantic Ver
 
 ## 1.3.3 (2026-11-26)
 
+- The peak hold no longer takes the analyzer's marker readout ("1: 166.4MHz -55.4dBm", written in the trace's yellow
+  at the top of the graph) for the trace: with a marker on, it showed bogus peaks at the top of the graph's left side,
+  all at the top level. Now it holds only the trace, which can still reach up into the readout's rows.
 - The peak hold's frequencies and levels show on macOS 27 too, for spans where they didn't: its text recognition
   reads some of the levels at the graph's right upside down ("09-" for "−60"), a zero as "Ö", or a point as a comma,
   and those readings are now taken for what they are.

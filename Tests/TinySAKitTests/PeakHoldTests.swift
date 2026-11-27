@@ -32,6 +32,54 @@ final class PeakHoldTests: XCTestCase {
     for row in rows.compactMap({ $0 }) { XCTAssertTrue((168...228).contains(row), "row \(row)") }
   }
 
+  /// A marker's readout, written in the trace's yellow at the top of the graph ("1: 166.4MHz -55.4dBm"), isn't taken
+  /// for the trace (issue #1), nor its peaks; a trace reaching up into the text, or drawn there alone, still is.
+  func testMarkerReadoutIsNotTheTrace() throws {
+    let clean = try Fixture.screen("screen-915.png")
+    let graph = try XCTUnwrap(Graph.find(on: clean))
+    let yellow = Snapshot.pixel(r: 255, g: 255, b: 0)
+    let black = Snapshot.pixel(r: 0, g: 0, b: 0)
+    var screen = clean
+    // Glyph-like boxes and strokes, 10 rows high, across the left half of the graph.
+    for cell in 0..<26 {
+      let x0 = 32 + cell * 8
+      for y in 2...11 {
+        screen.pixels[y * 480 + x0] = yellow
+        if cell % 3 != 1 { screen.pixels[y * 480 + x0 + 5] = yellow }
+      }
+      for x in x0...(x0 + 5) where cell % 2 == 0 {
+        screen.pixels[2 * 480 + x] = yellow
+        screen.pixels[11 * 480 + x] = yellow
+      }
+    }
+    // A spike from the trace up into the text's rows, and, in another column, the trace drawn there alone.
+    let spike = 300
+    let spikeBottom = try XCTUnwrap(graph.traceRows(on: clean)[spike - 30])
+    for y in 6...spikeBottom { screen.pixels[y * 480 + spike] = yellow }
+    let alone = 400
+    for y in 0...240 where Graph.isTrace(screen.pixels[y * 480 + alone]) { screen.pixels[y * 480 + alone] = black }
+    for y in 10...12 { screen.pixels[y * 480 + alone] = yellow }
+
+    let rows = graph.traceRows(on: screen)
+    let cleanRows = graph.traceRows(on: clean)
+    for x in 32..<240 { XCTAssertEqual(rows[x - 30], cleanRows[x - 30], "column \(x)") }
+    XCTAssertEqual(rows[spike - 30], 6)
+    XCTAssertEqual(rows[alone - 30], 10)
+
+    // With the text alone, the hold finds the same peaks as without it.
+    var text = screen
+    for y in 0...240 {
+      for x in [spike, alone] { text.pixels[y * 480 + x] = clean.pixels[y * 480 + x] }
+    }
+    let (withText, without) = (PeakHold(), PeakHold())
+    withText.add(text, at: Date())
+    without.add(clean, at: Date())
+    let peaks = try XCTUnwrap(withText.state?.peaks)
+    XCTAssertEqual(peaks.map(\.column), without.state?.peaks.map(\.column))
+    XCTAssertEqual(peaks.map(\.row), without.state?.peaks.map(\.row))
+    XCTAssertTrue(peaks.allSatisfy { $0.row > 11 })
+  }
+
   /// The levels and the span are read from the screen's own labels.
   func testReadsTheScale() throws {
     let cases: [(String, Double, Double, Int64, Int64)] = [

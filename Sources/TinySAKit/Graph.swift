@@ -70,9 +70,26 @@ public struct Graph: Equatable, Sendable {
   }
 
   /// The live trace's highest row in each column of the graph, nil where it isn't drawn (a menu over it, say).
+  ///
+  /// The analyzer writes its markers' readouts ("1: 166.4MHz -55.4dBm") at the top of the graph in the trace's own
+  /// yellow. The trace is one unbroken line from point to point, so in a column it is a single run of yellow; yellow
+  /// in the top two divisions that ends there, with more yellow below it, is that text and is passed over. A trace
+  /// reaching up into the text still counts from its top.
   public func traceRows(on screen: Snapshot) -> [Int?] {
-    (left..<right).map { x in
-      for y in top...bottom where Self.isTrace(screen.pixels[y * screen.width + x]) { return y }
+    let textBottom = min(gridRows.count > 2 ? gridRows[2] : top, bottom)
+    return (left..<right).map { x in
+      func isTrace(_ y: Int) -> Bool { Self.isTrace(screen.pixels[y * screen.width + x]) }
+      var y = top
+      while y <= bottom {
+        guard isTrace(y) else {
+          y += 1
+          continue
+        }
+        let start = y
+        while y <= bottom, isTrace(y) { y += 1 }
+        if y <= textBottom, (y...bottom).contains(where: isTrace) { continue }
+        return start
+      }
       return nil
     }
   }
