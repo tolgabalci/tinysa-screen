@@ -2,6 +2,15 @@
 
 All notable changes are listed here, newest first. Versions follow [Semantic Versioning](https://semver.org).
 
+## 1.3.4 (2026-11-27)
+
+- A quick click on the analyzer's screen, and the window's Escape, are noticed now: the analyzer sees a touch only
+  when it next looks, up to a few tenths of a second with its screen shown live, and lost one released before then. On
+  firmware v1.4-333, taps typed back to back, as Escape typed them, were noticed 0 times in 6. Each touch is now held at
+  least 0.4 s before its release, over USB and through a feeding program alike (22 of 24 noticed), still short of a
+  long press (0.5 s), and the next touch goes down 0.1 s after a release at least, so two quick clicks stay two clicks.
+  The Python helpers' `Feeder.pass_taps` keeps the clicks as far apart as the app dates them.
+
 ## 1.3.3 (2026-11-27)
 
 - The peak hold no longer takes the analyzer's marker readout ("1: 166.4MHz -55.4dBm", written in the trace's yellow

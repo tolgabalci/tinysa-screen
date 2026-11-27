@@ -135,6 +135,48 @@ final class IntegrationTests: XCTestCase {
     XCTAssertEqual(try lines().last, "release 5 6", "Nothing for a feeder that doesn't pass taps on")
   }
 
+  /// A quick click's release is dated `shortestTouch` after its touch, so the feeder holds the touch that long (the
+  /// analyzer loses a touch released before it has looked), and the next click's touch `shortestGap` after that release
+  /// (two quick clicks, otherwise, could be one long press); a longer click keeps its own times.
+  func testAQuickClickIsHeldTheShortestTouch() throws {
+    try FileManager.default.createDirectory(at: Integration.feedFolder, withIntermediateDirectories: true)
+    let other = try otherProcess()
+    try #"{"state": "holding", "pid": \#(other.processIdentifier), "name": "Monitor", "taps": true}"#
+      .write(to: Integration.stateFile, atomically: true, encoding: .utf8)
+    func times() throws -> [Double] {
+      try String(contentsOf: Integration.tapsFile, encoding: .utf8).split(separator: "\n")
+        .compactMap { $0.split(separator: " ").last.flatMap { Double($0) } }
+    }
+    let session = Session()
+    session.start()
+    defer { session.stop() }
+    let deadline = Date() + 5
+    while !session.status.controllable, Date() < deadline { Thread.sleep(forTimeInterval: 0.02) }
+    XCTAssertTrue(session.status.controllable)
+
+    session.touch(x: 100, y: 50)
+    session.release(x: 100, y: 50)
+    var t = try times()
+    XCTAssertEqual(t.count, 2)
+    XCTAssertEqual(t[1] - t[0], Session.shortestTouch, accuracy: 0.005)
+    session.touch(x: 100, y: 50)
+    session.release(x: 100, y: 50)
+    t = try times()
+    XCTAssertEqual(t.count, 4)
+    XCTAssertEqual(t[2] - t[1], Session.shortestGap, accuracy: 0.005)
+    XCTAssertEqual(t[3] - t[2], Session.shortestTouch, accuracy: 0.005)
+
+    let dated = t[3] + Session.shortestGap + 0.05 - Date().timeIntervalSince1970  // the clicks dated ahead, gone by
+    if dated > 0 { Thread.sleep(forTimeInterval: dated) }
+    session.touch(x: 10, y: 20)
+    Thread.sleep(forTimeInterval: Session.shortestTouch + 0.2)
+    session.release(x: 10, y: 20)
+    t = try times()
+    XCTAssertEqual(t.count, 6)
+    XCTAssertGreaterThan(t[5] - t[4], Session.shortestTouch + 0.19)
+    XCTAssertLessThan(t[5] - t[4], Session.shortestTouch + 0.4)
+  }
+
   /// A feeder's picture of the analyzer's keypad never goes stale: the analyzer doesn't sweep while its keypad is open
   /// and draws nothing until a key is pressed, so no picture comes after it. A graph's picture does go stale.
   func testAKeypadPictureNeverGoesStale() throws {

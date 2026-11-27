@@ -82,16 +82,39 @@ public final class Session {
 
   /// A tap on the analyzer's screen, at a pixel of it: `touch` while the button is down (again as it moves),
   /// `release` when it comes up. Typed on the analyzer's console over USB, or, while a feeder that passes taps on has
-  /// the analyzer, written for it to type (`FeedTaps`).
+  /// the analyzer, written for it to type (`FeedTaps`). The release goes up no sooner than `shortestTouch` after the
+  /// touch went down.
   public func touch(x: Int, y: Int) { tap("touch", x, y) }
   public func release(x: Int, y: Int) { tap("release", x, y) }
+
+  /// The shortest a touch is held. The analyzer sees a touch only when its UI next looks, once its sweep has stopped for
+  /// it and its screen is drawn, which with the live screen on takes up to a few tenths of a second, and a release that
+  /// comes first takes the touch with it. On a tinySA Ultra with firmware v1.4-333, taps over USB typed back to back (as
+  /// the window's Escape typed them) were noticed 0 times in 6, held 0.15 s 10 in 14, 0.3 s 6 in 8, and 0.4 s 22 in 24.
+  /// The analyzer times a press from when it sees it, so 0.4 s stays a tap, short of its long press (0.5 s).
+  public static let shortestTouch: TimeInterval = 0.4
+  /// The shortest time from a release to the next touch: while a touch is down the analyzer looks for its release every
+  /// 20 ms (`touch_wait_release`), and a touch typed right after a release would make two quick clicks one long press.
+  public static let shortestGap: TimeInterval = 0.1
 
   private func tap(_ kind: String, _ x: Int, _ y: Int) {
     let command = "\(kind) \(x) \(y)"
     lock.locked {
       if feedTaps {
-        FeedTaps.add(command)
+        // The feeder types them as far apart as the times say: a release dated `shortestTouch` after its touch at
+        // least, and a touch `shortestGap` after the release before it.
+        var date = Date()
+        if kind == "touch", feedTouch == nil {
+          if let feedReleasedAt { date = max(date, feedReleasedAt + Self.shortestGap) }
+          feedTouchAt = date
+        }
+        if let feedTouchAt { date = max(date, kind == "release" ? feedTouchAt + Self.shortestTouch : feedTouchAt) }
+        FeedTaps.add(command, at: date)
         feedTouch = kind == "touch" ? (x, y) : nil
+        if kind == "release" {
+          feedTouchAt = nil
+          feedReleasedAt = date
+        }
       } else {
         taps.append(command)
       }
@@ -141,8 +164,11 @@ public final class Session {
   private var taps: [String] = []
   /// Whether taps go to the feeder: its pictures show, and it passes taps on.
   private var feedTaps = false
-  /// A touch given to the feeder and not released yet: released when taps stop going there.
+  /// A touch given to the feeder and not released yet: released when taps stop going there. When it went down, and when
+  /// the release before it went up, as dated for the feeder.
   private var feedTouch: (x: Int, y: Int)?
+  private var feedTouchAt: Date?
+  private var feedReleasedAt: Date?
   private let finished = DispatchSemaphore(value: 0)
 
   // MARK: The session thread's side
@@ -199,8 +225,11 @@ public final class Session {
   private var lastSkipCheck = Date.distantPast
   private var lastTap = Date.distantPast
   /// Where a touch went down that hasn't been released yet: the analyzer waits for the release, with its sweep stopped,
-  /// so it is always sent before letting go.
+  /// so it is always sent before letting go. And when it went down, and when the release before it went up: a release
+  /// goes out `shortestTouch` after its touch at least, and a touch `shortestGap` after the release before it.
   private var touchHeld: (x: Int, y: Int)?
+  private var touchedAt: Date?
+  private var releasedAt: Date?
   /// When the live screen last brought bytes: a stream that has gone quiet is checked (a Mac that slept turns it off).
   private var lastData = Date.distantPast
   /// The last feeder seen, and when: a moment's unreadable state.json doesn't end its turn.
@@ -437,7 +466,20 @@ public final class Session {
     for line in lines {
       let parts = line.split(separator: " ")
       if parts.count == 3, let x = Int(parts[1]), let y = Int(parts[2]) {
+        // A short wait here when a release would come too soon after its touch, or a touch after the release before it;
+        // the analyzer, its sweep stopped by the touch, draws little meanwhile.
+        var wait: TimeInterval = 0
+        if parts[0] == "release", let touchedAt { wait = Self.shortestTouch - Date().timeIntervalSince(touchedAt) }
+        if parts[0] == "touch", touchHeld == nil, let releasedAt {
+          wait = Self.shortestGap - Date().timeIntervalSince(releasedAt)
+        }
+        if wait > 0 { Thread.sleep(forTimeInterval: wait) }
+        if parts[0] == "touch", touchHeld == nil { touchedAt = Date() }
         touchHeld = parts[0] == "touch" ? (x, y) : nil
+        if touchHeld == nil {
+          touchedAt = nil
+          releasedAt = Date()
+        }
       }
       if mode == .poll {
         _ = try command(line)
@@ -681,6 +723,7 @@ public final class Session {
     if let held = touchHeld {
       try? port.write("release \(held.x) \(held.y)\r")
       touchHeld = nil
+      touchedAt = nil
     }
     switch mode {
     case .stream:
@@ -713,6 +756,8 @@ public final class Session {
     dirty = false
     frameDue = nil
     touchHeld = nil
+    touchedAt = nil
+    releasedAt = nil
     lock.locked { taps.removeAll() }  // clicks made while letting go aren't replayed on the next connection
   }
 
@@ -723,8 +768,9 @@ public final class Session {
   private func passTaps(_ on: Bool) {
     lock.locked {
       if !on, let held = feedTouch {
-        FeedTaps.add("release \(held.x) \(held.y)")
+        FeedTaps.add("release \(held.x) \(held.y)", at: max(Date(), (feedTouchAt ?? .distantPast) + Self.shortestTouch))
         feedTouch = nil
+        feedTouchAt = nil
       }
       feedTaps = on
     }

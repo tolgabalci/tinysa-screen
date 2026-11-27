@@ -118,6 +118,7 @@ class Feeder:
         self._read_to = None  # (inode, offset) of the taps file read so far; None before the first look
         self._down = None  # the touch handed out and not released yet: (x, y)
         self._pressed = None  # its press: (when clicked, when typed on the monotonic clock)
+        self._released = None  # the release before: (when clicked, when typed on the monotonic clock)
         self._news = 0.0  # when a tap last came, on the monotonic clock
         os.makedirs(FEED_FOLDER, exist_ok=True)
 
@@ -178,21 +179,24 @@ class Feeder:
         return found
 
     def pass_taps(self, live: 'LiveScreen') -> bool:
-        """Types the window's clicks on the analyzer through `live.cmd`, which waits until it draws nothing, each touch
-        held as long as it was clicked: a press and its release read together wait the difference (at most
-        TAP_HOLD_MOST s), so a long press stays one. True when it typed something or a touch is down, the analyzer busy
-        with them (it doesn't sweep while a touch is down). Made to be `LiveScreen.picture`'s `between`."""
+        """Types the window's clicks on the analyzer through `live.cmd`, which waits until it draws nothing, as far
+        apart as they were clicked, waiting the difference (at most TAP_HOLD_MOST s) when it reads them together:
+        before a release, so a long press stays one, and before the press after a release, so two quick clicks stay
+        two. True when it typed something or a touch is down, the analyzer busy with them (it doesn't sweep while a
+        touch is down). Made to be `LiveScreen.picture`'s `between`."""
         taps = self.taps()
         for tap in taps:
             release = tap.command.startswith('release')
-            if release and self._pressed is not None:
-                clicked, typed = self._pressed
+            since = self._pressed if release else self._released if self._pressed is None else None
+            if since is not None:
+                clicked, typed = since
                 wait = min(TAP_HOLD_MOST, tap.at - clicked - (time.monotonic() - typed))
                 if wait > 0:
                     time.sleep(wait)
             live.cmd(tap.command)
             if release:
                 self._pressed = None
+                self._released = (tap.at, time.monotonic())
             elif self._pressed is None:  # the press; the touches after it move it
                 self._pressed = (tap.at, time.monotonic())
         return bool(taps) or self._down is not None

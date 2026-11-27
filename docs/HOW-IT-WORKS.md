@@ -96,11 +96,20 @@ turns it off.
 does a finger: a touch held half a second (its `BUTTON_DOWN_LONG_TICKS`) is a long press, which on the keypad's erase
 key clears the whole entry and on a value in a form menu turns it into a slider. The mouse is the finger: the button
 down is a touch, each move while it is down (at most 25 a second) another, and the button up the release. A right-click
-holds its touch at least 0.6 s, a long press without holding the button.
+holds its touch at least 0.6 s, a long press without holding the button, and any touch is held at least 0.4 s. The
+analyzer sees a touch only when its UI next looks, once `touch` has stopped its sweep and its screen is drawn, which
+with the live screen on takes up to a few tenths of a second, and a release that comes first takes the touch with it
+(`remote_mouse_down`, read by `touch_check`). On firmware v1.4-333, taps over USB typed back to back, as the window's
+Escape typed them, were noticed 0 times in 6; held 0.15 s, 10 in 14; 0.3 s, 6 in 8; 0.4 s, 22 in 24. The analyzer
+times a press from when it sees it, so 0.4 s stays a tap, short of its long press (0.5 s). And a touch goes down 0.1 s
+after the release before it at least: while a touch is down the analyzer looks for its release every 20 ms
+(`touch_wait_release`), and a touch right after a release would make two quick clicks one long press.
 
 While a feeding program has the analyzer, the app writes the same commands to `taps` in the feed folder, each with the
 time it was clicked, and the program types them (docs/INTEGRATION.md, Clicks as taps); it keeps each touch down as long
-as it was clicked, so a long press stays one when it reads a touch and its release together.
+as it was clicked, so a long press stays one when it reads a touch and its release together. A release is dated 0.4 s
+after its touch at least, and a touch 0.1 s after the release before it, so the program keeps quick clicks as far
+apart too.
 
 **Where a tap lands** (the tinySA Ultra's firmware, `ui_process_touch`). Over a menu a tap picks the item under it, and
 a tap beside a menu closes it (a form menu ignores it). With no menu open the firmware tries, in this order: the SD card
