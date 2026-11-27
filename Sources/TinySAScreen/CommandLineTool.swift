@@ -258,9 +258,10 @@ enum CommandLineTool {
         lines.append("tinySA Screen \(reply.version ?? "") is open, without a picture: \(reply.note ?? "")")
       }
       if let kept = reply.keptSeconds, kept > 0 {
-        lines.append("Capture keeps \(Int(kept)) s (\(Int(reply.availableSeconds ?? 0)) s so far).")
+        lines.append(
+          "The last \(Int(kept)) s are kept (\(Int(reply.availableSeconds ?? 0)) s so far), for Record and capture.")
       } else {
-        lines.append("Capture keeps no seconds (Settings › Keep the latest seconds).")
+        lines.append("No seconds are kept (Settings › Recording › Keep in memory), so capture has none.")
       }
       if let recordings = reply.recordings, recordings > 0 { lines.append("Recording now: \(recordings).") }
     } else {
