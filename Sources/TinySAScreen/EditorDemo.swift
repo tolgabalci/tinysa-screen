@@ -9,7 +9,7 @@
   /// a folder too, it saves pictures of the editor in a few states there and quits.
   @MainActor
   enum EditorDemo {
-    /// Where the strip is in the sheet, top-down as SwiftUI has it, for the script's drags.
+    /// Where the strip is in the editor's window, top-down as SwiftUI has it, for the script's drags.
     static var strip: CGRect?
 
     static func runIfAsked() -> Bool {
@@ -42,15 +42,15 @@
       window.makeKeyAndOrderFront(nil)
       let model = TrimModel(clip: clip, began: began, trim: Trim(clip, began: began, leadIn: 5))
       let note = environment["TINYSA_SCREEN_EDITOR_NOTE"]
-      let host = NSHostingController(rootView: RecordingEditor(model: model, note: note) { action in
+      let editor = EditorWindow(model: model, note: note) { action in
         print("Done: \(action.map { "\($0)" } ?? "cancelled"), \(model.trim.start) to \(model.trim.end)")
         exit(0)
-      })
-      let sheet = NSWindow(contentViewController: host)
-      model.undoManager = sheet.undoManager
-      window.beginSheet(sheet)
+      }
+      editor.show(over: window)
+      let screen = window.screen?.visibleFrame.size ?? .zero
+      print("Editor \(editor.window.contentLayoutRect.size) on a screen of \(screen)")
       if let out = environment["TINYSA_SCREEN_EDITOR_SNAPSHOTS"] {
-        snapshots(of: sheet, model: model, to: URL(fileURLWithPath: out))  // in the background: nothing taken from you
+        snapshots(of: editor.window, model: model, to: URL(fileURLWithPath: out))  // in the background: nothing taken
       } else if #available(macOS 14.0, *) {
         app.activate()
       } else {
@@ -98,9 +98,12 @@
       }
       RunLoop.main.add(feed, forMode: .common)
       func files() -> [String] {
-        let names = (try? FileManager.default.contentsOfDirectory(atPath: out.path)) ?? []
+        let names = FileManager.default.subpaths(atPath: out.path) ?? []
         return names.filter { $0.hasSuffix(".gif") }.sorted()
       }
+      let file = out.appendingPathComponent("not a folder.txt")
+      try? Data("x".utf8).write(to: file)
+      let newFolder = out.appendingPathComponent("Band GIFs/915 MHz", isDirectory: true)
       func returnKey(_ sheet: NSWindow) {
         if let event = NSEvent.keyEvent(
           with: .keyDown, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
@@ -118,19 +121,34 @@
         (3, {
           print("Length after 3 s: \(gifs.length)")
           gifs.stopRecording()
-          print("Editor open: \(gifs.isEditing), sheet \(window.attachedSheet != nil), recording \(gifs.isRecording)")
-          gifs.startRecording()
-          print("Record while the editor is open: \(gifs.isRecording)")
+          print("Editor open: \(gifs.isEditing), windows \(gifs.editorWindows.count), recording \(gifs.isRecording)")
         }),
         (1.5, {
-          if let sheet = window.attachedSheet, let image = picture(of: sheet) {
-            let url = out.appendingPathComponent("editor.png")
-            try? NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])?.write(to: url)
+          guard let editor = gifs.editorWindows.first, let model = gifs.editorModels.first else { return }
+          print("Save to shows \(model.folder), can save \(model.canSave)")
+          model.folder = file.path
+          print("A file typed: \(model.folderStatus), can save \(model.canSave)")
+          returnKey(editor)
+        }),
+        (1, {
+          guard let editor = gifs.editorWindows.first, let model = gifs.editorModels.first else {
+            print("The editor closed: Return saved to a file?")
+            return
           }
-          if let sheet = window.attachedSheet { returnKey(sheet) }
+          print("Return with a file typed: editor open \(gifs.isEditing), files \(files())")
+          model.folder = SaveFolder.shortPath(newFolder)
+          print("A new folder typed (\(model.folder)): \(model.folderStatus), can save \(model.canSave)")
+          DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+            if let image = picture(of: editor) {
+              let url = out.appendingPathComponent("editor.png")
+              try? NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])?.write(to: url)
+            }
+            returnKey(editor)
+          }
         }),
         (3, {
           print("After Return: editor \(gifs.isEditing), files \(files())")
+          print("Kept for next time: \(Preferences.saveFolder.path ?? "the Desktop")")
           gifs.startRecording()
         }),
         (2, {
@@ -144,6 +162,9 @@
         (2, {
           gifs.finish {
             print("Quit saved it: files \(files())")
+            // The demo leaves nothing kept.
+            Preferences.defaults.removeObject(forKey: Preferences.Key.saveFolderBookmark)
+            Preferences.defaults.removeObject(forKey: Preferences.Key.saveFolderPath)
             exit(0)
           }
         }),
@@ -259,8 +280,9 @@
       // The start handle, dragged 250 points back, a few points at a time.
       var from = NSPoint.zero
       steps.append((0.3, {
-        // The start handle's middle: the GIF's start, half a handle to the left.
-        if let strip = EditorDemo.strip, let height = sheet.contentView?.bounds.height {
+        // The start handle's middle: the GIF's start, half a handle to the left. SwiftUI's global space runs down from
+        // the window's top, title bar and all.
+        if let strip = EditorDemo.strip, case let height = sheet.frame.height {
           let inner = strip.width - 2 * TrimStrip.handle
           let fraction = model.trim.start.timeIntervalSince(model.clip.start) / model.total
           from = NSPoint(

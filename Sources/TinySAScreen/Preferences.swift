@@ -21,6 +21,8 @@ enum Preferences {
     static let peakColor = "peakColor"
     static let saveFolderBookmark = "saveFolderBookmark"
     static let saveFolderPath = "saveFolderPath"
+    static let editorWidth = "editorWidth"
+    static let editorHeight = "editorHeight"
   }
 
   static let defaults = UserDefaults.standard
@@ -98,7 +100,7 @@ enum Preferences {
     set { defaults.set(newValue, forKey: Key.floatOnTop) }
   }
 
-  /// Where GIFs and screenshots are saved (Settings › Save to): the Desktop unless another folder was chosen.
+  /// Where GIFs and screenshots are saved: the Desktop, or the folder the editor last saved a GIF to (its Save to).
   static var saveFolder: SaveFolder {
     get {
       let bookmark = defaults.data(forKey: Key.saveFolderBookmark)
@@ -114,6 +116,19 @@ enum Preferences {
 
   /// The name of the folder files go to now, as Finder shows it ("Desktop" while a chosen folder can't be found).
   static var saveFolderName: String { saveFolder.place().name }
+
+  /// The size the editor's window was last left at: the next one's.
+  static var editorSize: NSSize? {
+    get {
+      let width = defaults.double(forKey: Key.editorWidth)
+      let height = defaults.double(forKey: Key.editorHeight)
+      return width > 0 && height > 0 ? NSSize(width: width, height: height) : nil
+    }
+    set {
+      defaults.set(newValue?.width ?? 0, forKey: Key.editorWidth)
+      defaults.set(newValue?.height ?? 0, forKey: Key.editorHeight)
+    }
+  }
 
   /// The bands the user saved (Band › Save Current Span as a Band), at the top of the Band menu.
   static var savedBands: [BandPreset] {

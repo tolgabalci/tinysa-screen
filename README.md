@@ -114,7 +114,7 @@ antenna.
 
 | Menu | Keys | What it does |
 | --- | --- | --- |
-| File › Save Screenshot | ⌘S | The analyzer's screen at its own size, as a PNG named `tinySA <date> at <time>.png`, on the Desktop or in the folder chosen in Settings |
+| File › Save Screenshot | ⌘S | The analyzer's screen at its own size, as a PNG named `tinySA <date> at <time>.png`, on the Desktop or in the folder the GIF editor last saved to |
 | File › Record GIF | ⌘R | Records the screen, starting 5 seconds before you press it, until you stop it (⌘R again); Stop opens the editor to trim the GIF, then saves it there too ([below](#recording-gifs)) |
 | File › Stop and Save Recording | ⌥⌘R | Stops and saves the GIF as it is, without the editor |
 | Edit › Copy Screenshot | ⌘C | The screenshot, to paste anywhere |
@@ -129,7 +129,7 @@ antenna.
 | View › Enter Full Screen | ⌃⌘F | The picture as large as the screen allows |
 | Band › (a band) | | Sets the analyzer to sweep that band ([below](#bands)) |
 | Window › Float on Top | | The window stays above other apps' windows |
-| tinySA Screen › Settings… | ⌘, | How recordings start and stop, how GIFs look, where files are saved, saved bands, clicks and the pen |
+| tinySA Screen › Settings… | ⌘, | How recordings start and stop, how GIFs look, saved bands, clicks and the pen |
 
 A click on the picture is a tap on the analyzer's screen, even while the call's window is the active one: here the
 analyzer's DISPLAY menu, opened from the Mac. The mouse is your finger on the analyzer's glass: holding the button down
@@ -215,7 +215,8 @@ report or paste into a chat. tinySA Screen keeps the last minute of the screen a
 recording starts before you press Record: its GIF starts 5 seconds before, and the minute is there to take in when
 what you wanted came earlier. While it records, the button is **Stop** with the GIF's length so far.
 
-**Stop** opens the editor, with the whole recording on a filmstrip and the GIF between its yellow ends:
+**Stop** opens the editor in a window of its own, with the whole recording on a filmstrip and the GIF between its
+yellow ends:
 
 ![The editor: the screen at the playhead, and under it the filmstrip, the GIF's 15 seconds framed in yellow, the minute kept before Record dimmed](docs/images/editor.jpg)
 
@@ -226,9 +227,9 @@ what you wanted came earlier. While it records, the button is **Stop** with the 
   filmstrip moves the playhead.
 - **The keys are QuickTime Player's**: ← and → step a frame (⇧ a second), ⌥← and ⌥→ go to the GIF's start and end,
   and I and O set its start or end at the playhead. ⌘Z undoes.
-- Choose whether the date and the time go under the screen and the size; the editor says how large the file will be.
-  Then **Save** (Return), as `tinySA <date> at <time>.gif`, on the Desktop or in the folder you chose
-  ([below](#where-files-go)), or **Copy** (⌘C) to paste it into a chat or an email as an animated GIF. **Cancel**
+- Beside the picture, choose whether the date and the time go under the screen and the size; the editor says how large
+  the file will be. **Save to** is the folder it's saved in ([below](#where-files-go)). Then **Save** (Return), as
+  `tinySA <date> at <time>.gif`, or **Copy** (⌘C) to paste it into a chat or an email as an animated GIF. **Cancel**
   (Esc) asks before it deletes the recording.
 
 Hold ⌥ while recording and Stop becomes **Stop & Save**: the GIF is saved as it is, from 5 seconds before Record to
@@ -265,9 +266,10 @@ kept for next time and for Stop & Save.
 
 ### Where files go
 
-GIFs and screenshots go to the Desktop until you choose a folder: **Settings › Saving › Save to › Other…**, then any
-folder (New Folder works there too). From then on Record and ⌘S save there, and the menu and buttons name it
-("Save Screenshot to Band recordings"). **Show in Finder** opens it; **Save to › Desktop** goes back.
+GIFs and screenshots go to the Desktop until you save a GIF somewhere else: the editor's **Save to** shows the folder.
+Type over it (a folder that isn't there yet is made when the GIF is saved), click **Choose…** (New Folder works there
+too), or drop a folder on it. The folder you save a GIF in is kept: the next editor starts with it, and Stop & Save and
+⌘S save there too, the menu naming it ("Save Screenshot to Band recordings").
 
 - A folder that's moved or renamed is followed there.
 - While the folder can't be found (on a drive that's unplugged, say) or can't be written to, the file goes to the

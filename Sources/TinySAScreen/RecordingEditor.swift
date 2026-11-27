@@ -1,12 +1,14 @@
 import AppKit
 import SwiftUI
 import TinySAKit
+import UniformTypeIdentifiers
 
-/// The editor Stop opens: the whole recording, the seconds kept from before Record included, with the part the GIF
-/// keeps between two yellow handles. It starts as Stop & Save would save it (from the lead-in set in Settings before
-/// Record, to Stop); a handle dragged back takes in more of the seconds before, either one dragged in trims. The
-/// picture shows the frame at the playhead as the GIF will, strip and all, and follows a handle while it moves; Play
-/// plays the part kept over and over, as the GIF will.
+/// The editor Stop opens, in a window of its own: the whole recording, the seconds kept from before Record included,
+/// with the part the GIF keeps between two yellow handles. It starts as Stop & Save would save it (from the lead-in set
+/// in Settings before Record, to Stop); a handle dragged back takes in more of the seconds before, either one dragged
+/// in trims. The picture shows the frame at the playhead as the GIF will, strip and all, as large as the window lets
+/// it, and follows a handle while it moves; Play plays the part kept over and over, as the GIF will. Beside it: the
+/// date and time under the screen, the size, and the folder the GIF is saved in, kept for the next.
 struct RecordingEditor: View {
   enum Action { case save, copy }
 
@@ -20,27 +22,42 @@ struct RecordingEditor: View {
   @AppStorage(Preferences.Key.gifScale) private var scale = 2
   @StateObject private var stills = StillCache()
   @StateObject private var estimate = SizeEstimate()
-  @State private var confirmingDelete = false
+  @FocusState private var typingFolder: Bool
+  @State private var folderDropping = false
+  @Environment(\.displayScale) private var displayScale
+
+  /// The column beside the picture, the window's smallest content, and what isn't the picture in its height.
+  static let side: CGFloat = 270
+  static let smallest = CGSize(width: 760, height: 540)
+  static let aroundPicture = CGSize(width: 20 + 20 + side + 20, height: 262)
 
   private var screen: (width: Int, height: Int) {
     (model.clip.frames.last?.width ?? 480, model.clip.frames.last?.height ?? 320)
   }
 
+  /// The strip's rows under the screen, at the screen's own size.
+  private var captionRows: Int { showsDate || showsTime ? 16 : 0 }
+
   var body: some View {
     VStack(alignment: .leading, spacing: 14) {
       header
-      preview
-        .frame(maxWidth: .infinity)
+      HStack(alignment: .top, spacing: 20) {
+        preview
+        side
+          .frame(width: Self.side)
+      }
+      .frame(maxHeight: .infinity)
       VStack(spacing: 8) {
         TrimStrip(model: model)
         transport
       }
-      Divider()
-      choices
       buttons
     }
     .padding(20)
-    .frame(width: 600)
+    .frame(
+      minWidth: Self.smallest.width, maxWidth: .infinity, minHeight: Self.smallest.height, maxHeight: .infinity,
+      alignment: .topLeading
+    )
     .background(KeyCatcher(model: model))
     .task(id: estimateKey) {
       estimate.update(
@@ -50,7 +67,7 @@ struct RecordingEditor: View {
       estimate.cancel()
       model.pause()
     }
-    .alert("Delete the recording?", isPresented: $confirmingDelete) {
+    .alert("Delete the recording?", isPresented: $model.confirmingDelete) {
       Button("Delete", role: .destructive) { done(nil) }
       Button("Keep Editing", role: .cancel) {}
     } message: {
@@ -60,18 +77,15 @@ struct RecordingEditor: View {
 
   private var header: some View {
     VStack(alignment: .leading, spacing: 4) {
-      Text("Make a GIF of the recording")
-        .font(.headline)
       if let note {
         Text(note)
-          .font(.callout)
           .fixedSize(horizontal: false, vertical: true)
       }
       Text(hint)
-        .font(.callout)
         .foregroundStyle(.secondary)
         .fixedSize(horizontal: false, vertical: true)
     }
+    .font(.callout)
   }
 
   private var hint: String {
@@ -80,23 +94,49 @@ struct RecordingEditor: View {
       + (more >= 1 ? " The start can go back \(TimeText.spoken(more)) more, into what was kept before." : "")
   }
 
-  /// The frame at the playhead as the GIF shows it, strip and all: drawn twice the screen's size, shown at half that,
-  /// so a Retina display shows each pixel of it. A click plays or pauses.
+  // MARK: The picture
+
+  /// The frame at the playhead as the GIF shows it, strip and all, as large as fits: at a size where each of the
+  /// screen's pixels is whole display pixels when that's near, drawn from a still made at least that sharp. A click
+  /// plays or pauses.
   private var preview: some View {
-    let options = GIFOptions(scale: 2, showsDate: showsDate, showsTime: showsTime)
-    let image = stills.image(of: model.clip.frame(at: model.playhead), at: model.playhead, options: options)
-    let width = CGFloat(min(screen.width, 480))  // a wider fed picture is shown smaller, to fit the sheet
-    let height =
-      image.map { width * CGFloat($0.height) / CGFloat($0.width) }
-      ?? width * CGFloat(screen.height + (showsDate || showsTime ? 16 : 0)) / CGFloat(screen.width)
+    GeometryReader { area in
+      let rows = screen.height + captionRows
+      let fit = min(area.size.width / CGFloat(screen.width), area.size.height / CGFloat(rows))
+      let shown = Self.crisp(fit, displayScale: displayScale)
+      let exact = shown * displayScale
+      let pixels = min(max(Int((exact - 0.01).rounded(.up)), 1), 4)
+      let options = GIFOptions(scale: pixels, showsDate: showsDate, showsTime: showsTime)
+      let image = stills.image(of: model.clip.frame(at: model.playhead), at: model.playhead, options: options)
+      let width = CGFloat(screen.width) * shown
+      let height = CGFloat(rows) * shown
+      // On whole display pixels, so a picture shown at its own pixels isn't blurred by half a pixel.
+      let x = ((area.size.width - width) / 2 * displayScale).rounded(.down) / displayScale
+      let _ = model.pictureSlack = CGSize(width: area.size.width - width, height: area.size.height - height)
+      picture(image, width: width, height: height, whole: abs(exact - CGFloat(pixels)) < 0.01)
+        .offset(x: x)
+    }
+  }
+
+  /// Points a pixel of the screen takes: as many as fit, or a few fewer where that shows each pixel as whole display
+  /// pixels (every half point on a Retina display, every point elsewhere), and no more than four display pixels.
+  static func crisp(_ fit: CGFloat, displayScale: CGFloat) -> CGFloat {
+    let display = max(displayScale, 1)
+    let fit = min(fit, 4 / display)
+    guard fit >= 1 else { return max(fit, 0.25) }
+    let whole = (fit * display).rounded(.down) / display
+    return fit <= whole * 1.06 ? whole : fit
+  }
+
+  private func picture(_ image: CGImage?, width: CGFloat, height: CGFloat, whole: Bool) -> some View {
     let outside =
       model.playhead < model.trim.start
       ? "Before the GIF" : model.playhead > model.trim.end ? "After the GIF" : nil
     return Group {
       if let image {
-        Image(decorative: image, scale: 2)
+        Image(decorative: image, scale: 1)
           .resizable()
-          .interpolation(.high)
+          .interpolation(whole ? .none : .high)
       } else {
         Color.black
       }
@@ -113,7 +153,10 @@ struct RecordingEditor: View {
       }
     }
     .contentShape(Rectangle())
-    .onTapGesture { model.togglePlay() }
+    .onTapGesture {
+      model.takeKeys()
+      model.togglePlay()
+    }
     .accessibilityElement()
     .accessibilityLabel(
       "The GIF at \(TimeText.clock(model.playhead))" + (outside.map { ", \($0.lowercased())" } ?? ""))
@@ -131,6 +174,7 @@ struct RecordingEditor: View {
         .accessibilityLabel("Starts at \(TimeText.clock(model.trim.start))")
       Spacer()
       Button {
+        model.takeKeys()
         model.togglePlay()
       } label: {
         Image(systemName: model.isPlaying ? "pause.fill" : "play.fill")
@@ -153,28 +197,93 @@ struct RecordingEditor: View {
     .foregroundStyle(.secondary)
   }
 
-  private var choices: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      HStack(spacing: 18) {
-        Text("Under the screen:")
-        Toggle("Date", isOn: $showsDate)
-        Toggle("Time", isOn: $showsTime)
+  // MARK: Beside the picture
+
+  private var side: some View {
+    VStack(alignment: .leading, spacing: 22) {
+      VStack(alignment: .leading, spacing: 8) {
+        Text("Under the screen")
+          .font(.headline)
+        Toggle("The date", isOn: $showsDate)
+        Toggle("The time, to the second", isOn: $showsTime)
       }
-      HStack(spacing: 12) {
-        Picker("Size:", selection: $scale) {
-          Text(size(1)).tag(1)
+      VStack(alignment: .leading, spacing: 8) {
+        Text("Size")
+          .font(.headline)
+        Picker("Size", selection: $scale) {
           Text(size(2)).tag(2)
+          Text(size(1)).tag(1)
         }
-        .pickerStyle(.segmented)
-        .fixedSize()
-        if let bytes = estimate.bytes {
-          Text(GIFController.size(bytes))
-            .foregroundStyle(.secondary)
-            .accessibilityLabel("The GIF will take \(GIFController.size(bytes))")
-        } else {
-          ProgressView().controlSize(.small)
+        .pickerStyle(.radioGroup)
+        .labelsHidden()
+        HStack(spacing: 6) {
+          Text("The GIF takes")
+          if let bytes = estimate.bytes {
+            Text(GIFController.size(bytes))
+          } else {
+            ProgressView().controlSize(.small)
+          }
         }
+        .foregroundStyle(.secondary)
+        .accessibilityElement(children: .combine)
       }
+      saveTo
+      Spacer(minLength: 0)
+    }
+  }
+
+  /// The folder the GIF goes to: the one kept from the last GIF saved (the Desktop at first), to type over, choose
+  /// with Choose…, or drop a folder on. It's kept for the next once the GIF is saved there, and made then if it's new.
+  private var saveTo: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      Text("Save to")
+        .font(.headline)
+      HStack(spacing: 8) {
+        TextField("Folder", text: $model.folder, prompt: Text("~/Desktop"))
+          .textFieldStyle(.roundedBorder)
+          .truncationMode(.head)  // a long path shows its end: the folder's own name
+          .focused($typingFolder)
+          .help("The folder the GIF is saved in, kept for the next: type one, or drop one here")
+          .accessibilityLabel("Save to folder")
+        Button("Choose…") { model.chooseFolder() }
+          .help("Choose the folder the GIF is saved in")
+      }
+      .padding(3)
+      .overlay {
+        RoundedRectangle(cornerRadius: 7)
+          .stroke(Color.accentColor, lineWidth: 2)
+          .opacity(folderDropping ? 1 : 0)
+      }
+      .padding(-3)
+      .onDrop(of: [UTType.fileURL], isTargeted: $folderDropping) { providers in
+        guard let provider = providers.first else { return false }
+        _ = provider.loadObject(ofClass: URL.self) { url, _ in
+          guard let url else { return }
+          DispatchQueue.main.async {
+            MainActor.assumeIsolated { model.dropped(url) }
+          }
+        }
+        return true
+      }
+      if let note = folderNote {
+        Text(note.text)
+          .font(.caption)
+          .foregroundStyle(note.problem ? Color(nsColor: .systemRed) : .secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+    }
+  }
+
+  private var folderNote: (text: String, problem: Bool)? {
+    if model.folder == model.keptFolder, model.keptFolderMissing {
+      return ("Not found, so the GIF goes to the Desktop until it's back.", false)
+    }
+    switch model.folderStatus {
+    case .ready: return nil
+    case .new: return ("A new folder: it's made when the GIF is saved.", false)
+    case .file: return ("That's a file, not a folder.", true)
+    case .locked: return ("tinySA Screen can't save there.", true)
+    case .empty: return ("Type a folder, or choose one.", true)
     }
   }
 
@@ -183,23 +292,34 @@ struct RecordingEditor: View {
       Spacer()
       Button("Cancel") {
         model.pause()
-        confirmingDelete = true
+        model.confirmingDelete = true
       }
       .keyboardShortcut(.cancelAction)
       .help("Delete the recording without making a GIF (Esc)")
       Button("Copy") { done(.copy) }
-        .keyboardShortcut("c")
+        .keyboardShortcut(typingFolder ? nil : KeyboardShortcut("c"))  // in the folder, ⌘C copies its text
         .help("Copy the GIF to paste into a chat or an email (⌘C)")
-      Button("Save to \(Preferences.saveFolderName)") { done(.save) }
+      Button("Save") { save() }
         .keyboardShortcut(.defaultAction)
-        .help("Save the GIF (Return)")
-      // ⌘S saves too, as the screenshot's does outside the sheet.
-      Button("") { done(.save) }
+        .disabled(!model.canSave)
+        .help("Save the GIF in \(model.folder.isEmpty ? "the folder" : model.folder) (Return)")
+      // ⌘S saves too, as the screenshot's does in the app's window.
+      Button("") { save() }
         .keyboardShortcut("s")
+        .disabled(!model.canSave)
         .frame(width: 0, height: 0)
         .opacity(0)
         .accessibilityHidden(true)
     }
+  }
+
+  /// Save, while Save to is somewhere it can save (a key can come before the button shows it can't).
+  private func save() {
+    guard model.canSave else {
+      NSSound.beep()
+      return
+    }
+    done(.save)
   }
 
   private var estimateKey: String {
@@ -209,9 +329,100 @@ struct RecordingEditor: View {
   }
 
   private func size(_ scale: Int) -> String {
-    let strip = showsDate || showsTime ? 16 * scale : 0
     let name = scale == 1 ? "Small" : "Sharp"
-    return "\(name), \(screen.width * scale) × \(screen.height * scale + strip)"
+    return "\(name), \(screen.width * scale) × \(screen.height * scale + captionRows * scale)"
+  }
+}
+
+/// The editor's window, over the app's: at first as large as the screen comfortably takes, its picture at the largest
+/// size whose pixels show whole (up to two points a pixel of the screen), or the size the last one was left at; it
+/// can be resized, and closing it asks first, as Cancel does. Not a sheet: the app's window stays where it is and keeps
+/// showing the analyzer, and Record can start again while it's open.
+@MainActor
+final class EditorWindow: NSObject, NSWindowDelegate {
+  let window: NSWindow
+  let model: TrimModel
+
+  init(model: TrimModel, note: String?, done: @escaping (RecordingEditor.Action?) -> Void) {
+    self.model = model
+    let host = NSHostingController(rootView: RecordingEditor(model: model, note: note, done: done))
+    host.sizingOptions = [.minSize]
+    window = NSWindow(contentViewController: host)
+    window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+    window.title = "Recording at \(TimeText.clock(model.began))"
+    window.isReleasedWhenClosed = false
+    window.tabbingMode = .disallowed
+    window.collectionBehavior.insert(.fullScreenAuxiliary)  // over the app's window in full screen too
+    super.init()
+    window.delegate = self
+    model.window = window
+    model.undoManager = window.undoManager
+  }
+
+  /// Opens it over `parent`, within its screen; the `nth` open at once a little lower and to the right.
+  func show(over parent: NSWindow?, nth: Int = 0) {
+    let screen = parent?.screen ?? NSScreen.main
+    let visible = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 870)
+    let chrome = window.frameRect(forContentRect: .zero).size  // the title bar
+    let room = NSSize(width: visible.width - 16 - chrome.width, height: visible.height - 16 - chrome.height)
+    let remembered = Preferences.editorSize
+    var size = remembered ?? Self.size(for: model.clip, room: room, displayScale: screen?.backingScaleFactor ?? 2)
+    let least = NSSize(
+      width: min(RecordingEditor.smallest.width, room.width), height: min(RecordingEditor.smallest.height, room.height))
+    size.width = max(min(size.width, room.width), least.width)
+    size.height = max(min(size.height, room.height), least.height)
+    let center = parent.map { NSPoint(x: $0.frame.midX, y: $0.frame.midY) } ?? NSPoint(x: visible.midX, y: visible.midY)
+    let step = CGFloat(nth * 24)
+    func place(_ size: NSSize) {
+      window.setContentSize(size)
+      let frame = window.frame
+      let x = min(max(center.x - frame.width / 2 + step, visible.minX + 8), visible.maxX - 8 - frame.width)
+      let y = min(max(center.y - frame.height / 2 - step, visible.minY + 8), visible.maxY - 8 - frame.height)
+      window.setFrameOrigin(NSPoint(x: x, y: y))
+    }
+    place(size)
+    if remembered == nil {
+      // Laid out once, the room the picture doesn't take (the hint is shorter in a wide window) is taken away.
+      window.contentView?.layoutSubtreeIfNeeded()
+      let slack = model.pictureSlack
+      if slack.width > 1 || slack.height > 1 {
+        size.width = max(size.width - max(slack.width, 0), least.width)
+        size.height = max(size.height - max(slack.height, 0), least.height)
+        place(size)
+      }
+    }
+    window.makeKeyAndOrderFront(nil)
+  }
+
+  /// The content size for the picture at the largest scale whose pixels show whole (half points on a Retina display,
+  /// whole points elsewhere, up to two points a pixel) that leaves the window within `room`.
+  static func size(for clip: Clip, room: NSSize, displayScale: CGFloat) -> NSSize {
+    let width = CGFloat(clip.frames.last?.width ?? 480)
+    let caption = Preferences.gifShowsDate || Preferences.gifShowsTime ? 16 : 0
+    let rows = CGFloat((clip.frames.last?.height ?? 320) + caption)
+    let around = RecordingEditor.aroundPicture
+    let scales: [CGFloat] = displayScale >= 2 ? [2, 1.5, 1] : [2, 1]
+    let fits = scales.first { width * $0 + around.width <= room.width && rows * $0 + around.height <= room.height }
+    let scale = fits ?? 1
+    return NSSize(width: width * scale + around.width, height: rows * scale + around.height)
+  }
+
+  /// The close button and ⌘W ask, as Cancel does: the recording is nowhere else.
+  func windowShouldClose(_ sender: NSWindow) -> Bool {
+    model.pause()
+    model.confirmingDelete = true
+    return false
+  }
+
+  /// The size it's left at is the next one's.
+  func windowDidEndLiveResize(_ notification: Notification) {
+    Preferences.editorSize = window.contentLayoutRect.size
+  }
+
+  func close() {
+    window.delegate = nil
+    window.orderOut(nil)
+    window.close()
   }
 }
 
@@ -232,7 +443,7 @@ struct TrimStrip: View {
     var mouse: CGFloat
   }
 
-  static let height: CGFloat = 48
+  static let height: CGFloat = 56
   static let handle: CGFloat = 13
   static let border: CGFloat = 3
   static let yellow = Color(red: 1, green: 0.8, blue: 0.04)
@@ -472,7 +683,19 @@ final class TrimModel: ObservableObject {
   @Published private(set) var isPlaying = false
   /// Times the strip was clicked, for the keys to go to it.
   @Published private(set) var keyRequests = 0
-  /// The sheet's, for ⌘Z to take a change of the GIF's ends back (Edit › Undo Trim).
+  /// Cancel, or the window's close button, is asking before the recording is deleted.
+  @Published var confirmingDelete = false
+  /// Save to: the folder as typed, chosen or dropped, and what it comes to.
+  @Published var folder: String { didSet { folderStatus = SaveFolder.typed(folder).status } }
+  @Published private(set) var folderStatus: SaveFolder.Typed.Status
+  /// The folder kept from the last GIF saved, as Save to first shows it, and whether it's missing (on a drive that's
+  /// unplugged, say: the GIF then goes to the Desktop, as before).
+  let keptFolder: String
+  let keptFolderMissing: Bool
+  /// The editor's window: for Choose…'s panel, and its undo (⌘Z takes a change of the GIF's ends back).
+  weak var window: NSWindow?
+  /// The room around the picture that it doesn't take, at its last layout: the window opens without it.
+  var pictureSlack = CGSize.zero
   weak var undoManager: UndoManager?
   private var timer: Timer?
   /// Where playing went from, and when.
@@ -480,11 +703,54 @@ final class TrimModel: ObservableObject {
   /// A drag under way: the ends before it, and whether it was playing (it goes on after, as in other editors).
   private var dragging: (trim: Trim, playing: Bool)?
 
-  init(clip: Clip, began: Date, trim: Trim) {
+  init(clip: Clip, began: Date, trim: Trim, saveFolder: SaveFolder = Preferences.saveFolder) {
     self.clip = clip
     self.began = began
     self.trim = trim
     playhead = trim.start
+    let place = saveFolder.place()
+    let shown = place.missing != nil ? saveFolder.path.map { URL(fileURLWithPath: $0) } ?? place.url : place.url
+    keptFolder = SaveFolder.shortPath(shown)
+    keptFolderMissing = place.missing != nil
+    folder = keptFolder
+    folderStatus = SaveFolder.typed(keptFolder).status
+  }
+
+  /// Save can save: to the folder kept (or the Desktop while it's missing), or to one typed that's there to write in
+  /// or can be made.
+  var canSave: Bool { folder == keptFolder || folderStatus == .ready || folderStatus == .new }
+
+  /// Choose…: a folder panel over the editor, starting where Save to points (or the nearest folder above that's there).
+  func chooseFolder() {
+    let panel = NSOpenPanel()
+    panel.title = "Save the GIF To"
+    panel.message = "Choose the folder to save the GIF in. It's kept for the next GIF and for screenshots too."
+    panel.prompt = "Choose"
+    panel.canChooseDirectories = true
+    panel.canChooseFiles = false
+    panel.canCreateDirectories = true
+    panel.allowsMultipleSelection = false
+    var start = SaveFolder.typed(folder).url ?? SaveFolder.desktopURL
+    while !FileManager.default.fileExists(atPath: start.path), start.path != "/" {
+      start = start.deletingLastPathComponent()
+    }
+    panel.directoryURL = start
+    let chosen = { [weak self] (response: NSApplication.ModalResponse) in
+      guard response == .OK, let url = panel.url else { return }
+      self?.folder = SaveFolder.shortPath(url)
+    }
+    if let window {
+      panel.beginSheetModal(for: window, completionHandler: chosen)
+    } else {
+      chosen(panel.runModal())
+    }
+  }
+
+  /// A folder dropped on Save to, or a file: its folder.
+  func dropped(_ url: URL) {
+    var isFolder: ObjCBool = false
+    let there = FileManager.default.fileExists(atPath: url.path, isDirectory: &isFolder)
+    folder = SaveFolder.shortPath(there && isFolder.boolValue ? url : url.deletingLastPathComponent())
   }
 
   /// The whole recording's length.
@@ -733,10 +999,14 @@ final class StillCache: ObservableObject {
 final class Filmstrip: ObservableObject {
   @Published private(set) var tiles: [CGImage?] = []
   private var made: Int?
+  /// Pictures asked for: those of an older ask (a width the window was resized through) are let go.
+  private var asked = 0
 
   func make(_ clip: Clip, count: Int, tileSeconds: TimeInterval, pixels: (width: Int, height: Int)) {
     guard made != count, pixels.width > 0, pixels.height > 0 else { return }
     made = count
+    asked += 1
+    let ask = asked
     let frames = (0..<count).map { clip.frame(at: clip.start.addingTimeInterval((Double($0) + 0.5) * tileSeconds)) }
     DispatchQueue.global(qos: .userInitiated).async {
       var images: [CGImage?] = []
@@ -752,7 +1022,10 @@ final class Filmstrip: ObservableObject {
       }
       let made = Tiles(images: images)
       DispatchQueue.main.async {
-        MainActor.assumeIsolated { self.tiles = made.images }
+        MainActor.assumeIsolated {
+          guard ask == self.asked else { return }
+          self.tiles = made.images
+        }
       }
     }
   }

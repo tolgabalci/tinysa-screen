@@ -299,7 +299,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
   /// The Record button turns into Stop while recording, with the GIF's length so far (from the lead-in before Record),
   /// and into Stop & Save while ⌥ is down.
   private func updateGIFControls() {
-    recordButton.isEnabled = !gifs.isEditing
     if gifs.isRecording {
       let length = gifs.length.rounded(.down)
       let time = TimeText.duration(length)
@@ -559,9 +558,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     switch item.action {
     case #selector(saveScreenshot(_:)):
       item.title = "Save Screenshot to \(Preferences.saveFolderName)"
-      return image != nil && window.attachedSheet == nil  // ⌘S in the editor saves its GIF
+      return image != nil && window.attachedSheet == nil && !gifs.isEditorKey  // ⌘S in the editor saves its GIF
     case #selector(copy(_:)):
-      return image != nil && window.attachedSheet == nil  // ⌘C in the editor copies its GIF
+      return image != nil && window.attachedSheet == nil && !gifs.isEditorKey  // ⌘C in the editor copies its GIF
     case #selector(toggleControl(_:)):
       item.state = Preferences.controlEnabled ? .on : .off
       return true

@@ -24,8 +24,8 @@ final class GIFController {
   /// The recording running: the recorder's, how long it may run, and how far before Record its GIF starts.
   private var recording: (id: UUID, longest: TimeInterval, leadIn: TimeInterval)?
   private var timer: Timer?
-  /// The editor Stop opened, while it's open.
-  private var editor: (sheet: NSWindow, model: TrimModel)?
+  /// The editors Stop opened, while they're open: one for each recording stopped, each in its own window.
+  private var editors: [EditorWindow] = []
   /// GIFs being made and written, and what waits for them (quitting).
   private var saving = 0
   private var whenSaved: [() -> Void] = []
@@ -39,7 +39,9 @@ final class GIFController {
   }
 
   var isRecording: Bool { recording != nil }
-  var isEditing: Bool { editor != nil }
+  var isEditing: Bool { !editors.isEmpty }
+  /// An editor is the window in front: its ⌘S and ⌘C are its own.
+  var isEditorKey: Bool { editors.contains { $0.window.isKeyWindow } }
 
   /// How long the recording has been running since Record was pressed.
   var elapsed: TimeInterval {
@@ -60,8 +62,8 @@ final class GIFController {
   var leadIn: TimeInterval { recording?.leadIn ?? TimeInterval(Preferences.recordLeadIn) }
   var longest: TimeInterval { recording?.longest ?? TimeInterval(Preferences.recordLongest) }
 
-  /// Record can start (not while the editor is open) or stop.
-  var canRecord: Bool { isRecording || (editor == nil && recorder.hasSnapshot) }
+  /// Record can start, with a picture to record (editors open or not), or stop.
+  var canRecord: Bool { isRecording || recorder.hasSnapshot }
 
   // MARK: Record
 
@@ -71,7 +73,7 @@ final class GIFController {
   }
 
   func startRecording() {
-    guard recording == nil, editor == nil else { return }
+    guard recording == nil else { return }
     if let notLive {
       view.flash("Nothing to record: \(notLive.note)")
       return
@@ -125,31 +127,53 @@ final class GIFController {
   // MARK: The editor
 
   private func edit(_ clip: Clip, began: Date, trim: Trim, note: String?) {
-    guard let window else { return }
     let model = TrimModel(clip: clip, began: began, trim: trim)
-    let host = NSHostingController(
-      rootView: RecordingEditor(model: model, note: note) { [weak self] action in self?.finishEditing(action) })
-    let sheet = NSWindow(contentViewController: host)
-    sheet.title = "Recording"
-    model.undoManager = sheet.undoManager
-    editor = (sheet, model)
+    let editor = EditorWindow(model: model, note: note) { [weak self, weak model] action in
+      guard let self, let model else { return }
+      self.finishEditing(model, action)
+    }
+    editors.append(editor)
     onChange?()
-    window.beginSheet(sheet)
+    editor.show(over: window, nth: editors.count - 1)
+    // Stopped by itself while another app is in front: the Dock icon bounces once.
+    if !NSApp.isActive { NSApp.requestUserAttention(.informationalRequest) }
   }
 
-  private func finishEditing(_ action: RecordingEditor.Action?) {
-    guard let (sheet, model) = editor else { return }
+  private func finishEditing(_ model: TrimModel, _ action: RecordingEditor.Action?) {
+    guard let index = editors.firstIndex(where: { $0.model === model }) else { return }
+    let editor = editors.remove(at: index)
     model.pause()
-    window?.endSheet(sheet)
-    editor = nil
+    editor.close()
+    window?.makeKeyAndOrderFront(nil)
     onChange?()
     guard let action else { return }
     let part = model.clip.part(model.trim)
     switch action {
-    case .save: save(part, options: options())
+    case .save: save(part, options: options(), note: keepFolder(model))
     case .copy: copy(part, options: options())
     }
   }
+
+  /// The folder Save to shows, kept for this GIF and the next (Stop & Save and screenshots too), made first when it's
+  /// new; a note when it can't be made (the GIF then goes where the GIFs went before).
+  private func keepFolder(_ model: TrimModel) -> String {
+    guard model.folder != model.keptFolder else { return "" }  // as it was: the folder kept, followed when moved
+    let typed = SaveFolder.typed(model.folder)
+    guard let url = typed.url, typed.canSave else { return "" }
+    do {
+      if typed.status == .new { try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true) }
+      Preferences.saveFolder = try SaveFolder.chosen(url)
+      return ""
+    } catch {
+      return "\(url.lastPathComponent) couldn't be made (\(error.localizedDescription)). "
+    }
+  }
+
+  #if DEBUG
+    /// The editors' windows and models, for the demo's script.
+    var editorWindows: [NSWindow] { editors.map(\.window) }
+    var editorModels: [TrimModel] { editors.map(\.model) }
+  #endif
 
   // MARK: Making GIFs
 
@@ -195,11 +219,11 @@ final class GIFController {
     for done in waiting { done() }
   }
 
-  /// Stops a recording and saves it, or saves the GIF the editor shows, then calls `done` once every GIF in the making
-  /// is written: for quitting, so that no recording is lost to it.
+  /// Stops a recording and saves it, and saves the GIF each editor shows, then calls `done` once every GIF in the
+  /// making is written: for quitting, so that no recording is lost to it.
   func finish(then done: @escaping () -> Void) {
     if isRecording { stopRecording(andSave: true) }
-    if editor != nil { finishEditing(.save) }
+    for editor in editors { finishEditing(editor.model, .save) }
     if saving == 0 {
       done()
     } else {
@@ -207,7 +231,7 @@ final class GIFController {
     }
   }
 
-  var isBusy: Bool { isRecording || editor != nil || saving > 0 }
+  var isBusy: Bool { isRecording || !editors.isEmpty || saving > 0 }
 
   private func save(_ clip: Clip, options: GIFOptions, note: String = "") {
     view.flash(note + "Making the GIF…")

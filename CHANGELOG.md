@@ -13,8 +13,17 @@ All notable changes are listed here, newest first. Versions follow [Semantic Ver
   steps); Play loops the GIF. The keys are QuickTime Player's: Space, ← and → a frame (⇧ a second), ⌥← and ⌥→ to the
   GIF's start and end, I and O to set them at the playhead, and ⌘Z. Then Save (Return) or Copy (⌘C), with the date,
   time and size chosen and the file's size shown; Cancel asks before it deletes the recording.
+- The editor is a window of its own, as large as the screen comfortably takes: on a 1440 × 900 screen its picture is
+  1.5 times the analyzer's screen, on a larger one twice, its pixels shown whole, beside a column with the date, time
+  and size, and the filmstrip runs the window's width. It can be resized, and the next opens at the size it was left
+  at. The app's window stays where it is, still showing the analyzer, and Record can start again while an editor is
+  open (each recording gets its own).
+- Save to, in the editor: the folder the GIF is saved in, the Desktop at first. Type over it (a folder that isn't there
+  yet is made when the GIF is saved), choose one with Choose…, or drop one on it; Save says when it can't save there.
+  The folder a GIF is saved in is kept for the next, and for Stop & Save and screenshots (⌘S) too, so Settings no
+  longer has Save to.
 - With ⌥ held, Stop is Stop & Save (⌥⌘R): the GIF is saved as it is, without the editor. Quitting saves a recording
-  running, or the GIF in the editor, as it is.
+  running, or the GIF in each editor, as it is.
 - Capture (⇧⌘R) is gone: Record does what it did, and from further back if wanted. The command line's `capture` stays.
 - A recording runs two minutes at most after Record, as before, or up to five (Settings › Recording), so a GIF can be up
   to ten minutes long; at the limit it stops and opens the editor. The command line's `record` takes up to 300 seconds.

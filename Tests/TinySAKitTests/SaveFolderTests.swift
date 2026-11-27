@@ -112,6 +112,47 @@ final class SaveFolderTests: XCTestCase {
     XCTAssertTrue(second.lastPathComponent.hasSuffix(" (2).gif"), second.lastPathComponent)
   }
 
+  /// A folder typed in the editor: from the home folder unless it starts with "/", made when it's new, and refused
+  /// when it's a file or can't be written in.
+  func testTypedFolders() throws {
+    let home = try folder("home")
+    let desktop = try folder("home/Desktop")
+    let file = home.appendingPathComponent("notes.txt")
+    try Data("x".utf8).write(to: file)
+    let locked = try folder("home/Locked")
+    try FileManager.default.setAttributes([.posixPermissions: 0o555], ofItemAtPath: locked.path)
+    defer { try? FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: locked.path) }
+    func check(_ text: String, _ status: SaveFolder.Typed.Status, _ url: URL?, line: UInt = #line) {
+      let typed = SaveFolder.typed(text, home: home)
+      XCTAssertEqual(typed.status, status, text, line: line)
+      XCTAssertEqual(typed.url?.path, url?.standardizedFileURL.path, text, line: line)
+    }
+    check("~", .ready, home)
+    check("~/Desktop", .ready, desktop)
+    check("  ~/Desktop/ ", .ready, desktop)
+    check("Desktop", .ready, desktop)
+    check(desktop.path, .ready, desktop)
+    check("~/Band GIFs/915 MHz", .new, home.appendingPathComponent("Band GIFs/915 MHz"))
+    check("~/notes.txt", .file, file)
+    check("~/notes.txt/inside", .file, file.appendingPathComponent("inside"))
+    check("~/Locked", .locked, locked)
+    check("~/Locked/new", .locked, locked.appendingPathComponent("new"))
+    check("/", .locked, URL(fileURLWithPath: "/"))
+    check("   ", .empty, nil)
+    XCTAssertTrue(SaveFolder.typed("~/Desktop", home: home).canSave)
+    XCTAssertTrue(SaveFolder.typed("~/New", home: home).canSave)
+    XCTAssertFalse(SaveFolder.typed("~/Locked", home: home).canSave)
+  }
+
+  /// Paths shown with the home folder as "~", as Finder's Go to Folder takes them.
+  func testShortPaths() {
+    let home = URL(fileURLWithPath: "/Users/someone")
+    XCTAssertEqual(SaveFolder.shortPath(URL(fileURLWithPath: "/Users/someone/Desktop"), home: home), "~/Desktop")
+    XCTAssertEqual(SaveFolder.shortPath(home, home: home), "~")
+    XCTAssertEqual(SaveFolder.shortPath(URL(fileURLWithPath: "/Users/someone2/x"), home: home), "/Users/someone2/x")
+    XCTAssertEqual(SaveFolder.shortPath(URL(fileURLWithPath: "/Volumes/Drive/GIFs"), home: home), "/Volumes/Drive/GIFs")
+  }
+
   func testFileNamesAreTheMacsScreenRecordingStyleWhateverItsCalendar() {
     let name = SaveFolder.fileName(for: start, extension: "png")
     XCTAssertTrue(name.hasPrefix("tinySA 20"), name)

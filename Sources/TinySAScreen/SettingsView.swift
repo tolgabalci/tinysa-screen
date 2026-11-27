@@ -18,17 +18,6 @@ struct SettingsView: View {
   @AppStorage(Preferences.Key.peakColor) private var peakColor = PeakColor.cyan.rawValue
   @AppStorage(Preferences.Key.peakCount) private var peakCount = 5
   @AppStorage(Preferences.Key.savedBands) private var savedBandsData = Data()
-  @AppStorage(Preferences.Key.saveFolderPath) private var saveFolderPath = ""
-  @AppStorage(Preferences.Key.saveFolderBookmark) private var saveFolderBookmark = Data()
-
-  private enum SaveChoice: Hashable { case desktop, chosen, other }
-  /// Every two seconds: the folder can go (a drive unplugged) or come back while Settings is open.
-  @State private var folderCheck = 0
-
-  private var saveFolder: SaveFolder {
-    SaveFolder(
-      bookmark: saveFolderBookmark.isEmpty ? nil : saveFolderBookmark, path: saveFolderPath.isEmpty ? nil : saveFolderPath)
-  }
 
   private var savedBands: [BandPreset] { (try? JSONDecoder().decode([BandPreset].self, from: savedBandsData)) ?? [] }
 
@@ -45,11 +34,12 @@ struct SettingsView: View {
       } header: {
         Text("GIFs")
       } footer: {
-        Text("Stop & Save makes GIFs this way. The editor that Stop opens starts with them, and changes them too.")
+        Text(
+          "Stop & Save makes GIFs this way. The editor that Stop opens starts with them, and changes them too. GIFs "
+            + "and screenshots (⌘S) go to the folder the editor last saved to (its Save to), the Desktop at first.")
           .foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
       }
-      saving
       Section {
         Picker("Hold each level", selection: $peakWindow) {
           ForEach(Preferences.peakWindows, id: \.self) { seconds in
@@ -130,7 +120,6 @@ struct SettingsView: View {
     }
     .formStyle(.grouped)
     .frame(minWidth: 460, idealWidth: 480, maxWidth: 640, minHeight: 320, idealHeight: 620)
-    .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in folderCheck += 1 }
   }
 
   /// How far back a recording starts, how far back the editor can take it, and how long it runs.
@@ -192,56 +181,6 @@ struct SettingsView: View {
     return seconds == 60 ? "1 minute" : "\(seconds / 60) minutes"
   }
 
-  /// Where GIFs and screenshots go: the Desktop, or a folder chosen with Other….
-  private var saving: some View {
-    _ = folderCheck  // looked at again with each check
-    let folder = saveFolder
-    let place = folder.place()
-    return Section {
-      Picker(
-        "Save to",
-        selection: Binding<SaveChoice>(
-          get: { folder.isDesktop ? .desktop : .chosen },
-          set: { choice in
-            switch choice {
-            case .desktop: Preferences.saveFolder = .desktop
-            case .chosen: break
-            case .other: DispatchQueue.main.async { SaveFolderPanel.choose() }  // after the menu has closed
-            }
-          })
-      ) {
-        Text("Desktop").tag(SaveChoice.desktop)
-        if !folder.isDesktop {
-          Text(place.missing.map { "\($0) (not found)" } ?? place.name).tag(SaveChoice.chosen)
-        }
-        Divider()
-        Text("Other…").tag(SaveChoice.other)
-      }
-      HStack(alignment: .firstTextBaseline) {
-        VStack(alignment: .leading, spacing: 2) {
-          Text(Self.shortPath(folder.path.map { URL(fileURLWithPath: $0) } ?? place.url))
-            .textSelection(.enabled)
-          if place.missing != nil {
-            Text("Not found, so they go to the Desktop until it's back.")
-          }
-        }
-        .foregroundStyle(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
-        Spacer()
-        Button("Show in Finder") { NSWorkspace.shared.open(place.url) }
-          .help("Open the folder GIFs and screenshots go to")
-      }
-    } header: {
-      Text("Saving")
-    } footer: {
-      Text(
-        "GIFs (⌘R) and screenshots (⌘S) are saved here, named after when they start. A folder that's moved or renamed is followed there; while it can't be found (on a drive that's unplugged, say), files go to the Desktop."
-      )
-      .foregroundStyle(.secondary)
-      .fixedSize(horizontal: false, vertical: true)
-    }
-  }
-
   /// "Until cleared", "For 10 seconds", "For 1 minute"…
   static func holding(_ seconds: Int) -> String {
     switch seconds {
@@ -261,43 +200,8 @@ struct SettingsView: View {
     default: return "\(seconds / 60) Minutes"
     }
   }
-
-  /// A path with the home folder as ~, as Finder's Go to Folder takes it.
-  static func shortPath(_ url: URL) -> String {
-    let home = FileManager.default.homeDirectoryForCurrentUser.path
-    let path = url.path
-    return path == home || path.hasPrefix(home + "/") ? "~" + path.dropFirst(home.count) : path
-  }
 }
 
-/// The folder panel for Settings › Save to › Other….
-@MainActor
-enum SaveFolderPanel {
-  static func choose() {
-    let panel = NSOpenPanel()
-    panel.title = "Save GIFs and Screenshots To"
-    panel.message = "Choose the folder tinySA Screen saves GIFs and screenshots in."
-    panel.prompt = "Choose"
-    panel.canChooseDirectories = true
-    panel.canChooseFiles = false
-    panel.canCreateDirectories = true
-    panel.allowsMultipleSelection = false
-    panel.directoryURL = Preferences.saveFolder.place().url
-    guard panel.runModal() == .OK, let url = panel.url else { return }
-    guard FileManager.default.isWritableFile(atPath: url.path) else {
-      let alert = NSAlert()
-      alert.messageText = "tinySA Screen can't save in “\(FileManager.default.displayName(atPath: url.path))”"
-      alert.informativeText = "Choose a folder you can add files to."
-      alert.runModal()
-      return
-    }
-    do {
-      Preferences.saveFolder = try SaveFolder.chosen(url)
-    } catch {
-      NSAlert(error: error).runModal()
-    }
-  }
-}
 
 /// The Settings window, made when first opened.
 @MainActor
