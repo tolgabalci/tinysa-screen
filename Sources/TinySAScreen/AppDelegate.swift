@@ -31,6 +31,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
   private var otherRecordings: [String] = []
   private let recordButton = NSButton()
   private let captureButton = NSButton()
+  /// The link to the latest GIF from Record or Capture, between their buttons, once there is one.
+  private let lastGIFButton = LinkButton()
+  private var lastGIF: (url: URL, made: GIFController.Made)?
   private let pointerButton = NSButton()
   private let penButton = NSButton()
   private let peaksButton = NSButton()
@@ -48,6 +51,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     let bandMenu = NSApp.mainMenu?.items.first { $0.submenu?.title == "Band" }?.submenu
     bands = BandController(session: session, view: view, window: window, menuBarMenu: bandMenu)
     gifs.onChange = { [weak self] in self?.updateGIFControls() }
+    gifs.onMade = { [weak self] url, made in self?.showLastGIF(url, made) }
+    lastGIFButton.target = self
+    lastGIFButton.action = #selector(openLastGIF(_:))
     setUpToolbarButton(recordButton, "Record", symbol: "record.circle", action: #selector(toggleRecording(_:)))
     setUpToolbarButton(captureButton, "Capture", symbol: "clock.arrow.circlepath", action: #selector(capture(_:)))
     setUpToolbarButton(pointerButton, "Pointer", symbol: "cursorarrow.rays", action: #selector(togglePointer(_:)))
@@ -231,7 +237,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
   }
 
   func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-    [.flexibleSpace, .pointer, .pen, .peaks, .band, .record, .capture]
+    [.flexibleSpace, .pointer, .pen, .peaks, .band, .record, .lastGIF, .capture]
   }
 
   func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
@@ -279,6 +285,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
       item.view = captureButton
       item.menuFormRepresentation = menuForm("Capture as GIF…", #selector(capture(_:)))
       item.visibilityPriority = .high
+    case .lastGIF:
+      let title = lastGIF?.made == .capture ? "Last capture" : "Last recording"
+      item.label = title
+      item.view = lastGIFButton
+      item.menuFormRepresentation = menuForm("Open \(title)", #selector(openLastGIF(_:)))
+      item.visibilityPriority = .high
     default:
       return nil
     }
@@ -315,6 +327,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
   @objc func toggleRecording(_ sender: Any?) {
     gifs.toggleRecording()
+  }
+
+  /// The link to the GIF just made, right of Record and left of Capture: one link, to the latest GIF of either.
+  private func showLastGIF(_ url: URL, _ made: GIFController.Made) {
+    lastGIF = (url, made)
+    let title = made == .capture ? "Last capture" : "Last recording"
+    lastGIFButton.setLink(title)
+    lastGIFButton.toolTip = "Open \(url.lastPathComponent), the GIF \(made == .capture ? "captured" : "recorded") last"
+    lastGIFButton.setAccessibilityLabel("Open the \(title.lowercased())")
+    guard let toolbar = window.toolbar else { return }
+    if let item = toolbar.items.first(where: { $0.itemIdentifier == .lastGIF }) {
+      item.label = title
+      item.menuFormRepresentation?.title = "Open \(title)"
+    } else {
+      let record = toolbar.items.firstIndex { $0.itemIdentifier == .record } ?? toolbar.items.count - 1
+      toolbar.insertItem(withItemIdentifier: .lastGIF, at: record + 1)
+    }
+  }
+
+  /// Opens the latest GIF where it plays: in the app the Mac opens GIFs with, or in the browser when that app shows a
+  /// GIF still (Preview, an image editor) or no app opens GIFs (`GIFViewer`).
+  @objc func openLastGIF(_ sender: Any?) {
+    guard let (url, made) = lastGIF else { return }
+    guard FileManager.default.fileExists(atPath: url.path) else {
+      view.flash("The \(made == .capture ? "capture" : "recording") isn't there anymore: \(url.lastPathComponent)")
+      return
+    }
+    let workspace = NSWorkspace.shared
+    let app = workspace.urlForApplication(toOpen: url).flatMap { Bundle(url: $0)?.bundleIdentifier }
+    guard GIFViewer.usesBrowser(insteadOf: app),
+      let browser = workspace.urlForApplication(toOpen: URL(string: "https://github.com")!)
+    else {
+      workspace.open(url)
+      return
+    }
+    workspace.open([url], withApplicationAt: browser, configuration: NSWorkspace.OpenConfiguration()) { _, error in
+      guard let error else { return }
+      DispatchQueue.main.async {
+        MainActor.assumeIsolated { self.view.flash("The GIF couldn't be opened: \(error.localizedDescription)") }
+      }
+    }
   }
 
   // MARK: Presenting
@@ -540,5 +593,26 @@ extension NSToolbarItem.Identifier {
   static let peaks = NSToolbarItem.Identifier("peaks")
   static let band = NSToolbarItem.Identifier("band")
   static let record = NSToolbarItem.Identifier("record")
+  static let lastGIF = NSToolbarItem.Identifier("lastGIF")
   static let capture = NSToolbarItem.Identifier("capture")
+}
+
+/// A link in the toolbar: its text in the link color, the pointing hand over it. The toolbar buttons' own bezel, shown
+/// only while the mouse is over it, keeps its text on their line (a borderless button's sat 2.5 points lower).
+final class LinkButton: NSButton {
+  override init(frame: NSRect) {
+    super.init(frame: frame)
+    bezelStyle = .texturedRounded
+    showsBorderOnlyWhileMouseInside = true
+  }
+
+  required init?(coder: NSCoder) { fatalError("not from a nib") }
+
+  func setLink(_ title: String) {
+    attributedTitle = NSAttributedString(
+      string: title,
+      attributes: [.foregroundColor: NSColor.linkColor, .font: NSFont.systemFont(ofSize: NSFont.systemFontSize)])
+  }
+
+  override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
 }

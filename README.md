@@ -221,6 +221,10 @@ report or paste into a chat:
   say. A picture of the GIF's first frame shows where it starts. Choose whether the date and the time go under the
   screen, the size, then **Save**, or **Copy** to paste it into a chat or an email as an animated GIF. The
   sheet says how large the file will be before you save it.
+- **Last recording** or **Last capture**, a link between the two buttons once you've made a GIF, opens the latest one
+  to watch: in the app your Mac opens GIFs with, or in your browser when that app would show it still (Preview, which
+  is the Mac's own choice, and image editors such as Pixelmator, Photoshop or GIMP) or no app opens GIFs. One link,
+  to whichever GIF came last.
 
 ![A GIF made by tinySA Screen: the 2.4 GHz band, Wi-Fi bursts, the date and time ticking under the screen](docs/images/gif-2400mhz-wifi.gif)
 

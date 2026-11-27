@@ -17,6 +17,10 @@ final class GIFController {
   var notLive: (note: String, since: Date)?
   /// Recording began, ticked or ended: for the toolbar and the menus.
   var onChange: (() -> Void)?
+  /// What a GIF was made by.
+  enum Made { case recording, capture }
+  /// A GIF from Record or Capture written (saved, or copied as a file): its file, for the toolbar's link to it.
+  var onMade: ((URL, Made) -> Void)?
 
   private var recording: UUID?
   private var timer: Timer?
@@ -87,7 +91,7 @@ final class GIFController {
       return
     }
     let note = reachedLimit ? "Recording stopped at 2:00, the longest a GIF runs. " : ""
-    save(clip, options: options(), note: note)
+    save(clip, options: options(), note: note, made: .recording)
   }
 
   // MARK: Capture
@@ -115,7 +119,7 @@ final class GIFController {
     guard let choice else { return }
     let part = clip.last(choice.seconds)
     switch choice.action {
-    case .save: save(part, options: options())
+    case .save: save(part, options: options(), made: .capture)
     case .copy: copy(part, options: options())
     }
   }
@@ -176,7 +180,7 @@ final class GIFController {
 
   var isBusy: Bool { isRecording || saving > 0 }
 
-  private func save(_ clip: Clip, options: GIFOptions, note: String = "") {
+  private func save(_ clip: Clip, options: GIFOptions, note: String = "", made: Made) {
     view.flash(note + "Making the GIF…")
     make(clip, options: options) { [weak self] result in
       guard let self else { return }
@@ -188,6 +192,7 @@ final class GIFController {
         }
         if let moved = saved.moved { Preferences.saveFolder = moved }
         self.view.flash(note + saved.note(size: Self.size(result.data.count)))
+        self.onMade?(saved.url, made)
       } catch {
         self.view.flash("The GIF couldn't be saved: \(error.localizedDescription)")
       }
@@ -212,6 +217,7 @@ final class GIFController {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.writeObjects([item])
         self.view.flash("Copied the GIF (\(Self.size(result.data.count)))")
+        self.onMade?(url, .capture)  // only Capture copies
       } catch {
         self.view.flash("The GIF couldn't be copied: \(error.localizedDescription)")
       }

@@ -10,6 +10,10 @@ All notable changes are listed here, newest first. Versions follow [Semantic Ver
   least 0.4 s before its release, over USB and through a feeding program alike (22 of 24 noticed), still short of a
   long press (0.5 s), and the next touch goes down 0.1 s after a release at least, so two quick clicks stay two clicks.
   The Python helpers' `Feeder.pass_taps` keeps the clicks as far apart as the app dates them.
+- After Record or Capture makes a GIF, a "Last recording" or "Last capture" link appears between the two buttons, and
+  opens that GIF to watch: in the app the Mac opens GIFs with, or in the browser when that app would show it still
+  (Preview, the Mac's own choice for GIFs, and image editors such as Pixelmator, Photoshop or GIMP) or none does. One
+  link, to whichever GIF came last.
 
 ## 1.3.3 (2026-11-27)
 
