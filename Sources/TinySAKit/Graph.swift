@@ -74,11 +74,22 @@ public struct Graph: Equatable, Sendable {
   /// The analyzer writes its markers' readouts ("1: 166.4MHz -55.4dBm") at the top of the graph in the trace's own
   /// yellow. The trace is one unbroken line from point to point, so in a column it is a single run of yellow; yellow
   /// in the top two divisions that ends there, with more yellow below it, is that text and is passed over. A trace
-  /// reaching up into the text still counts from its top.
+  /// reaching up into the text still counts from its top. The plates of the markers' symbols, in the same yellow
+  /// (`MarkerSymbol`), are passed over too: the trace counts from its highest pixel above or below them.
   public func traceRows(on screen: Snapshot) -> [Int?] {
     let textBottom = min(gridRows.count > 2 ? gridRows[2] : top, bottom)
+    var plates = [Bool](repeating: false, count: screen.pixels.count)
+    let symbol = MarkerSymbol.on(screen)
+    for corner in markerSymbols(on: screen) {
+      for (row, columns) in symbol.rows.enumerated() {
+        for column in columns { plates[(corner.y + row) * screen.width + corner.x + column] = true }
+      }
+    }
     return (left..<right).map { x in
-      func isTrace(_ y: Int) -> Bool { Self.isTrace(screen.pixels[y * screen.width + x]) }
+      func isTrace(_ y: Int) -> Bool {
+        let i = y * screen.width + x
+        return Self.isTrace(screen.pixels[i]) && !plates[i]
+      }
       var y = top
       while y <= bottom {
         guard isTrace(y) else {
@@ -92,6 +103,87 @@ public struct Graph: Equatable, Sendable {
       }
       return nil
     }
+  }
+
+  /// A marker's symbol as the analyzer draws it, over the traces (the firmware's `marker_bitmap`): a plate in the
+  /// colour of the trace the marker is on, pointing down at the marker's point just under its tip, with the marker's
+  /// number on it in black. On a tinySA Ultra's screen (480 × 320) the plate is 9 pixels wide and 13 high, with a black
+  /// border on its top and sides; on a tinySA's (320 × 240), 7 wide and 10 high, without one.
+  struct MarkerSymbol: Sendable {
+    /// The plate's columns in each of its rows, from its top left.
+    var rows: [ClosedRange<Int>]
+    /// The rows and columns the number may take: the rest of the plate is the trace's colour whatever the number. The
+    /// rows below them are the plate's tip.
+    var numberRows: ClosedRange<Int>
+    var numberColumns: ClosedRange<Int>
+    var bordered: Bool
+
+    static let ultra = MarkerSymbol(
+      rows: Array(repeating: 0...8, count: 9) + [1...7, 2...6, 3...5, 4...4], numberRows: 1...9, numberColumns: 1...7,
+      bordered: true)
+    static let tinySA = MarkerSymbol(
+      rows: Array(repeating: 0...6, count: 7) + [1...5, 2...4, 3...3], numberRows: 1...7, numberColumns: 1...5,
+      bordered: false)
+
+    /// The symbol on a screen of the analyzer's.
+    static func on(_ screen: Snapshot) -> MarkerSymbol { screen.width >= 480 ? ultra : tinySA }
+  }
+
+  /// The top left corners of the plates of markers' symbols in trace 1's yellow, or in another colour. A plate is
+  /// told by its shape, which a trace never draws: its top and its tip whole (a trace, a line from point to point,
+  /// never runs down from one row in three columns side by side), its number's black in its middle, and its sides
+  /// and black border (on a tinySA Ultra) all but a few pixels, as another marker's symbol or a readout may cover some.
+  func markerSymbols(on screen: Snapshot, colour isColour: (UInt32) -> Bool = Graph.isTrace) -> [(x: Int, y: Int)] {
+    let symbol = MarkerSymbol.on(screen)
+    let width = symbol.rows[0].count
+    func pixel(_ x: Int, _ y: Int) -> UInt32? {
+      x >= 0 && x < screen.width && y >= 0 && y < screen.height ? screen.pixels[y * screen.width + x] : nil
+    }
+    func isPlate(_ x: Int, _ y: Int) -> Bool {
+      var off = 0
+      var number = 0
+      for (row, columns) in symbol.rows.enumerated() {
+        for column in columns {
+          guard let pixel = pixel(x + column, y + row) else { return false }
+          if symbol.numberRows.contains(row), symbol.numberColumns.contains(column) {
+            if isColour(pixel) { continue }
+            guard Self.isBlack(pixel) else { return false }
+            number += 1
+          } else if !isColour(pixel) {
+            guard row <= symbol.numberRows.upperBound else { return false }  // the tip
+            off += 1
+          }
+        }
+        if symbol.bordered {
+          let sides = [columns.lowerBound - 1, columns.upperBound + 1]
+          off += sides.filter { pixel(x + $0, y + row).map(isColour) == true }.count
+        }
+      }
+      if symbol.bordered {
+        off += (-1...width).filter { pixel(x + $0, y - 1).map(isColour) == true }.count
+      }
+      return number >= 4 && off <= 4
+    }
+    var corners: [(x: Int, y: Int)] = []
+    for y in top...max(top, bottom - symbol.rows.count + 1) {
+      var x = left
+      while x + width <= right {
+        // The plate's top: the colour all across.
+        guard (x..<(x + width)).allSatisfy({ isColour(screen.pixels[y * screen.width + $0]) }), isPlate(x, y) else {
+          x += 1
+          continue
+        }
+        corners.append((x, y))
+        x += width
+      }
+    }
+    return corners
+  }
+
+  /// The screen's black, the analyzer's background.
+  static func isBlack(_ pixel: UInt32) -> Bool {
+    let (r, g, b) = Snapshot.rgb(pixel)
+    return r < 0x40 && g < 0x40 && b < 0x40
   }
 
   /// The spacing of the vertical grid lines in pixels (the middle of the gaps between them; the left edge's line is

@@ -80,6 +80,130 @@ final class PeakHoldTests: XCTestCase {
     XCTAssertTrue(peaks.allSatisfy { $0.row > 11 })
   }
 
+  /// Marker 1's symbol as a tinySA Ultra draws it over the traces (the firmware's `marker_bitmap`, 11 × 14): "#" its
+  /// plate, in the trace's colour, and "o" black, its number and a border; its tip is just above the marker's point.
+  static let ultraMarker = [
+    "ooooooooooo",
+    "o#########o",
+    "o####oo###o",
+    "o###ooo###o",
+    "o##o#oo###o",
+    "o####oo###o",
+    "o####oo###o",
+    "o####oo###o",
+    "o####oo###o",
+    "o####oo###o",
+    ".o##oooo#o.",
+    "..o#####o..",
+    "...o###o...",
+    "....o#o....",
+  ]
+
+  /// The same on a tinySA (7 × 10, without a border).
+  static let tinySAMarker = [
+    "#######",
+    "###o###",
+    "##oo###",
+    "###o###",
+    "###o###",
+    "###o###",
+    "##ooo##",
+    ".#####.",
+    "..###..",
+    "...#...",
+  ]
+
+  /// `symbol` drawn on `screen` in trace 1's yellow, as the analyzer draws a marker at `point`.
+  func draw(_ symbol: [String], at point: (x: Int, y: Int), on screen: inout Snapshot) {
+    let (yellow, black) = (Snapshot.pixel(r: 255, g: 255, b: 0), Snapshot.pixel(r: 0, g: 0, b: 0))
+    let (left, top) = (point.x - symbol[0].count / 2, point.y - symbol.count)
+    for (row, line) in symbol.enumerated() {
+      for (column, mark) in line.enumerated() where mark != "." {
+        screen.pixels[(top + row) * screen.width + left + column] = mark == "#" ? yellow : black
+      }
+    }
+  }
+
+  /// Nor is a marker's symbol (issue #1's screen has marker 1's): a plate in the trace's yellow, pointing down at the
+  /// marker's point, with its number in black. With the marker on a peak, the plate held the peak 13 rows too high
+  /// (5 dB here, 4 dB on the issue's screen), and elsewhere it made a peak of its own. A trace rising past the plate
+  /// still counts from its top.
+  func testMarkerSymbolIsNotTheTrace() throws {
+    let clean = try Fixture.screen("screen-915.png")
+    let graph = try XCTUnwrap(Graph.find(on: clean))
+    let cleanRows = graph.traceRows(on: clean)
+    let without = PeakHold()
+    without.add(clean, at: Date())
+    let cleanPeaks = try XCTUnwrap(without.state?.peaks)
+    let highest = try XCTUnwrap(cleanPeaks.first)
+    // Marker 1 on the highest peak, where a peak search puts it, or on the trace's highest point in the left half,
+    // which isn't a peak.
+    let column = try XCTUnwrap((40..<240).min { (cleanRows[$0 - 30] ?? .max, $0) < (cleanRows[$1 - 30] ?? .max, $1) })
+    let point = (x: column, y: try XCTUnwrap(cleanRows[column - 30]))
+    for marker in [(x: highest.column, y: highest.row), point] {
+      var screen = clean
+      draw(Self.ultraMarker, at: marker, on: &screen)
+      let rows = graph.traceRows(on: screen)
+      for x in 30..<480 { XCTAssertEqual(rows[x - 30], cleanRows[x - 30], "column \(x), marker at \(marker.x)") }
+      let withMarker = PeakHold()
+      withMarker.add(screen, at: Date())
+      XCTAssertEqual(withMarker.state?.peaks.map(\.column), cleanPeaks.map(\.column), "marker at \(marker.x)")
+      XCTAssertEqual(withMarker.state?.peaks.map(\.row), cleanPeaks.map(\.row), "marker at \(marker.x)")
+    }
+
+    // On the issue's screen the trace rose past the plate beside the marker's point; the analyzer drew the symbol over
+    // it, its border hiding a row of it.
+    var risen = clean
+    for y in (point.y - 20)...point.y { risen.pixels[y * 480 + point.x + 1] = Snapshot.pixel(r: 255, g: 255, b: 0) }
+    draw(Self.ultraMarker, at: point, on: &risen)
+    let risenRows = graph.traceRows(on: risen)
+    XCTAssertEqual(risenRows[point.x + 1 - 30], point.y - 20)
+    XCTAssertEqual(risenRows[point.x - 30], point.y)
+  }
+
+  /// The analyzer's own symbols are told by their shape: a recorded screen has markers 1 to 5 on its green trace, found
+  /// in green where they are; nothing on any recorded screen is taken for one in the trace's yellow.
+  func testFindsTheAnalyzersMarkerSymbols() throws {
+    let burst = try Fixture.screen("screen-915-burst.png")
+    let graph = try XCTUnwrap(Graph.find(on: burst))
+    let green = graph.markerSymbols(
+      on: burst,
+      colour: { pixel in
+        let (r, g, b) = Snapshot.rgb(pixel)
+        return g > 200 && r < 0x90 && b < 0x90
+      })
+    XCTAssertEqual(green.map { [$0.x, $0.y] }, [[240, 46], [30, 47], [98, 47], [199, 47], [137, 105]])
+    let recorded = [
+      "screen-915.png", "screen-915-big.png", "screen-915-burst.png", "screen-433.png", "screen-2400.png",
+      "screen-2400-later.png",
+    ]
+    for name in recorded {
+      let screen = try Fixture.screen(name)
+      let graph = try XCTUnwrap(Graph.find(on: screen), name)
+      XCTAssertTrue(graph.markerSymbols(on: screen).isEmpty, name)
+    }
+  }
+
+  /// A tinySA's smaller screen (320 × 240) has the smaller symbol, without a border.
+  func testTinySAMarkerSymbolIsNotTheTrace() throws {
+    let black = Snapshot.pixel(r: 0, g: 0, b: 0)
+    var clean = Snapshot(width: 320, height: 240, pixels: Array(repeating: black, count: 320 * 240))
+    let grey = Snapshot.pixel(r: 0x83, g: 0x81, b: 0x83)
+    let yellow = Snapshot.pixel(r: 255, g: 255, b: 0)
+    for y in stride(from: 0, through: 230, by: 23) {
+      for x in stride(from: 25, to: 320, by: 2) { clean.pixels[y * 320 + x] = grey }
+    }
+    for x in 25..<320 { clean.pixels[200 * 320 + x] = yellow }
+    for y in 100...200 { clean.pixels[y * 320 + 160] = yellow }
+    let graph = try XCTUnwrap(Graph.find(on: clean))
+    XCTAssertEqual([graph.left, graph.top, graph.bottom], [25, 0, 230])
+    var screen = clean
+    draw(Self.tinySAMarker, at: (160, 100), on: &screen)
+    let rows = graph.traceRows(on: screen)
+    XCTAssertEqual(rows, graph.traceRows(on: clean))
+    XCTAssertEqual(rows[160 - 25], 100)
+  }
+
   /// The levels and the span are read from the screen's own labels.
   func testReadsTheScale() throws {
     let cases: [(String, Double, Double, Int64, Int64)] = [

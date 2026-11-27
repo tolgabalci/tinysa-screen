@@ -151,7 +151,11 @@ analyzer cut its sweep short, and a feeding program's pictures are all there is 
   grid or another trace (red and green full, blue not). One column a sweep point on a tinySA Ultra. The analyzer
   writes its markers' readouts ("1: 166.4MHz -55.4dBm") in the same yellow at the top of the graph; the trace is one
   unbroken line, so yellow in the top two divisions that ends there, with more yellow below it, is that text and is
-  passed over.
+  passed over. Each marker's symbol (the firmware's `marker_bitmap`, drawn over the traces) is a plate in its trace's
+  colour pointing down at the marker's point, its number in black on it: on a tinySA Ultra 9 pixels wide and 13 high,
+  with a black border on its top and sides (7 by 10 without one on a tinySA). The plates are found by that shape,
+  their top and tip whole (a line from point to point never runs down from one row in three columns side by side),
+  and the trace counts from its highest pixel outside them.
 - **The labels**: the level labels at the graph's right and the span under it, enlarged smoothly, dark on light, and
   read with the Mac's text recognition (Vision) at four and at eight times, the two reads having to agree. Look-alike
   letters are taken for what they look like ("$TART", a Cyrillic "М", "Ö" for an O), each level label belongs to the

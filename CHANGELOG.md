@@ -2,11 +2,15 @@
 
 All notable changes are listed here, newest first. Versions follow [Semantic Versioning](https://semver.org).
 
-## 1.3.3 (2026-11-26)
+## 1.3.3 (2026-11-27)
 
 - The peak hold no longer takes the analyzer's marker readout ("1: 166.4MHz -55.4dBm", written in the trace's yellow
   at the top of the graph) for the trace: with a marker on, it showed bogus peaks at the top of the graph's left side,
   all at the top level. Now it holds only the trace, which can still reach up into the readout's rows.
+- Nor does it take a marker's symbol, the numbered flag the analyzer draws in the same yellow just above the marker's
+  point, for the trace. With the marker on a peak, the hold held that peak a flag's height too high (about 4 dB at
+  10 dB a division, more with the waterfall on), and a marker away from a peak made a peak of its own. The trace now
+  counts from its highest pixel above or below the flag.
 - The peak hold's frequencies and levels show on macOS 27 too, for spans where they didn't: its text recognition
   reads some of the levels at the graph's right upside down ("09-" for "−60"), a zero as "Ö", or a point as a comma,
   and those readings are now taken for what they are.
