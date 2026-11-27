@@ -67,11 +67,24 @@ public final class PeakHold: @unchecked Sendable {
   private var scales: [Int: GraphScale] = [:]
   private var rowsScale: GraphScale?
   private var reading = false
-  private var unread: (Snapshot, Graph, Int)?
+  private var unread: Frame?
+  /// The latest frame, and the number of the latest one a read has had: `labelsRead(by:)` reads the latest once more
+  /// when no read has had it.
+  private var latest: Frame?
+  private var frames = 0
+  private var tried = 0
   /// When labels that couldn't be read (a trace across them, say) are read again from a later frame, and the wait
   /// before the next try, doubling up to 30 s while they still can't.
   private var retry = (at: Date.distantPast, after: 2.0)
   private let readingQueue = DispatchQueue(label: "Reading the screen's labels", qos: .utility)
+
+  /// A frame whose labels may be read: its number counts the frames added.
+  private struct Frame {
+    var screen: Snapshot
+    var graph: Graph
+    var print: Int
+    var number: Int
+  }
 
   public init() {}
 
@@ -111,6 +124,7 @@ public final class PeakHold: @unchecked Sendable {
     current = nil
     labels = nil
     rowsScale = nil
+    latest = nil
   }
 
   /// Labels read, now or before: the rows kept apart join the held ones under the same span and levels, and replace
@@ -187,16 +201,19 @@ public final class PeakHold: @unchecked Sendable {
     let print = graph.labelPrint(on: screen)
     let state = lock.locked { () -> State? in
       if let current, current.graph != graph { startOver() }  // another layout (the waterfall's size changed)
+      frames += 1
+      let frame = Frame(screen: screen, graph: graph, print: print, number: frames)
+      latest = frame
       // The labels: read before for this fingerprint, or to be read now (nil meanwhile, so no readouts from labels
       // that have changed, and what comes meanwhile is kept apart from what was held).
       let changed = print != labels && labels != nil
       if print != labels {
         labels = print
         retry = (time.addingTimeInterval(2), 2)
-        if scales[print] == nil { unread = (screen, graph, print) }
+        if scales[print] == nil { unread = frame }
       } else if scales[print] == nil, !reading, unread == nil, time >= retry.at {
         retry = (time.addingTimeInterval(min(2 * retry.after, 30)), min(2 * retry.after, 30))
-        unread = (screen, graph, print)
+        unread = frame
       }
       let scale = scales[print]
       if let scale {
@@ -231,34 +248,64 @@ public final class PeakHold: @unchecked Sendable {
   }
 
   private func readLabelsIfNeeded() {
-    let job = lock.locked { () -> (Snapshot, Graph, Int)? in
-      guard !reading, let unread else { return nil }
-      reading = true
-      self.unread = nil
-      return unread
-    }
-    guard let (screen, graph, print) = job else { return }
+    guard let job = lock.locked({ takeJob(orLatest: false) }) else { return }
     readingQueue.async { [weak self] in
-      let scale = GraphScale.read(graph, on: screen)
+      let scale = GraphScale.read(job.graph, on: job.screen)
       guard let self else { return }
-      let changed = self.lock.locked { () -> State? in
-        self.reading = false
-        guard let scale else { return nil }  // unreadable (a menu over the labels): no readouts until they're back
-        if self.scales.count > 32 { self.scales.removeAll() }
-        self.scales[print] = scale
-        // Labels that changed again meanwhile are read next.
-        guard var state = self.current, state.graph == graph, print == self.labels else { return nil }
-        self.settle(scale, at: Date())
-        state.rows = Self.highest(self.buckets, count: state.rows.count)
-        state.since = self.heldSince ?? state.since
-        state.scale = scale
-        state.peaks = self.number(Self.peaks(in: state, count: self.count), width: graph.right - graph.left)
-        self.current = state
-        return state
-      }
-      if let changed { self.onChange?(changed) }
+      if let changed = self.lock.locked({ self.finishRead(job, scale) }) { self.onChange?(changed) }
       self.readLabelsIfNeeded()
     }
+  }
+
+  /// The state with the screen's labels read, for an answer that can't wait for more frames (`tinysa-screen peaks`,
+  /// its seconds up): a read under way is waited for, until `deadline` at most, and labels still unread are read once
+  /// more, here, from the latest frame, when no read has had it. The first read by a program after a macOS update
+  /// takes most of a minute (the Mac's text recognition prepares itself for the program, once), and a program that
+  /// quits meanwhile leaves that to the next. Also whether a read was still under way when it gave up.
+  public func labelsRead(by deadline: Date, cancelled: () -> Bool = { false }) -> (state: State?, stillReading: Bool) {
+    while true {
+      let (state, job, waiting) = lock.locked { () -> (State?, Frame?, Bool) in
+        guard let current, current.scale == nil else { return (current, nil, false) }
+        let job = Date() < deadline ? takeJob(orLatest: true) : nil
+        return (current, job, reading)
+      }
+      if let job {
+        let scale = GraphScale.read(job.graph, on: job.screen)
+        if let changed = lock.locked({ finishRead(job, scale) }) { onChange?(changed) }
+        continue
+      }
+      guard waiting else { return (state, false) }
+      if Date() >= deadline || cancelled() { return (state, true) }
+      Thread.sleep(forTimeInterval: 0.05)
+    }
+  }
+
+  /// The frame whose labels to read next, taken (one read at a time): the one waiting for it, or with `orLatest` the
+  /// latest frame when no read has had it. Under the lock.
+  private func takeJob(orLatest: Bool) -> Frame? {
+    guard !reading, let job = unread ?? (orLatest && (latest?.number ?? 0) > tried ? latest : nil) else { return nil }
+    reading = true
+    unread = nil
+    tried = max(tried, job.number)
+    return job
+  }
+
+  /// A read done: its span and levels kept for its labels, and given to what's held when they're still the labels
+  /// shown (the new state, to tell). Under the lock.
+  private func finishRead(_ job: Frame, _ scale: GraphScale?) -> State? {
+    reading = false
+    guard let scale else { return nil }  // unreadable (a menu over the labels): no readouts until they're back
+    if scales.count > 32 { scales.removeAll() }
+    scales[job.print] = scale
+    // Labels that changed again meanwhile are read next.
+    guard var state = current, state.graph == job.graph, job.print == labels else { return nil }
+    settle(scale, at: Date())
+    state.rows = Self.highest(buckets, count: state.rows.count)
+    state.since = heldSince ?? state.since
+    state.scale = scale
+    state.peaks = number(Self.peaks(in: state, count: count), width: job.graph.right - job.graph.left)
+    current = state
+    return state
   }
 
   /// The place in the graph, at its left or right side (clear of the level labels), where a box of `size` covers

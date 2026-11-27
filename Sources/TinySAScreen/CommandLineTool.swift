@@ -219,7 +219,9 @@ enum CommandLineTool {
         let level = decibels < 0.25 ? String(format: "%.1f", peak.level) : String(format: "%.0f", peak.level)
         lines.append("\(n + 1)  \(frequency)  \(level) dBm")
       }
-      if reply.peaks?.isEmpty == true, reply.notes == nil { lines.append("None: the trace stayed within 6 dB of its noise.") }
+      if reply.peaks?.isEmpty == true, reply.resolution != nil {
+        lines.append("None: the trace stayed within 6 dB of its noise.")
+      }
       if let resolution = reply.resolution {
         lines.append(
           "(Read from the screen: \(Frequency.format(resolution.hertz)) and \(resolution.decibels) dB a pixel.)")

@@ -14,6 +14,12 @@ All notable changes are listed here, newest first. Versions follow [Semantic Ver
 - The peak hold's frequencies and levels show on macOS 27 too, for spans where they didn't: its text recognition
   reads some of the levels at the graph's right upside down ("09-" for "−60"), a zero as "Ö", or a point as a comma,
   and those readings are now taken for what they are.
+- `tinysa-screen peaks` gives frequencies and levels after a macOS update too. The first time tinySA Screen reads the
+  screen's labels on a new macOS version, the Mac's text recognition prepares itself for it, which takes most of a
+  minute (42 s on an M2, minutes on a busy Mac). `peaks` gave up on the labels 10 s after its seconds and quit before
+  that was done, so every short run started it over and answered without frequencies or levels. Now it waits for a
+  reading under way, up to 90 s after its seconds (its notes say when that took longer), and reads the labels once
+  more from the latest picture when the last reading failed.
 
 ## 1.3.2 (2026-10-27)
 

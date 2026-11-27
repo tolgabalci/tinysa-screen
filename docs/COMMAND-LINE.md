@@ -33,7 +33,7 @@ its full path without the link.)
 | `capture [--seconds N] --output FILE.gif` | Saves the last N seconds the open app keeps (Settings › Keep the latest seconds), all of them without `--seconds`. For when something has just happened. Needs the app open. |
 | `screenshot --output FILE.png` | Saves the screen as it is now, at its own size (`--sharp`: twice that). |
 | `sweep [--start F --stop F]` | Says the span the analyzer sweeps, or sets it. Needs the analyzer on USB, a tinySA Ultra. |
-| `peaks [--seconds N] [--count N]` | The highest peaks of the live trace over N seconds (10 by default, at most 600), held from the screen as the app's [peak hold](../README.md#peak-hold) does: the analyzer is asked nothing, so it works on fed pictures too. Up to `--count` peaks (5; at most 9), each at least 6 dB above its valleys and the noise. |
+| `peaks [--seconds N] [--count N]` | The highest peaks of the live trace over N seconds (10 by default, at most 600), held from the screen as the app's [peak hold](../README.md#peak-hold) does: the analyzer is asked nothing, so it works on fed pictures too. Up to `--count` peaks (5; at most 9), each at least 6 dB above its valleys and the noise. It answers once the screen's labels are read, which gives the frequencies and levels: at once, as a rule, but the first time after a macOS update the Mac's text recognition prepares itself for tinySA Screen first, which takes most of a minute (minutes on a busy Mac). `peaks` waits up to 90 s after its seconds for that, and its notes say when it took longer. |
 | `status` | Says what tinySA Screen sees: whether the app is open, where its picture comes from, the seconds it keeps, the tinySAs on USB, a program feeding pictures or borrowing the analyzer. |
 | `help`, `--help` | The usage. `--version`: the version. |
 
@@ -90,7 +90,7 @@ With `--json`, one line of JSON:
 | `seconds`, `start`, `end` | How long the GIF runs, and the moments it starts and ends (ISO 8601, the Mac's time zone). For a screenshot, `start` is when its picture came. |
 | `frames`, `images` | Frames of the screen in the GIF (one a sweep), and images in the file (frames, and the time ticking on). |
 | `source` | Where the picture came from: the analyzer and its firmware, or "Pictures from" the feeding program. |
-| `notes` | What a viewer should know about the recording: the span it swept, the picture stopping and coming back, with times. |
+| `notes` | What a viewer should know about the recording: the span it swept, the picture stopping and coming back, with times. For `peaks`: why there are no frequencies and levels, or that reading them took longer. |
 | `sweep`, `previousSweep` | For `sweep`: the span now, and before a change, as `{"start": 902000000, "stop": 928000000, "points": 450}` (hertz). For `peaks`: the span read from the screen. |
 | `peaks`, `resolution` | For `peaks`: the peaks, highest first, as `{"frequency": 906169000, "level": -23.1}` (hertz, dBm), and how finely the screen resolves them, `{"hertz": 57906, "decibels": 0.42}` (a column and a row of the graph). |
 

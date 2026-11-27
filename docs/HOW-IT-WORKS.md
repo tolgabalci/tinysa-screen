@@ -162,7 +162,10 @@ analyzer cut its sweep short, and a feeding program's pictures are all there is 
   grid line at its top, and the labels that agree on one step a division win (a misread is outvoted). A level label
   ending in a minus was read upside down, as macOS 27 does now and then, and is turned back ("09-" is "−60"); one
   without its minus may be negative ("30" for "−30"). They are read again only when the white pixels around the
-  graph change, and a span or levels that changed start the hold over.
+  graph change, and a span or levels that changed start the hold over. The first reading after a macOS update takes
+  most of a minute: the text recognition compiles its models for the Mac's Neural Engine, once for each program and
+  macOS version. The window shows the frequencies and levels once that's done, and `tinysa-screen peaks` waits for
+  it.
 - **Peaks**: a top of the held trace that stands at least 6 dB above the valleys on either side (before the next
   higher ground) and above the trace's median, its noise.
 

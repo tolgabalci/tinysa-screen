@@ -165,6 +165,31 @@ final class IntegrationTests: XCTestCase {
     XCTAssertTrue(note.hasPrefix("No new picture from Monitor since"), note)
   }
 
+  /// `peaks` on a feeder's pictures: the highest peak of the live trace, with its frequency and level read from the
+  /// screen's labels by the time it answers, the analyzer asked nothing. (The feeder is there before the session
+  /// starts, so the session never opens a USB port.)
+  func testPeaksOnAFeedersPictures() throws {
+    try FileManager.default.createDirectory(at: Integration.feedFolder, withIntermediateDirectories: true)
+    let other = try otherProcess()
+    try #"{"state": "holding", "pid": \#(other.processIdentifier), "name": "Monitor"}"#
+      .write(to: Integration.stateFile, atomically: true, encoding: .utf8)
+    let burst = try XCTUnwrap(Bundle.module.url(forResource: "screen-915-burst.png", withExtension: nil, subdirectory: "Fixtures"))
+    try FileManager.default.copyItem(at: burst, to: Integration.pictureFile)
+    try FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: Integration.pictureFile.path)  // live
+    let session = Session()
+    session.start()
+    defer { session.stop() }
+    let reply = Automation(session: session, isApp: false, version: "test").handle(ControlRequest(command: "peaks", seconds: 1))
+    XCTAssertTrue(reply.ok, reply.error ?? "")
+    XCTAssertEqual(reply.source, "Pictures from Monitor")
+    XCTAssertEqual(reply.sweep?.start, 902_000_000)
+    XCTAssertEqual(reply.sweep?.stop, 928_000_000)
+    // The analyzer's marker: 902.231 MHz, −23.2 dBm.
+    let top = try XCTUnwrap(reply.peaks?.first, "\(reply.notes ?? [])")
+    XCTAssertEqual(Double(top.frequency), 902_231_000, accuracy: 60_000)
+    XCTAssertEqual(top.level, -23.2, accuracy: 0.5)
+  }
+
   func testWatching() throws {
     FeedState.touchWatching()
     let first = try FileManager.default.attributesOfItem(atPath: Integration.watchingFile.path)[.modificationDate]

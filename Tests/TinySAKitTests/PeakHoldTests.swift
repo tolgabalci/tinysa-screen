@@ -3,8 +3,8 @@ import XCTest
 @testable import TinySAKit
 
 final class PeakHoldTests: XCTestCase {
-  /// How long to wait for the labels to be read: a second, as a rule, but up to 15 seconds when macOS holds back work
-  /// in the background (on an idle Mac, as a scheduled run has it).
+  /// How long to wait for the labels to be read: a second, as a rule, but the first read after a macOS update takes
+  /// most of a minute, the Mac's text recognition preparing itself for the program (here the tests) first.
   let labelsRead: TimeInterval = 60
 
   /// The grid is found from the pixels, whatever the waterfall's size.
@@ -498,6 +498,54 @@ final class PeakHoldTests: XCTestCase {
     hold.window = 30
     hold.add(screen, at: Date())
     XCTAssertNotNil(hold.state?.scale)
+  }
+
+  /// An answer that can't wait for more frames (`tinysa-screen peaks`, its seconds up) waits for the read under way,
+  /// then reads the labels once more from the latest frame when no read has had it: here the first frame's can't be
+  /// read (the levels below the top two hidden, as a trace across them may hide them) and the next comes before the
+  /// hold would try again, 2 s on, with the same labels' fingerprint. The hold alone would read them from a frame that
+  /// never comes once the seconds are up.
+  func testTheLabelsAreReadOnceMoreForAnAnswer() throws {
+    let screen = try Fixture.screen("screen-915-burst.png")
+    let graph = try XCTUnwrap(Graph.find(on: screen))
+    var hidden = screen
+    let levels = graph.labelRegions(screen)[0]
+    for y in (graph.gridRows[2] - 2)..<levels.maxY {
+      for x in levels.minX..<levels.maxX { hidden.pixels[y * screen.width + x] = Snapshot.pixel(r: 0, g: 0, b: 0) }
+    }
+    XCTAssertEqual(Graph.find(on: hidden), graph)
+    XCTAssertEqual(graph.labelPrint(on: hidden), graph.labelPrint(on: screen))
+    XCTAssertNil(GraphScale.read(graph, on: hidden))
+
+    let hold = PeakHold()
+    let start = Date()
+    hold.add(hidden, at: start)
+    hold.add(screen, at: start.addingTimeInterval(1))
+    let (state, stillReading) = hold.labelsRead(by: Date().addingTimeInterval(labelsRead))
+    XCTAssertFalse(stillReading)
+    XCTAssertEqual(state?.scale?.start, 902_000_000)
+    XCTAssertEqual(state?.scale?.stop, 928_000_000)
+    XCTAssertEqual(try XCTUnwrap(state?.peaks.first?.level), -23.2, accuracy: 0.5)
+    XCTAssertEqual(hold.state, state)
+  }
+
+  /// A read under way is waited for until the deadline (or until cancelled): then the state as it is, and that a read
+  /// is under way.
+  func testAnAnswerWaitsForTheReadUnderWay() throws {
+    let hold = PeakHold()
+    hold.add(try Fixture.screen("screen-915.png"), at: Date())
+    for early in [hold.labelsRead(by: Date()), hold.labelsRead(by: .distantFuture, cancelled: { true })] {
+      XCTAssertNotNil(early.state)
+      if early.state?.scale == nil { XCTAssertTrue(early.stillReading) }  // a read takes a moment at least, as a rule
+    }
+    let (state, stillReading) = hold.labelsRead(by: Date().addingTimeInterval(labelsRead))
+    XCTAssertFalse(stillReading)
+    XCTAssertEqual(state?.scale?.start, 902_000_000)
+    // Nothing more to read: at once.
+    let again = Date()
+    XCTAssertEqual(hold.labelsRead(by: .distantFuture).state, state)
+    XCTAssertLessThan(Date().timeIntervalSince(again), 0.1)
+    XCTAssertNil(PeakHold().labelsRead(by: .distantFuture).state)
   }
 
   /// Another span: until its labels are read, only its own sweeps show (nothing of the old span's levels); read, they

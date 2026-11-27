@@ -18,6 +18,9 @@ public final class Automation: @unchecked Sendable {
   public var onRecordingsChange: (([String]) -> Void)?
   /// How long to wait for a live picture before giving up.
   public var pictureWait: TimeInterval = 15
+  /// How long `peaks` waits for the screen's labels after its seconds, at most: long enough for the first read after
+  /// a macOS update (42 s on an M2, from the start of the seconds), within the 120 s the command line gives the app.
+  static let labelsWait: TimeInterval = 90
 
   private let lock = NSLock()
   private var recordingNames: [UUID: String] = [:]
@@ -236,19 +239,33 @@ public final class Automation: @unchecked Sendable {
       Thread.sleep(forTimeInterval: min(0.1, max(0, end.timeIntervalSinceNow)))
     }
     session.removeFrameHandler(token)
-    // The labels are read in the background: a moment more for that.
-    let reading = Date().addingTimeInterval(10)
-    while hold.state?.scale == nil, hold.state != nil, Date() < reading, !cancelled() {
-      Thread.sleep(forTimeInterval: 0.1)
-    }
-    guard let state = hold.state else { return .failure("No graph on the screen: a menu over it?") }
+    // The labels are read in the background as the frames come: a read still under way is waited for (the first one
+    // after a macOS update takes most of a minute, and one given up would leave the next run to start it over), and
+    // labels still unread are read once more from the latest frame.
+    let watched = Date()
+    let (held, stillReading) = hold.labelsRead(by: watched.addingTimeInterval(Self.labelsWait), cancelled: cancelled)
+    if cancelled() { return .failure("Cancelled") }
+    guard let state = held else { return .failure("No graph on the screen: a menu over it?") }
     var reply = ControlReply(ok: true)
     reply.source = session.status.source
     reply.seconds = seconds
     guard let scale = state.scale else {
-      reply.notes = ["The screen's labels couldn't be read, so frequencies and levels are unknown: a menu over them?"]
+      reply.notes = [
+        stillReading
+          ? "The screen's labels were still being read \(Int(Self.labelsWait)) s later, so frequencies and levels are "
+            + "unknown: the Mac's text recognition prepares itself for tinySA Screen the first time (after a macOS "
+            + "update, say), which can take minutes on a busy Mac. More seconds give it the time."
+          : "The screen's labels couldn't be read, so frequencies and levels are unknown: a menu over them?"
+      ]
       reply.peaks = []
       return reply
+    }
+    let late = Date().timeIntervalSince(watched)
+    if late >= 5 {
+      reply.notes = [
+        "The screen's labels took \(Int(late.rounded())) s more to read: the Mac's text recognition prepares itself "
+          + "for tinySA Screen the first time (after a macOS update, say)."
+      ]
     }
     reply.sweep = SweepRange(start: scale.start, stop: scale.stop)
     reply.resolution = Resolution(
