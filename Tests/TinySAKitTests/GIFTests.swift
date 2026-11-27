@@ -24,6 +24,13 @@ final class GIFTests: XCTestCase {
     return Clip(frames: frames, from: start, to: start.addingTimeInterval(end))!
   }
 
+  /// A GIF no longer wanted (the editor's size, its handles moved on) stops being made.
+  func testStopsWhenTold() {
+    let clip = Self.clip([(0, Self.screen(blockAt: 10)), (1, Self.screen(blockAt: 50))], end: 2)
+    XCTAssertNil(GIF.make(clip, stop: { true }))
+    XCTAssertNotNil(GIF.make(clip, stop: { false }))
+  }
+
   /// Each image of the GIF shows the screen of its moment exactly, kept under the next, for the real time between
   /// them; only the rows that changed are stored, across the whole width, with no transparent colour.
   func testFramesComeOutExactly() throws {

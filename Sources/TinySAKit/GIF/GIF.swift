@@ -49,9 +49,11 @@ public enum GIF {
   /// Frames closer than this are shown together: browsers slow down frames shorter than 20 ms.
   static let together: TimeInterval = 0.03
 
-  public static func make(_ clip: Clip, options: GIFOptions = GIFOptions(), progress: (Double) -> Void = { _ in })
-    -> GIFResult?
-  {
+  /// The GIF of a clip; nil without a frame, or once `stop` says to stop (a size no longer wanted).
+  public static func make(
+    _ clip: Clip, options: GIFOptions = GIFOptions(), progress: (Double) -> Void = { _ in },
+    stop: () -> Bool = { false }
+  ) -> GIFResult? {
     guard let last = clip.frames.last else { return nil }
     let frames = clip.frames.filter { $0.width == last.width && $0.height == last.height }
     let (width, height) = (last.width, last.height)
@@ -72,6 +74,7 @@ public enum GIF {
     var shownFrame = -1
     var shownCaption: [UInt8]?
     for (k, event) in events.enumerated() {
+      if k % 16 == 0, stop() { return nil }
       progress(Double(k) / Double(events.count))
       var pixels = shown
       if event.frame != shownFrame, let snapshot = frames[event.frame].snapshot() { pixels = snapshot.pixels }

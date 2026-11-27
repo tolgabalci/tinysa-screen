@@ -29,6 +29,43 @@ final class FrameRecorderTests: XCTestCase {
     XCTAssertNil(recorder.end(id), "ends once")
   }
 
+  /// The window's recording starts before it began: its clip has the seconds kept then, which it holds on to while it
+  /// runs (the kept seconds alone would let them go), and only as many as asked.
+  func testRecordingStartsBeforeItBegan() throws {
+    let recorder = FrameRecorder()
+    recorder.keepRecent = 10
+    for t in 0...20 { recorder.add(screen(t), at: at(Double(t))) }
+    let all = recorder.begin(at: at(20), before: 60)
+    let some = recorder.begin(at: at(20), before: 3)
+    XCTAssertEqual(recorder.clipStart(all), at(10))
+    XCTAssertEqual(recorder.clipStart(some), at(17))
+    for t in 21...100 { recorder.add(screen(t), at: at(Double(t))) }
+    XCTAssertEqual(recorder.clipStart(all), at(10), "held on to while it runs")
+    let clip = try XCTUnwrap(recorder.end(all, at: at(100)))
+    XCTAssertEqual(clip.start, at(10), "as far back as the seconds kept went")
+    XCTAssertEqual(clip.frames.first?.snapshot(), screen(10))
+    XCTAssertEqual(clip.frames.count, 91)
+    XCTAssertEqual(try XCTUnwrap(recorder.end(some, at: at(100))).start, at(17))
+    XCTAssertEqual(recorder.started(all), nil)
+    XCTAssertNil(recorder.clipStart(all))
+    // Just opened: the seconds kept go back only as far as the first frame.
+    let fresh = FrameRecorder()
+    fresh.keepRecent = 60
+    fresh.add(screen(0), at: at(100))
+    let early = fresh.begin(at: at(103), before: 60)
+    XCTAssertEqual(fresh.clipStart(early), at(100))
+  }
+
+  /// A recording runs as long as it asks, up to five minutes; two minutes unless it asks.
+  func testRecordingRunsAsLongAsAsked() throws {
+    let recorder = FrameRecorder()
+    let long = recorder.begin(at: at(0), longest: 240)
+    let longest = recorder.begin(at: at(0), longest: 900)
+    for t in stride(from: 0, through: 400, by: 10) { recorder.add(screen(t), at: at(Double(t))) }
+    XCTAssertEqual(try XCTUnwrap(recorder.end(long, at: at(400))).duration, 240)
+    XCTAssertEqual(try XCTUnwrap(recorder.end(longest, at: at(400))).duration, 300)
+  }
+
   /// A recording runs two minutes at most.
   func testRecordingStopsAtTwoMinutes() throws {
     let recorder = FrameRecorder()
@@ -66,7 +103,7 @@ final class FrameRecorderTests: XCTestCase {
     XCTAssertEqual(try XCTUnwrap(recorder.recent(at: at(10))).duration, 10)
     XCTAssertEqual(recorder.keepRecent, 60)
     recorder.keepRecent = 500
-    XCTAssertEqual(recorder.keepRecent, 120, "two minutes at most")
+    XCTAssertEqual(recorder.keepRecent, 300, "five minutes at most")
   }
 
   /// A screen that doesn't change is kept once: the GIF shows it until the next change.

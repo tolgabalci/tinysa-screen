@@ -7,6 +7,8 @@ enum Preferences {
     static let controlEnabled = "controlEnabled"
     static let keepRecent = "keepRecent"
     static let keepRecentSeconds = "keepRecentSeconds"
+    static let recordLeadIn = "recordLeadIn"
+    static let recordLongest = "recordLongest"
     static let gifShowsDate = "gifShowsDate"
     static let gifShowsTime = "gifShowsTime"
     static let gifScale = "gifScale"
@@ -28,6 +30,8 @@ enum Preferences {
       Key.controlEnabled: true,
       Key.keepRecent: true,
       Key.keepRecentSeconds: 60,
+      Key.recordLeadIn: 5,
+      Key.recordLongest: 120,
       Key.gifShowsDate: true,
       Key.gifShowsTime: true,
       Key.gifScale: 2,
@@ -46,9 +50,19 @@ enum Preferences {
     set { defaults.set(newValue, forKey: Key.controlEnabled) }
   }
 
-  /// The latest seconds kept for Capture: 0 when off.
+  /// The latest seconds kept in memory, for Record to start before it's pressed (and for the command line's capture):
+  /// 0 when off, five minutes at most.
   static var keptSeconds: Int {
-    defaults.bool(forKey: Key.keepRecent) ? min(max(defaults.integer(forKey: Key.keepRecentSeconds), 5), 120) : 0
+    defaults.bool(forKey: Key.keepRecent)
+      ? min(max(defaults.integer(forKey: Key.keepRecentSeconds), 5), Int(FrameRecorder.longestAllowed)) : 0
+  }
+
+  /// The seconds a recording starts before Record is pressed, as far back as the seconds kept go.
+  static var recordLeadIn: Int { min(max(defaults.integer(forKey: Key.recordLeadIn), 0), keptSeconds) }
+
+  /// The longest a recording runs after Record is pressed, from one minute to five.
+  static var recordLongest: Int {
+    min(max(defaults.integer(forKey: Key.recordLongest), 60), Int(FrameRecorder.longestAllowed))
   }
 
   static var gifShowsDate: Bool { defaults.bool(forKey: Key.gifShowsDate) }

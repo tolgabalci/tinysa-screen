@@ -140,8 +140,8 @@ enum CommandLineTool {
     if let seconds = request.seconds {
       switch command {
       case "record", "capture":
-        guard (1...FrameRecorder.longest).contains(seconds) else {
-          return fail("--seconds: 1 to \(Int(FrameRecorder.longest))")
+        guard (1...FrameRecorder.longestAllowed).contains(seconds) else {
+          return fail("--seconds: 1 to \(Int(FrameRecorder.longestAllowed))")
         }
       case "peaks": break  // checked below
       default: return fail("--seconds goes with record, capture and peaks")

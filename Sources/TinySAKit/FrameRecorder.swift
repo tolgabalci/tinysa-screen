@@ -62,12 +62,15 @@ public struct Clip: Sendable {
 }
 
 /// Keeps frames of the screen for GIFs: those of a recording from when it begins until it ends (at most `longest`
-/// seconds), and with `keepRecent` on, the latest seconds all the time, so a moment just seen can still be saved.
-/// Frames come from the session's thread, after each sweep is drawn or each picture fed; a frame like the one before
-/// isn't kept twice. Safe to use from any thread.
+/// seconds, or as long as it asks, up to `longestAllowed`), and with `keepRecent` on, the latest seconds all the time,
+/// so a moment just seen can still be saved, and a recording can start before it began. Frames come from the
+/// session's thread, after each sweep is drawn or each picture fed; a frame like the one before isn't kept twice. Safe
+/// to use from any thread.
 public final class FrameRecorder: @unchecked Sendable {
-  /// The longest a GIF runs.
+  /// The longest a recording runs unless it asks for longer: what the command line's recordings are held to.
   public static let longest: TimeInterval = 120
+  /// The longest a recording may ask to run, and the most seconds kept.
+  public static let longestAllowed: TimeInterval = 300
   /// A frame within this of the one before replaces it: a new frame every 50 ms is more than a GIF can show.
   static let closest: TimeInterval = 0.05
 
@@ -76,16 +79,23 @@ public final class FrameRecorder: @unchecked Sendable {
   /// The screen as it is now, kept as it is even when nothing records: a recording begins with it.
   private var latest: (snapshot: Snapshot, time: Date, stored: Bool)?
   private var keepSeconds: TimeInterval = 0
-  private var recordings: [UUID: Date] = [:]
+  private struct Recording {
+    /// Where its clip starts: when it began, or before, as far back as the seconds kept then went.
+    var from: Date
+    var began: Date
+    var longest: TimeInterval
+  }
+  private var recordings: [UUID: Recording] = [:]
 
   public init() {}
 
-  /// How many of the latest seconds are kept for capturing later: 0 for none, at most `longest`.
+  /// How many of the latest seconds are kept, for capturing later and for a recording to start before it began: 0 for
+  /// none, at most `longestAllowed`.
   public var keepRecent: TimeInterval {
     get { lock.locked { keepSeconds } }
     set {
       lock.locked {
-        keepSeconds = min(max(newValue, 0), Self.longest)
+        keepSeconds = min(max(newValue, 0), Self.longestAllowed)
         if keepSeconds > 0 { storeLatest() }
         prune(now: Date())
       }
@@ -118,24 +128,41 @@ public final class FrameRecorder: @unchecked Sendable {
   /// Recordings running now.
   public var recordingCount: Int { lock.locked { recordings.count } }
 
-  /// Begins a recording: its frames are kept, from the screen as it is now, until it ends.
-  public func begin(at time: Date = Date()) -> UUID {
+  /// Begins a recording: its frames are kept, from the screen as it is now, until it ends, `longest` seconds on at
+  /// most (up to `longestAllowed`). Its clip starts `before` seconds earlier, as far back as the latest seconds kept
+  /// go: the window's Record takes them all, to trim later.
+  public func begin(at time: Date = Date(), before: TimeInterval = 0, longest: TimeInterval = FrameRecorder.longest)
+    -> UUID
+  {
     lock.locked {
       let id = UUID()
-      recordings[id] = time
+      let back = min(max(before, 0), keepSeconds)
+      recordings[id] = Recording(
+        from: time.addingTimeInterval(-back), began: time, longest: min(max(longest, 1), Self.longestAllowed))
       storeLatest()
       return id
     }
   }
 
   /// When a recording began.
-  public func started(_ id: UUID) -> Date? { lock.locked { recordings[id] } }
+  public func started(_ id: UUID) -> Date? { lock.locked { recordings[id]?.began } }
 
-  /// Ends a recording: its clip, at most `longest` seconds from when it began, or nil if no frame came.
+  /// Where a recording's clip starts so far: as far before it began as it asked, or at the first frame kept, if that
+  /// came later (the seconds kept hadn't been coming that long).
+  public func clipStart(_ id: UUID) -> Date? {
+    lock.locked {
+      guard let recording = recordings[id] else { return nil }
+      return max(recording.from, min(frames.first?.time ?? recording.began, recording.began))
+    }
+  }
+
+  /// Ends a recording: its clip, from as far before it began as it asked (and the frames went) to now, at most its
+  /// `longest` seconds after it began; nil if no frame came.
   public func end(_ id: UUID, at time: Date = Date()) -> Clip? {
     lock.locked {
-      guard let start = recordings.removeValue(forKey: id) else { return nil }
-      let clip = Clip(frames: frames, from: start, to: min(time, start.addingTimeInterval(Self.longest)))
+      guard let recording = recordings.removeValue(forKey: id) else { return nil }
+      let end = min(time, recording.began.addingTimeInterval(recording.longest))
+      let clip = Clip(frames: frames, from: recording.from, to: end)
       prune(now: time)
       return clip
     }
@@ -177,7 +204,7 @@ public final class FrameRecorder: @unchecked Sendable {
   /// Drops frames no longer needed: those before the oldest recording's start and the seconds kept, except the one
   /// on the screen at that moment.
   private func prune(now: Date) {
-    var from = recordings.values.min()
+    var from = recordings.values.map(\.from).min()
     if keepSeconds > 0 {
       let cut = now.addingTimeInterval(-keepSeconds)
       from = from.map { min($0, cut) } ?? cut

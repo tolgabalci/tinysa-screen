@@ -16,7 +16,7 @@ own screen.
 _tinySA Screen with a tinySA Ultra+ on the 902–928 MHz RFID band. The peak hold (cyan), here keeping a minute, has
 caught bursts from RFID readers, its peaks numbered with their frequency and level; the analyzer's own traces are its
 yellow sweep and its green max decay, and each burst is a dash in the waterfall. The title bar has the app's version
-and tagline, the pointer and pen, the peak hold, bands, Record and Capture._
+and tagline, the pointer and pen, the peak hold, bands and Record._
 
 ## Install
 
@@ -115,8 +115,8 @@ antenna.
 | Menu | Keys | What it does |
 | --- | --- | --- |
 | File › Save Screenshot | ⌘S | The analyzer's screen at its own size, as a PNG named `tinySA <date> at <time>.png`, on the Desktop or in the folder chosen in Settings |
-| File › Record GIF | ⌘R | Records the screen until you stop it (⌘R again), at most two minutes, and saves the GIF there too |
-| File › Capture Last 1:00 as GIF… | ⇧⌘R | Saves the last minute, or the last part of it, as a GIF ([below](#recording-gifs)) |
+| File › Record GIF | ⌘R | Records the screen, starting 5 seconds before you press it, until you stop it (⌘R again); Stop opens the editor to trim the GIF, then saves it there too ([below](#recording-gifs)) |
+| File › Stop and Save Recording | ⌥⌘R | Stops and saves the GIF as it is, without the editor |
 | Edit › Copy Screenshot | ⌘C | The screenshot, to paste anywhere |
 | View › Actual Size, Double Size, Triple Size | ⌘1, ⌘2, ⌘3 | The window at one, two or three of the Mac's points per analyzer pixel |
 | View › Control the tinySA by Clicking | ⌘K | Clicks become taps on the analyzer (on by default) |
@@ -129,7 +129,7 @@ antenna.
 | View › Enter Full Screen | ⌃⌘F | The picture as large as the screen allows |
 | Band › (a band) | | Sets the analyzer to sweep that band ([below](#bands)) |
 | Window › Float on Top | | The window stays above other apps' windows |
-| tinySA Screen › Settings… | ⌘, | What Capture keeps, how GIFs look, where files are saved, saved bands, clicks and the pen |
+| tinySA Screen › Settings… | ⌘, | How recordings start and stop, how GIFs look, where files are saved, saved bands, clicks and the pen |
 
 A click on the picture is a tap on the analyzer's screen, even while the call's window is the active one: here the
 analyzer's DISPLAY menu, opened from the Mac. The mouse is your finger on the analyzer's glass: holding the button down
@@ -210,21 +210,34 @@ the analyzer on USB here and a tinySA Ultra; when a feeding program has the anal
 
 ## Recording GIFs
 
-Two buttons in the window's title bar make animated GIFs of the analyzer's screen, to send after a call, put in a
-report or paste into a chat:
+**Record** in the window's title bar (⌘R) makes animated GIFs of the analyzer's screen, to send after a call, put in a
+report or paste into a chat. tinySA Screen keeps the last minute of the screen all the time, in memory only, so a
+recording starts before you press Record: its GIF starts 5 seconds before, and the minute is there to take in when
+what you wanted came earlier. While it records, the button is **Stop** with the GIF's length so far.
 
-- **Record** (⌘R) records from now until you click Stop, at most two minutes, and saves the GIF as
-  `tinySA <date> at <time>.gif`, on the Desktop or in the folder you chose ([below](#where-files-go)). The button shows
-  the time recorded.
-- **Capture** (⇧⌘R) is for when something has just happened. tinySA Screen keeps the last minute of the screen all the
-  time (in memory only), and Capture shows a sheet with a slider: keep the whole minute, or drag for the last 15 seconds,
-  say. A picture of the GIF's first frame shows where it starts. Choose whether the date and the time go under the
-  screen, the size, then **Save**, or **Copy** to paste it into a chat or an email as an animated GIF. The
-  sheet says how large the file will be before you save it.
-- **Last recording** or **Last capture**, a link between the two buttons once you've made a GIF, opens the latest one
-  to watch: in the app your Mac opens GIFs with, or in your browser when that app would show it still (Preview, which
-  is the Mac's own choice, and image editors such as Pixelmator, Photoshop or GIMP) or no app opens GIFs. One link,
-  to whichever GIF came last.
+**Stop** opens the editor, with the whole recording on a filmstrip and the GIF between its yellow ends:
+
+![The editor: the screen at the playhead, and under it the filmstrip, the GIF's 15 seconds framed in yellow, the minute kept before Record dimmed](docs/images/editor.jpg)
+
+- **Drag the ends** to trim the GIF, or drag the start back into the dimmed part, the seconds kept from before you
+  pressed Record (marked above the filmstrip). The picture shows the frame at an end while you drag it, as the GIF will
+  show it, date and time included. Hold ⌥ for finer steps.
+- **Play** (Space, or a click on the picture) plays the GIF over and over, as it will loop. A drag anywhere else on the
+  filmstrip moves the playhead.
+- **The keys are QuickTime Player's**: ← and → step a frame (⇧ a second), ⌥← and ⌥→ go to the GIF's start and end,
+  and I and O set its start or end at the playhead. ⌘Z undoes.
+- Choose whether the date and the time go under the screen and the size; the editor says how large the file will be.
+  Then **Save** (Return), as `tinySA <date> at <time>.gif`, on the Desktop or in the folder you chose
+  ([below](#where-files-go)), or **Copy** (⌘C) to paste it into a chat or an email as an animated GIF. **Cancel**
+  (Esc) asks before it deletes the recording.
+
+Hold ⌥ while recording and Stop becomes **Stop & Save**: the GIF is saved as it is, from 5 seconds before Record to
+Stop, without the editor (⌥⌘R too). A recording stops by itself two minutes after Record and opens the editor; one
+running, or in the editor, when you quit is saved as it is.
+
+**Last recording**, a link right of Record once you've made a GIF, opens the latest one to watch: in the app your Mac
+opens GIFs with, or in your browser when that app would show it still (Preview, which is the Mac's own choice, and
+image editors such as Pixelmator, Photoshop or GIMP) or no app opens GIFs.
 
 ![A GIF made by tinySA Screen: the 2.4 GHz band, Wi-Fi bursts, the date and time ticking under the screen](docs/images/gif-2400mhz-wifi.gif)
 
@@ -245,13 +258,15 @@ What's in a GIF:
 - **Two sizes**: Sharp (twice the screen's size, 960 × 672 for a tinySA Ultra, every pixel a sharp 2 × 2 square) or
   Small (the screen's own size).
 
-Settings (⌘,) sets how many seconds Capture keeps (5 seconds to 2 minutes, or none), and the date, time and size that
-Record uses and Capture starts from.
+**Settings › Recording** (⌘,) sets how much is kept in memory (15 seconds to 5 minutes, or nothing), how far before
+Record a GIF starts (from when it's pressed, as far back as what's kept goes), and how long a recording runs at most
+after Record (1 to 5 minutes): a GIF can be up to ten minutes long. The date, time and size are the editor's choices,
+kept for next time and for Stop & Save.
 
 ### Where files go
 
 GIFs and screenshots go to the Desktop until you choose a folder: **Settings › Saving › Save to › Other…**, then any
-folder (New Folder works there too). From then on Record, Capture and ⌘S save there, and the menu and buttons name it
+folder (New Folder works there too). From then on Record and ⌘S save there, and the menu and buttons name it
 ("Save Screenshot to Band recordings"). **Show in Finder** opens it; **Save to › Desktop** goes back.
 
 - A folder that's moved or renamed is followed there.
@@ -306,7 +321,7 @@ Python helpers are in [integrations/python](integrations/python):
 - **Feeding.** A program that keeps the analyzer itself (a monitor or logger running all day) can put the analyzer's
   screen in the window: while tinySA Screen is open it touches a file, and the program writes the screen as a PNG and
   a few words about what it is doing to a folder the app watches. While that program runs, tinySA Screen shows its
-  pictures and never touches the analyzer. Record and Capture work on fed pictures too, and clicks reach the analyzer
+  pictures and never touches the analyzer. Record works on fed pictures too, and clicks reach the analyzer
   through the program when it passes them on: the app writes them to the same folder and the program types them as
   taps, a small ring in the window showing where each went until the next picture shows the answer.
 - **Asking.** A program can ask the open app for a GIF, a screenshot or its status, through the

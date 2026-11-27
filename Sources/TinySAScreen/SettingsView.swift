@@ -3,10 +3,12 @@ import Combine
 import SwiftUI
 import TinySAKit
 
-/// Settings (⌘,): what Capture keeps, how GIFs look, and whether clicks tap the analyzer.
+/// Settings (⌘,): how recordings start and stop, how GIFs look, and whether clicks tap the analyzer.
 struct SettingsView: View {
   @AppStorage(Preferences.Key.keepRecent) private var keepRecent = true
   @AppStorage(Preferences.Key.keepRecentSeconds) private var keepRecentSeconds = 60
+  @AppStorage(Preferences.Key.recordLeadIn) private var recordLeadIn = 5
+  @AppStorage(Preferences.Key.recordLongest) private var recordLongest = 120
   @AppStorage(Preferences.Key.gifShowsDate) private var showsDate = true
   @AppStorage(Preferences.Key.gifShowsTime) private var showsTime = true
   @AppStorage(Preferences.Key.gifScale) private var scale = 2
@@ -32,28 +34,7 @@ struct SettingsView: View {
 
   var body: some View {
     Form {
-      Section {
-        Toggle("Keep the latest seconds for Capture", isOn: $keepRecent)
-        Stepper(value: $keepRecentSeconds, in: 5...120, step: 5) {
-          HStack {
-            Text("Seconds kept")
-            Spacer()
-            Text(CaptureSheet.duration(Double(keepRecentSeconds)))
-              .monospacedDigit()
-              .foregroundStyle(.secondary)
-          }
-        }
-        .disabled(!keepRecent)
-        .accessibilityValue("\(keepRecentSeconds) seconds")
-      } header: {
-        Text("Capture")
-      } footer: {
-        Text(
-          "Capture (⇧⌘R) saves these seconds, or the last part of them, as a GIF: for when something has just happened. They're kept in memory only."
-        )
-        .foregroundStyle(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
-      }
+      recording
       Section {
         Toggle("Date under the screen", isOn: $showsDate)
         Toggle("Time under the screen, to the second", isOn: $showsTime)
@@ -64,7 +45,7 @@ struct SettingsView: View {
       } header: {
         Text("GIFs")
       } footer: {
-        Text("Record (⌘R) saves GIFs this way, for up to two minutes; Capture starts from these choices.")
+        Text("Stop & Save makes GIFs this way. The editor that Stop opens starts with them, and changes them too.")
           .foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
       }
@@ -152,6 +133,65 @@ struct SettingsView: View {
     .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in folderCheck += 1 }
   }
 
+  /// How far back a recording starts, how far back the editor can take it, and how long it runs.
+  private var recording: some View {
+    let kept = keepRecent ? min(max(keepRecentSeconds, 5), Int(FrameRecorder.longestAllowed)) : 0
+    let keptChoices = Set(Self.keptChoices + (kept > 0 ? [kept] : [])).sorted()
+    let leadIns = Self.leadInChoices.filter { $0 <= kept }
+    return Section {
+      Picker(
+        "Keep in memory",
+        selection: Binding(
+          get: { kept },
+          set: { seconds in
+            keepRecent = seconds > 0
+            if seconds > 0 { keepRecentSeconds = seconds }
+          })
+      ) {
+        Text("Nothing").tag(0)
+        ForEach(keptChoices, id: \.self) { Text("The last \(Self.spoken($0))").tag($0) }
+      }
+      Picker(
+        "Start recordings",
+        selection: Binding(get: { leadIns.last { $0 <= recordLeadIn } ?? 0 }, set: { recordLeadIn = $0 })
+      ) {
+        ForEach(leadIns, id: \.self) { seconds in
+          Text(seconds == 0 ? "When Record is pressed" : "\(Self.spoken(seconds)) before Record").tag(seconds)
+        }
+      }
+      .disabled(kept == 0)
+      Picker(
+        "Stop recordings after",
+        selection: Binding(
+          get: { Self.longestChoices.last { $0 <= recordLongest } ?? Self.longestChoices[0] },
+          set: { recordLongest = $0 })
+      ) {
+        ForEach(Self.longestChoices, id: \.self) { Text(Self.spoken($0)).tag($0) }
+      }
+    } header: {
+      Text("Recording")
+    } footer: {
+      Text(
+        "The latest seconds stay in memory only, so a recording can start before Record (⌘R) is pressed. Stop opens "
+          + "the editor, where the GIF can start as far back as they go and either end can be trimmed; ⌥ Stop & Save "
+          + "(⌥⌘R) saves it as it is."
+      )
+      .foregroundStyle(.secondary)
+      .fixedSize(horizontal: false, vertical: true)
+    }
+  }
+
+  /// The latest seconds Settings offers to keep, the lead-ins, and the longest recordings.
+  static let keptChoices = [15, 30, 60, 120, 180, 300]
+  static let leadInChoices = [0, 2, 5, 10, 15, 30, 60, 120, 180, 300]
+  static let longestChoices = [60, 120, 180, 240, 300]
+
+  /// "2 seconds", "1 minute", "5 minutes", "90 seconds".
+  static func spoken(_ seconds: Int) -> String {
+    guard seconds >= 60, seconds % 60 == 0 else { return seconds == 1 ? "1 second" : "\(seconds) seconds" }
+    return seconds == 60 ? "1 minute" : "\(seconds / 60) minutes"
+  }
+
   /// Where GIFs and screenshots go: the Desktop, or a folder chosen with Other….
   private var saving: some View {
     _ = folderCheck  // looked at again with each check
@@ -195,7 +235,7 @@ struct SettingsView: View {
       Text("Saving")
     } footer: {
       Text(
-        "GIFs (Record and Capture) and screenshots (⌘S) are saved here, named after when they start. A folder that's moved or renamed is followed there; while it can't be found (on a drive that's unplugged, say), files go to the Desktop."
+        "GIFs (⌘R) and screenshots (⌘S) are saved here, named after when they start. A folder that's moved or renamed is followed there; while it can't be found (on a drive that's unplugged, say), files go to the Desktop."
       )
       .foregroundStyle(.secondary)
       .fixedSize(horizontal: false, vertical: true)

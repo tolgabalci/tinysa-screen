@@ -2,18 +2,31 @@
 
 All notable changes are listed here, newest first. Versions follow [Semantic Versioning](https://semver.org).
 
-## 1.3.4 (2026-11-27)
+## 1.4.0 (2026-11-27)
 
+- Record starts before it's pressed, and Stop opens an editor. The app keeps the last minute of the screen in memory
+  (Settings › Recording: 15 seconds to 5 minutes, or nothing), and a recording's GIF starts 5 seconds before Record was
+  pressed (Settings: from when it's pressed, as far back as what's kept goes); the button shows the GIF's length so
+  far. Stop opens the editor: the whole recording on a filmstrip, with the GIF between two yellow handles to trim it or
+  to take in more of the seconds kept from before Record (dimmed, Record marked above them). The picture shows the
+  frame at the playhead as the GIF will, date and time included, and follows a handle while it's dragged (⌥ for finer
+  steps); Play loops the GIF. The keys are QuickTime Player's: Space, ← and → a frame (⇧ a second), ⌥← and ⌥→ to the
+  GIF's start and end, I and O to set them at the playhead, and ⌘Z. Then Save (Return) or Copy (⌘C), with the date,
+  time and size chosen and the file's size shown; Cancel asks before it deletes the recording.
+- With ⌥ held, Stop is Stop & Save (⌥⌘R): the GIF is saved as it is, without the editor. Quitting saves a recording
+  running, or the GIF in the editor, as it is.
+- Capture (⇧⌘R) is gone: Record does what it did, and from further back if wanted. The command line's `capture` stays.
+- A recording runs two minutes at most after Record, as before, or up to five (Settings › Recording), so a GIF can be up
+  to ten minutes long; at the limit it stops and opens the editor. The command line's `record` takes up to 300 seconds.
 - A quick click on the analyzer's screen, and the window's Escape, are noticed now: the analyzer sees a touch only
   when it next looks, up to a few tenths of a second with its screen shown live, and lost one released before then. On
   firmware v1.4-333, taps typed back to back, as Escape typed them, were noticed 0 times in 6. Each touch is now held at
   least 0.4 s before its release, over USB and through a feeding program alike (22 of 24 noticed), still short of a
   long press (0.5 s), and the next touch goes down 0.1 s after a release at least, so two quick clicks stay two clicks.
   The Python helpers' `Feeder.pass_taps` keeps the clicks as far apart as the app dates them.
-- After Record or Capture makes a GIF, a "Last recording" or "Last capture" link appears between the two buttons, and
-  opens that GIF to watch: in the app the Mac opens GIFs with, or in the browser when that app would show it still
-  (Preview, the Mac's own choice for GIFs, and image editors such as Pixelmator, Photoshop or GIMP) or none does. One
-  link, to whichever GIF came last.
+- After Record makes a GIF, a "Last recording" link appears right of it, and opens that GIF to watch: in the app the
+  Mac opens GIFs with, or in the browser when that app would show it still (Preview, the Mac's own choice for GIFs, and
+  image editors such as Pixelmator, Photoshop or GIMP) or none does.
 
 ## 1.3.3 (2026-11-27)
 

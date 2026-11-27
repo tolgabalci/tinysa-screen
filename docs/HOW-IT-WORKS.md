@@ -200,9 +200,10 @@ capture when the firmware has no live screen. A frame the same as the one before
 
 ### Keeping the last minute
 
-Frames are kept in memory packed with LZFSE, a few tens of kilobytes each. A recording keeps them from its start, and
-Capture keeps the last minute (or what Settings says), each from the screen as it was when it began. Nothing goes to
-the disk until a GIF is saved.
+Frames are kept in memory packed with LZFSE, a few tens of kilobytes each. The last minute (or what Settings ›
+Recording says, up to five) is kept all the time, from the screen as it was when it began, so a recording can start
+before Record is pressed: it holds on to its frames from as far back as those went, and the editor's GIF is a part of
+them. Nothing goes to the disk until a GIF is saved.
 
 ### The file
 

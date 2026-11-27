@@ -30,10 +30,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
   private var control: ControlServer?
   private var otherRecordings: [String] = []
   private let recordButton = NSButton()
-  private let captureButton = NSButton()
-  /// The link to the latest GIF from Record or Capture, between their buttons, once there is one.
+  /// ⌥ is down: Stop is Stop & Save.
+  private var optionDown = false
+  /// The link to the latest GIF, right of Record, once there is one.
   private let lastGIFButton = LinkButton()
-  private var lastGIF: (url: URL, made: GIFController.Made)?
+  private var lastGIF: URL?
   private let pointerButton = NSButton()
   private let penButton = NSButton()
   private let peaksButton = NSButton()
@@ -51,11 +52,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     let bandMenu = NSApp.mainMenu?.items.first { $0.submenu?.title == "Band" }?.submenu
     bands = BandController(session: session, view: view, window: window, menuBarMenu: bandMenu)
     gifs.onChange = { [weak self] in self?.updateGIFControls() }
-    gifs.onMade = { [weak self] url, made in self?.showLastGIF(url, made) }
+    gifs.onMade = { [weak self] url in self?.showLastGIF(url) }
+    NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
+      self?.modifiersChanged(event.modifierFlags)
+      return event
+    }
     lastGIFButton.target = self
     lastGIFButton.action = #selector(openLastGIF(_:))
     setUpToolbarButton(recordButton, "Record", symbol: "record.circle", action: #selector(toggleRecording(_:)))
-    setUpToolbarButton(captureButton, "Capture", symbol: "clock.arrow.circlepath", action: #selector(capture(_:)))
     setUpToolbarButton(pointerButton, "Pointer", symbol: "cursorarrow.rays", action: #selector(togglePointer(_:)))
     setUpToolbarButton(penButton, "Pen", symbol: "pencil.tip", action: #selector(togglePen(_:)))
     setUpToolbarButton(peaksButton, "Peaks", symbol: "chart.xyaxis.line", action: #selector(togglePeakHold(_:)))
@@ -91,6 +95,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     updateWindowLevel()
     for name in [NSApplication.didBecomeActiveNotification, NSApplication.didResignActiveNotification] {
       NotificationCenter.default.addObserver(self, selector: #selector(updateWindowLevel), name: name, object: nil)
+      NotificationCenter.default.addObserver(self, selector: #selector(activeChanged), name: name, object: nil)
     }
     window.makeKeyAndOrderFront(nil)
     view.onTap = { [weak self] x, y, released in
@@ -114,8 +119,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     if notification.object as? NSWindow === window { NSApp.terminate(nil) }
   }
 
-  /// A recording in progress is stopped and saved, and GIFs being made are written, before the app quits (at most 15
-  /// seconds).
+  /// A recording in progress is stopped and saved (and the GIF the editor shows saved), and GIFs being made are
+  /// written, before the app quits (at most 15 seconds).
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
     guard let gifs, gifs.isBusy else { return .terminateNow }
     var answered = false
@@ -208,7 +213,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
   // MARK: Settings
 
-  /// Settings changed (here or in the Settings window): Capture keeps what they say, clicks tap or don't.
+  /// Settings changed (here or in the Settings window): the seconds kept are what they say, clicks tap or don't.
   @objc private func preferencesChanged() {
     view.controllable = status.controllable && Preferences.controlEnabled
     view.inkSeconds = TimeInterval(Preferences.inkSeconds)
@@ -224,7 +229,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     SettingsWindow.shared.show()
   }
 
-  // MARK: The toolbar: Record and Capture
+  // MARK: The toolbar: Record
 
   private func setUpToolbarButton(_ button: NSButton, _ title: String, symbol: String, action: Selector) {
     button.title = title
@@ -237,18 +242,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
   }
 
   func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-    [.flexibleSpace, .pointer, .pen, .peaks, .band, .record, .lastGIF, .capture]
+    [.flexibleSpace, .pointer, .pen, .peaks, .band, .record, .lastGIF]
   }
 
   func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-    [.flexibleSpace, .pointer, .pen, .peaks, .band, .record] + (Preferences.keptSeconds > 0 ? [.capture] : [])
+    [.flexibleSpace, .pointer, .pen, .peaks, .band, .record]
   }
 
   func toolbar(
     _ toolbar: NSToolbar, itemForItemIdentifier identifier: NSToolbarItem.Identifier,
     willBeInsertedIntoToolbar flag: Bool
   ) -> NSToolbarItem? {
-    // At the narrowest window, the pointer, pen and peaks go to the overflow menu first, Record and Capture last; in
+    // At the narrowest window, the pointer, pen and peaks go to the overflow menu first, Record and its link last; in
     // that menu each is a menu item (Band with its bands).
     let item = NSToolbarItem(itemIdentifier: identifier)
     func menuForm(_ title: String, _ action: Selector) -> NSMenuItem {
@@ -280,16 +285,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
       item.view = recordButton
       item.menuFormRepresentation = menuForm("Record GIF", #selector(toggleRecording(_:)))
       item.visibilityPriority = .high
-    case .capture:
-      item.label = "Capture"
-      item.view = captureButton
-      item.menuFormRepresentation = menuForm("Capture as GIF…", #selector(capture(_:)))
-      item.visibilityPriority = .high
     case .lastGIF:
-      let title = lastGIF?.made == .capture ? "Last capture" : "Last recording"
-      item.label = title
+      item.label = "Last recording"
       item.view = lastGIFButton
-      item.menuFormRepresentation = menuForm("Open \(title)", #selector(openLastGIF(_:)))
+      item.menuFormRepresentation = menuForm("Open Last Recording", #selector(openLastGIF(_:)))
       item.visibilityPriority = .high
     default:
       return nil
@@ -297,61 +296,78 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     return item
   }
 
-  /// The Record button shows the time recorded and turns into Stop; Capture is there while seconds are kept.
+  /// The Record button turns into Stop while recording, with the GIF's length so far (from the lead-in before Record),
+  /// and into Stop & Save while ⌥ is down.
   private func updateGIFControls() {
+    recordButton.isEnabled = !gifs.isEditing
     if gifs.isRecording {
-      recordButton.title = CaptureSheet.duration(gifs.elapsed.rounded(.down))
+      let length = gifs.length.rounded(.down)
+      let time = TimeText.duration(length)
+      recordButton.title = optionDown ? "Stop & Save \(time)" : "Stop \(time)"
       recordButton.image = NSImage(systemSymbolName: "stop.fill", accessibilityDescription: nil)
       recordButton.contentTintColor = .systemRed
       recordButton.toolTip =
-        "Stop recording and save the GIF to \(Preferences.saveFolderName) (⌘R). A recording stops by itself at 2:00."
-      recordButton.setAccessibilityLabel("Stop recording, \(Int(gifs.elapsed)) seconds recorded")
+        "Stop, and trim the GIF before it's saved (⌘R); ⌥-click to save it as it is, to \(Preferences.saveFolderName) "
+        + "(⌥⌘R). A recording stops by itself \(TimeText.duration(gifs.longest)) after Record was pressed."
+      recordButton.setAccessibilityLabel(
+        optionDown
+          ? "Stop and save the GIF, \(TimeText.spoken(length)) long"
+          : "Stop recording, the GIF is \(TimeText.spoken(length)) long")
     } else {
       recordButton.title = "Record"
       recordButton.image = NSImage(systemSymbolName: "record.circle", accessibilityDescription: nil)
       recordButton.contentTintColor = nil
+      let leadIn = gifs.leadIn
+      let from =
+        leadIn > 0 ? "starting \(TimeText.spoken(leadIn)) before you press Record" : "starting when you press Record"
       recordButton.toolTip =
-        "Record a GIF of the screen until you stop it, up to 2 minutes, saved to \(Preferences.saveFolderName) (⌘R)"
+        "Record a GIF of the screen (⌘R), \(from), until you stop it: \(TimeText.duration(gifs.longest)) at most"
       recordButton.setAccessibilityLabel("Record a GIF")
     }
-    let kept = Preferences.keptSeconds
-    captureButton.toolTip = "Save the last \(CaptureSheet.duration(Double(kept))), or part of them, as a GIF (⇧⌘R)"
-    guard let toolbar = window.toolbar else { return }
-    let index = toolbar.items.firstIndex { $0.itemIdentifier == .capture }
-    if kept > 0, index == nil {
-      toolbar.insertItem(withItemIdentifier: .capture, at: toolbar.items.count)
-    } else if kept == 0, let index {
-      toolbar.removeItem(at: index)
-    }
   }
 
+  /// Record, or Stop; ⌥-click Stop (or ⌥⌘R) to save the GIF as it is.
   @objc func toggleRecording(_ sender: Any?) {
-    gifs.toggleRecording()
+    gifs.toggleRecording(andSave: NSApp.currentEvent?.modifierFlags.contains(.option) ?? false)
   }
 
-  /// The link to the GIF just made, right of Record and left of Capture: one link, to the latest GIF of either.
-  private func showLastGIF(_ url: URL, _ made: GIFController.Made) {
-    lastGIF = (url, made)
-    let title = made == .capture ? "Last capture" : "Last recording"
-    lastGIFButton.setLink(title)
-    lastGIFButton.toolTip = "Open \(url.lastPathComponent), the GIF \(made == .capture ? "captured" : "recorded") last"
-    lastGIFButton.setAccessibilityLabel("Open the \(title.lowercased())")
-    guard let toolbar = window.toolbar else { return }
-    if let item = toolbar.items.first(where: { $0.itemIdentifier == .lastGIF }) {
-      item.label = title
-      item.menuFormRepresentation?.title = "Open \(title)"
-    } else {
-      let record = toolbar.items.firstIndex { $0.itemIdentifier == .record } ?? toolbar.items.count - 1
-      toolbar.insertItem(withItemIdentifier: .lastGIF, at: record + 1)
+  /// File › Stop and Save Recording (⌥⌘R), File › Record GIF's alternate: Record while not recording.
+  @objc func stopAndSaveRecording(_ sender: Any?) {
+    gifs.toggleRecording(andSave: true)
+  }
+
+  /// ⌥ went down or up: Stop says whether it saves.
+  private func modifiersChanged(_ flags: NSEvent.ModifierFlags) {
+    let down = flags.contains(.option)
+    guard down != optionDown else { return }
+    optionDown = down
+    if gifs.isRecording { updateGIFControls() }
+  }
+
+  /// ⌥ isn't seen going up in another app: Stop is as the keys are when the app is in front again.
+  @objc private func activeChanged() {
+    modifiersChanged(NSApp.isActive ? NSEvent.modifierFlags : [])
+  }
+
+  /// The link to the GIF just made, right of Record.
+  private func showLastGIF(_ url: URL) {
+    lastGIF = url
+    lastGIFButton.setLink("Last recording")
+    lastGIFButton.toolTip = "Open \(url.lastPathComponent), the GIF made last"
+    lastGIFButton.setAccessibilityLabel("Open the last recording")
+    guard let toolbar = window.toolbar, !toolbar.items.contains(where: { $0.itemIdentifier == .lastGIF }) else {
+      return
     }
+    let record = toolbar.items.firstIndex { $0.itemIdentifier == .record } ?? toolbar.items.count - 1
+    toolbar.insertItem(withItemIdentifier: .lastGIF, at: record + 1)
   }
 
   /// Opens the latest GIF where it plays: in the app the Mac opens GIFs with, or in the browser when that app shows a
   /// GIF still (Preview, an image editor) or no app opens GIFs (`GIFViewer`).
   @objc func openLastGIF(_ sender: Any?) {
-    guard let (url, made) = lastGIF else { return }
+    guard let url = lastGIF else { return }
     guard FileManager.default.fileExists(atPath: url.path) else {
-      view.flash("The \(made == .capture ? "capture" : "recording") isn't there anymore: \(url.lastPathComponent)")
+      view.flash("The recording isn't there anymore: \(url.lastPathComponent)")
       return
     }
     let workspace = NSWorkspace.shared
@@ -438,10 +454,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
   /// app is, its own windows (Settings, About, sheets) open above it as usual.
   @objc private func updateWindowLevel() {
     window.level = Preferences.floatOnTop && !NSApp.isActive ? .floating : .normal
-  }
-
-  @objc func capture(_ sender: Any?) {
-    gifs.capture()
   }
 
   // MARK: Menu actions
@@ -547,9 +559,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     switch item.action {
     case #selector(saveScreenshot(_:)):
       item.title = "Save Screenshot to \(Preferences.saveFolderName)"
-      return image != nil && window.attachedSheet == nil  // ⌘S in the Capture sheet saves its GIF
+      return image != nil && window.attachedSheet == nil  // ⌘S in the editor saves its GIF
     case #selector(copy(_:)):
-      return image != nil && window.attachedSheet == nil  // ⌘C in the Capture sheet copies its GIF
+      return image != nil && window.attachedSheet == nil  // ⌘C in the editor copies its GIF
     case #selector(toggleControl(_:)):
       item.state = Preferences.controlEnabled ? .on : .off
       return true
@@ -574,11 +586,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
       return true
     case #selector(toggleRecording(_:)):
       item.title = gifs.isRecording ? "Stop Recording" : "Record GIF"
-      return gifs.isRecording || session.recorder.hasSnapshot
-    case #selector(capture(_:)):
-      let kept = Preferences.keptSeconds
-      item.title = kept > 0 ? "Capture Last \(CaptureSheet.duration(Double(kept))) as GIF…" : "Capture as GIF…"
-      return kept > 0 && gifs.canCapture
+      return gifs.canRecord
+    case #selector(stopAndSaveRecording(_:)):
+      item.title = gifs.isRecording ? "Stop and Save Recording" : "Record GIF"
+      return gifs.canRecord
     case #selector(actualSize(_:)), #selector(doubleSize(_:)), #selector(tripleSize(_:)):
       return !window.styleMask.contains(.fullScreen)
     default:
@@ -594,7 +605,6 @@ extension NSToolbarItem.Identifier {
   static let band = NSToolbarItem.Identifier("band")
   static let record = NSToolbarItem.Identifier("record")
   static let lastGIF = NSToolbarItem.Identifier("lastGIF")
-  static let capture = NSToolbarItem.Identifier("capture")
 }
 
 /// A link in the toolbar: its text in the link color, the pointing hand over it. The toolbar buttons' own bezel, shown
