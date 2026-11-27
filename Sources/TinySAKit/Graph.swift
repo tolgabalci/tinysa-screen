@@ -184,10 +184,11 @@ public struct GraphScale: Equatable, Sendable {
     start == other.start && stop == other.stop && abs(level0 - other.level0) < 1e-6 && abs(perRow - other.perRow) < 1e-9
   }
 
-  /// The grid's spacing from the label between START and STOP ("2.0MHz/"): the middle of the three values.
+  /// The grid's spacing from the label between START and STOP ("2.0MHz/"): the middle of the three values. Never 0:
+  /// that's a misreading ("2„0MHz/" has the reading find "0MHz").
   static func parseDivision(_ text: String) -> Int64? {
     let values = spanValues(text)
-    return values.count == 3 ? values[1] : nil
+    return values.count == 3 && values[1] > 0 ? values[1] : nil
   }
 
 
@@ -204,38 +205,77 @@ public struct GraphScale: Equatable, Sendable {
     return -rest
   }
 
+  /// The values a level label may stand for: its value as read, or, read upside down, the right way up (`upright`);
+  /// and a value without its minus may be its negative too, as the reading loses the screen's thin minus now and then
+  /// ("30" for "−30"), never a digit that way.
+  static func levelValues(_ label: String) -> [Double] {
+    let values = levelValue(label).map { [$0] } ?? upright(label)?.compactMap(levelValue) ?? []
+    return values.flatMap { $0 > 0 ? [$0, -$0] : [$0] }
+  }
+
+  /// Marks that stand for a minus: the reading takes the screen's thin minus for any of them.
+  static let minusMarks: Set<Character> = ["-", "=", "÷", "~"]
+
+  /// What each mark the reading gives for a label read upside down is the right way up: "09-" is "−60" turned half a
+  /// turn, "Oh-" "−40", "OS-" "−50". An 8 may be a turned 3 as well (the reading takes "Ɛ" for "8").
+  static let turned: [Character: [Character]] = [
+    "0": ["0"], "O": ["0"], "o": ["0"], "1": ["1"], "I": ["1"], "l": ["1"], "i": ["1"], "|": ["1"], "2": ["2"],
+    "Z": ["2"], "z": ["2"], "E": ["3"], "8": ["8", "3"], "h": ["4"], "5": ["5"], "S": ["5"], "s": ["5"], "9": ["6"],
+    "6": ["9"], "L": ["7"], ".": ["."], "'": ["."], "`": ["."], "-": ["-"], "=": ["-"], "÷": ["-"], "~": ["-"],
+  ]
+
+  /// A level label read upside down, the right way up, or nil when it wasn't. The reading on macOS 27 turns some of
+  /// the labels half a turn: a label is only digits and its minus, which read as something either way up. A label
+  /// never ends with its minus, so one that does was read upside down. Several readings when an 8 may be a 3; none
+  /// when a mark has no meaning turned.
+  static func upright(_ label: String) -> [String]? {
+    let marks = Array(LabelReader.plain(label).replacingOccurrences(of: " ", with: ""))
+    guard let first = marks.first, let last = marks.last, minusMarks.contains(last), !minusMarks.contains(first) else {
+      return nil
+    }
+    var readings = [""]
+    for mark in marks.reversed() {
+      guard let upright = turned[mark] else { return [] }
+      readings = readings.flatMap { reading in upright.map { reading + String($0) } }
+    }
+    return readings
+  }
+
   /// The level labels (numbers at grid lines, the top of each at its line) fitted to a straight line: the levels
-  /// that agree on one step per grid line, at least three of them. A misread label ("30" for "−30") disagrees and is
-  /// left out.
+  /// that agree on one step per grid line, at least three of them. A misread label disagrees and is left out.
   static func fitLevels(_ labels: [LabelReader.Line], graph: Graph) -> (Double, Double)? {
-    var points: [(row: Int, value: Double)] = []
+    var points: [(row: Int, values: [Double])] = []
     for label in labels {
-      guard let value = levelValue(label.text),
+      let values = levelValues(label.text)
+      guard !values.isEmpty,
         let row = graph.gridRows.min(by: { abs($0 - label.top) < abs($1 - label.top) }),
         abs(row - label.top) <= 4
       else { continue }
-      points.append((row, value))
+      points.append((row, values))
     }
     guard points.count >= 3 else { return nil }
     let step = Double(graph.gridRows.count > 1 ? graph.gridRows[1] - graph.gridRows[0] : 1)
-    // Each pair proposes a line; the line most labels agree with wins.
+    // Each pair proposes a line, with each value either label may stand for; the line most labels agree with wins. A
+    // label agrees when one of its values is the line's level at its row.
     var best: (level0: Double, perRow: Double, agreeing: Int)?
     for i in points.indices {
       for j in points.indices where j > i && points[j].row != points[i].row {
-        let perRow = (points[j].value - points[i].value) / Double(points[j].row - points[i].row)
-        let perDivision = perRow * step
-        let fine = [0.1, 0.2, 0.5].contains { abs(abs(perDivision) - $0) < 0.001 }
-        guard perRow < 0, abs(perDivision - perDivision.rounded()) < 0.01 || fine else { continue }
-        let level0 = points[i].value - perRow * Double(points[i].row)
-        // A label agrees when it is the line's level at its row, or that level without its minus sign: the reading
-        // loses the screen's thin minus now and then ("30" for "−30"), never a digit that way.
-        let agreeing = points.filter { point in
-          let level = level0 + perRow * Double(point.row)
-          let close = 0.001 + abs(perRow) * 0.01
-          return abs(level - point.value) < close || (level < 0 && abs(-level - point.value) < close)
+        for a in points[i].values {
+          for b in points[j].values {
+            let perRow = (b - a) / Double(points[j].row - points[i].row)
+            let perDivision = perRow * step
+            let fine = [0.1, 0.2, 0.5].contains { abs(abs(perDivision) - $0) < 0.001 }
+            guard perRow < 0, abs(perDivision - perDivision.rounded()) < 0.01 || fine else { continue }
+            let level0 = a - perRow * Double(points[i].row)
+            let close = 0.001 + abs(perRow) * 0.01
+            let agreeing = points.filter { point in
+              let level = level0 + perRow * Double(point.row)
+              return point.values.contains { abs(level - $0) < close }
+            }
+            .count
+            if agreeing > (best?.agreeing ?? 0) { best = (level0, perRow, agreeing) }
+          }
         }
-        .count
-        if agreeing > (best?.agreeing ?? 0) { best = (level0, perRow, agreeing) }
       }
     }
     guard let best, best.agreeing >= 3, best.agreeing * 3 >= points.count * 2 else { return nil }
@@ -282,16 +322,21 @@ public struct GraphScale: Equatable, Sendable {
 /// Text on the analyzer's screen, read with the Mac's text recognition (Vision). Recognition is made for dark text on a
 /// light page, and the screen's is a small bitmap font in white on black: enlarged smoothly and turned dark on light,
 /// with a margin, it reads right on macOS 13 to 15 as well as later (enlarged with square pixels, white on black,
-/// macOS 15 read "MHz" as "642" or "6H2", and one smoothing-free try read "433" as "438").
+/// macOS 15 read "MHz" as "642" or "6H2", and one smoothing-free try read "433" as "438"). The reading on macOS 27
+/// gets more wrong, in ways the readers of the labels take back: an O with a diacritic ("-5Ö"), a comma for a point
+/// ("2„0MHz/"), and level labels read upside down ("09-" for "−60").
 enum LabelReader {
   /// Letters that look alike, as the screen's font has them: Cyrillic capitals for Latin ones, "$" for "S", "−" for
-  /// "-".
+  /// "-", a comma for a point (the screen has no commas).
   static let lookAlikes: [Character: Character] = [
     "А": "A", "В": "B", "С": "C", "Е": "E", "Н": "H", "К": "K", "М": "M", "О": "O", "Р": "P", "Т": "T", "Х": "X",
-    "а": "a", "с": "c", "е": "e", "о": "o", "р": "p", "х": "x", "$": "S", "−": "-", "–": "-",
+    "а": "a", "с": "c", "е": "e", "о": "o", "р": "p", "х": "x", "$": "S", "−": "-", "–": "-", ",": ".", "„": ".",
   ]
 
-  static func plain(_ text: String) -> String { String(text.map { lookAlikes[$0] ?? $0 }) }
+  /// The text without diacritics (the screen's font has none: "Ö" is an O), its look-alikes as what they look like.
+  static func plain(_ text: String) -> String {
+    String(text.folding(options: .diacriticInsensitive, locale: nil).map { lookAlikes[$0] ?? $0 })
+  }
 
   struct Line {
     var text: String

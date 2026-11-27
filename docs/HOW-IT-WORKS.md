@@ -149,10 +149,12 @@ analyzer cut its sweep short, and a feeding program's pictures are all there is 
   and its left edge is the first column with a grid line down it.
 - **The trace**: in each column of the graph, the highest pixel of trace 1's yellow, alone or where it's ORed with the
   grid or another trace (red and green full, blue not). One column a sweep point on a tinySA Ultra.
-- **The labels**: the level labels at the graph's right and the span under it, enlarged eight times with square pixels
-  and read with the Mac's text recognition (Vision). Look-alike letters are taken for what they look like ("$TART", a
-  Cyrillic "М"), each level label belongs to the grid line at its top, and the labels that agree on one step a
-  division win (a misread "30" for "−30" is outvoted). They are read again only when the white pixels around the
+- **The labels**: the level labels at the graph's right and the span under it, enlarged smoothly, dark on light, and
+  read with the Mac's text recognition (Vision) at four and at eight times, the two reads having to agree. Look-alike
+  letters are taken for what they look like ("$TART", a Cyrillic "М", "Ö" for an O), each level label belongs to the
+  grid line at its top, and the labels that agree on one step a division win (a misread is outvoted). A level label
+  ending in a minus was read upside down, as macOS 27 does now and then, and is turned back ("09-" is "−60"); one
+  without its minus may be negative ("30" for "−30"). They are read again only when the white pixels around the
   graph change, and a span or levels that changed start the hold over.
 - **Peaks**: a top of the held trace that stands at least 6 dB above the valleys on either side (before the next
   higher ground) and above the trace's median, its noise.

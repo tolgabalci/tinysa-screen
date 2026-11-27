@@ -2,6 +2,12 @@
 
 All notable changes are listed here, newest first. Versions follow [Semantic Versioning](https://semver.org).
 
+## 1.3.3 (2026-11-26)
+
+- The peak hold's frequencies and levels show on macOS 27 too, for spans where they didn't: its text recognition
+  reads some of the levels at the graph's right upside down ("09-" for "−60"), a zero as "Ö", or a point as a comma,
+  and those readings are now taken for what they are.
+
 ## 1.3.2 (2026-10-27)
 
 - The window's title has the app's version, "tinySA Screen v1.3.2", which the app reads from its own Info.plist (the

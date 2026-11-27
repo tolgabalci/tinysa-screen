@@ -3,6 +3,10 @@ import XCTest
 @testable import TinySAKit
 
 final class PeakHoldTests: XCTestCase {
+  /// How long to wait for the labels to be read: a second, as a rule, but up to 15 seconds when macOS holds back work
+  /// in the background (on an idle Mac, as a scheduled run has it).
+  let labelsRead: TimeInterval = 60
+
   /// The grid is found from the pixels, whatever the waterfall's size.
   func testFindsTheGraph() throws {
     let small = try XCTUnwrap(Graph.find(on: Fixture.screen("screen-915.png")))
@@ -111,6 +115,43 @@ final class PeakHoldTests: XCTestCase {
     XCTAssertNil(GraphScale.levelValue("dBm"))
   }
 
+  /// The reading on macOS 27 turns level labels upside down ("09-" for "−60"), reads a zero as "Ö", and loses minus
+  /// signs: these are its readings of the 915 MHz screens and the 433 MHz one, which still give the levels.
+  func testLevelFitTakesMacOS27Readings() throws {
+    let small = Graph(left: 30, right: 480, top: 0, bottom: 240, gridRows: Array(stride(from: 0, through: 240, by: 24)))
+    let big = Graph(left: 30, right: 480, top: 0, bottom: 180, gridRows: Array(stride(from: 0, through: 180, by: 18)))
+    let cases: [(Graph, [(String, Int)], Double, Double)] = [
+      // screen-915.png at 8 times: all but the top label upside down, "−30" read as "08-" (a turned 3 is an "8").
+      (small, [("09-", 170), ("OS-", 145), ("Oh-", 119), ("08-", 96), ("OI-", 50), ("10", 1)], 10, -10),
+      // screen-915.png at 4 times: zeros read as "Ö".
+      (small, [("10", 1), ("-10", 49), ("-20", 73), ("-30", 97), ("-5Ö", 144), ("-6Ö", 167)], 10, -10),
+      // screen-433.png at 8 times, two labels upside down.
+      (small, [("- 10", 25), ("-20", 50), ("-30", 73), ("-4ö", 96), ("OS-", 121), ("09-", 145), ("-70", 170),
+        ("-80", 194)], 0, -10),
+      // screen-915-big.png at 4 times: three labels, two without their minus.
+      (big, [("10", 1), ("10", 37), ("20", 54)], 10, -10),
+    ]
+    for (graph, reading, level0, perDivision) in cases {
+      let labels = reading.map { LabelReader.Line(text: $0.0, top: $0.1) }
+      let fit = try XCTUnwrap(GraphScale.fitLevels(labels, graph: graph), "\(reading)")
+      XCTAssertEqual(fit.0, level0, accuracy: 0.001, "\(reading)")
+      XCTAssertEqual(fit.1 * Double(graph.gridRows[1]), perDivision, accuracy: 0.001, "\(reading)")
+    }
+    XCTAssertEqual(GraphScale.levelValues("09-"), [-60])
+    XCTAssertEqual(GraphScale.levelValues("08-"), [-80, -30])
+    XCTAssertEqual(GraphScale.levelValues(".OI-"), [-10])
+    XCTAssertEqual(GraphScale.levelValues("30"), [30, -30])
+    XCTAssertEqual(GraphScale.levelValues("-5Ö"), [-50])
+    XCTAssertNil(GraphScale.upright("-60"))
+    XCTAssertNil(GraphScale.upright("10"))
+    XCTAssertEqual(GraphScale.upright("0Q-"), [])
+    XCTAssertEqual(GraphScale.levelValues("dBm"), [])
+    // The spacing of the grid's lines, read with a comma ("2„0MHz/"), or with a "Õ" for a zero.
+    XCTAssertEqual(GraphScale.parseDivision("START 902.000000MHz 2„0МНz/ STOP 928.000000MHz"), 2_000_000)
+    XCTAssertEqual(GraphScale.parseDivision("START 2.400000GHZ 10.ÕМНz/ STOP 2.483500GHZ"), 10_000_000)
+    XCTAssertNil(GraphScale.parseDivision("START 902.000000MHz 0MHz/ STOP 928.000000MHz"))
+  }
+
   func testParsesTheSpan() {
     XCTAssertEqual(GraphScale.parseSpan("START 902.000000MHz 2.0MHz/ SToP 928.000000MHz").map { [$0.0, $0.1] }, [902_000_000, 928_000_000])
     XCTAssertEqual(GraphScale.parseSpan("START 2.400000GHz 10.0MHz/ STOP 2.483500GHz").map { [$0.0, $0.1] }, [2_400_000_000, 2_483_500_000])
@@ -136,7 +177,7 @@ final class PeakHoldTests: XCTestCase {
     }
     let screen = try Fixture.screen("screen-915-burst.png")
     hold.add(screen, at: Date())
-    wait(for: [read], timeout: 20)
+    wait(for: [read], timeout: labelsRead)
     hold.onChange = nil
     let state = try XCTUnwrap(hold.state)
     let top = try XCTUnwrap(state.peaks.first)
@@ -276,7 +317,7 @@ final class PeakHoldTests: XCTestCase {
     }
     let screen = try Fixture.screen("screen-915-burst.png")
     hold.add(screen, at: Date())
-    wait(for: [read], timeout: 20)
+    wait(for: [read], timeout: labelsRead)
     hold.onChange = nil
     hold.reset()
     hold.add(screen, at: Date())
@@ -305,7 +346,7 @@ final class PeakHoldTests: XCTestCase {
       if state?.scale?.start == 902_000_000 { read.fulfill() }
     }
     hold.add(band915, at: Date())
-    wait(for: [read], timeout: 20)
+    wait(for: [read], timeout: labelsRead)
     read = expectation(description: "2.4 GHz read")
     read.assertForOverFulfill = false
     hold.onChange = { state in
@@ -314,7 +355,7 @@ final class PeakHoldTests: XCTestCase {
     let changed = Date()
     hold.add(band2400, at: changed)
     XCTAssertEqual(hold.state?.rows, own)
-    wait(for: [read], timeout: 20)
+    wait(for: [read], timeout: labelsRead)
     hold.onChange = nil
     XCTAssertEqual(hold.state?.rows, own)
     XCTAssertEqual(hold.state?.since, changed)
@@ -350,7 +391,7 @@ final class PeakHoldTests: XCTestCase {
     }
     let started = Date()
     hold.add(screen, at: started)
-    wait(for: [read], timeout: 20)
+    wait(for: [read], timeout: labelsRead)
     hold.onChange = nil
     hold.add(covered, at: Date())
     XCTAssertEqual(hold.state?.rows, meanwhile)
