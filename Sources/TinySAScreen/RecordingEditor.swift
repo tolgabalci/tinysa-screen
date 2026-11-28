@@ -308,7 +308,7 @@ struct RecordingEditor: View {
           model.speed <= 1
             ? "Faster than 1× to choose"
             : model.framesPerSecond == nil ? "Every frame: as smooth as it was" : "As it plays: fewer make it smaller")
-          .font(.system(size: 24))  // twice the callout size: what the slider does, at a glance
+          .font(.callout)  // as Speed's "Plays in"
           .foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
       }
