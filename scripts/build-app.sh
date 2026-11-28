@@ -10,8 +10,22 @@ VERSION=$(cat VERSION)
 BUILD=$(git rev-list --count HEAD 2>/dev/null || echo 1)
 APP="build/tinySA Screen.app"
 
-swift build -c release --arch arm64 --arch x86_64
-BINARY=$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)/tinysa-screen
+# The link is given the SDK as -isysroot. SwiftPM's build engine runs the compiler without xcrun's SDKROOT and hands
+# clang only --sysroot, so the app said it was built with the deployment target's SDK (13.0), and macOS 26 and later
+# showed it in their old look: no Liquid Glass, a toolbar of gray, cramped buttons that stayed gray in front.
+SDK=$(xcrun --sdk macosx --show-sdk-path)
+SWIFT_BUILD=(swift build -c release --arch arm64 --arch x86_64
+  -Xswiftc -Xclang-linker -Xswiftc -isysroot -Xswiftc -Xclang-linker -Xswiftc "$SDK")
+"${SWIFT_BUILD[@]}"
+BINARY=$("${SWIFT_BUILD[@]}" --show-bin-path)/tinysa-screen
+SDK_VERSION=$(xcrun --sdk macosx --show-sdk-version)
+for arch in $(lipo -archs "$BINARY"); do
+  BUILT_WITH=$(vtool -arch "$arch" -show-build "$BINARY" | awk '$1 == "sdk" { print $2 }')
+  [[ "$BUILT_WITH" == "$SDK_VERSION" ]] || {
+    echo "The $arch app says it was built with the macOS $BUILT_WITH SDK, not $SDK_VERSION" >&2
+    exit 1
+  }
+done
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"

@@ -226,14 +226,17 @@ them. Nothing goes to the disk until a GIF is saved.
   moments. Each image stays up until the next one that differs, in hundredths of a second counted from the start so
   nothing drifts, and none is shorter than two hundredths, which players take as they are (one they take as ten). A
   pause at the end is one more image, held.
-- **The strip**: the text drawn with the Mac's system font in eight shades, white on black like the analyzer's: the
-  date and time at its right, the time into the GIF of its length at its left, counted on the clock's seconds so both
-  tick together, in a bar that fills a step each tick (square but for its corner pixels, so its colours stay few: a
-  grey to come, a blue played, the text's eight shades over each). Each tick adds an image of the strip's rows that
-  changed, half a kilobyte at the screen's size and one and a half at twice that, so the clock runs on while the screen
-  keeps still. The app notes the time of every picture
-  that comes, the ones the same as the one before too, which aren't kept twice; a moment with none in the second before
-  it (or the recording's time between moments, when faster) is drawn in pink. "End of recording" is red.
+- **The strip**: the text drawn with the Mac's system font in eight shades, white on black like the analyzer's: the day,
+  date and time at its right ("FRI, Nov 27, 2026", the day in capitals), the time into the GIF of its length at its
+  left, counted on the clock's seconds so both tick together, in a bar that fills a step each tick (square but for its
+  corner pixels, so its colours stay few: a grey to come, a blue played, the text's eight shades over each). Each tick
+  adds an image of the strip's rows that changed, half a kilobyte at the screen's size and one and a half at twice that,
+  so the clock runs on while the screen keeps still. The app notes the time of every picture that comes, the ones the
+  same as the one before too, which aren't kept twice; a moment with none in the second before it (or the recording's
+  time between moments, when faster) is drawn in pink. Through the pause at the end, "END OF RECORDING" in red: in the
+  middle, or left of there as far as the widest date and time can reach; on a screen too narrow for all three (the
+  original tinySA's, 320 pixels), the date and time step aside for the pause. All of it is laid out once for the whole
+  GIF, so nothing moves as it plays.
 - **A comment** in the file says where the picture came from and when.
 
 Measured on 48 seconds of a tinySA Ultra watching the busy 915 MHz band with its big waterfall on, 63 frames, the date

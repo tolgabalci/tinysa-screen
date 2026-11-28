@@ -186,6 +186,67 @@
       app.run()
     }
 
+    /// The app's window with TINYSA_SCREEN_WINDOW_DEMO set to a PNG screen, without the analyzer or the control socket,
+    /// pictured into TINYSA_SCREEN_EDITOR_SNAPSHOTS: behind other apps' windows, and in front (AppKit told to draw it
+    /// so: the app is never brought forward, nobody's typing is taken), with the link to a GIF just made as it pulses
+    /// and after, and at its narrowest. Then the app quits.
+    static func window(
+      _ window: NSWindow, screen: URL, show: (CGImage) -> Void, made: @escaping (URL) -> Void
+    ) {
+      guard let folder = ProcessInfo.processInfo.environment["TINYSA_SCREEN_EDITOR_SNAPSHOTS"],
+        let source = CGImageSourceCreateWithURL(screen as CFURL, nil),
+        let image = CGImageSourceCreateImageAtIndex(source, 0, nil)
+      else { exit(1) }
+      let out = URL(fileURLWithPath: folder)
+      try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
+      show(image)
+      window.setContentSize(NSSize(width: 960, height: 640))
+      func save(_ name: String) {
+        guard let picture = picture(of: window) else { return print("No picture of \(name)") }
+        let url = out.appendingPathComponent("\(name).png")
+        try? NSBitmapImageRep(cgImage: picture).representation(using: .png, properties: [:])?.write(to: url)
+        print("Pictured \(name): \(Int(window.frame.width)) × \(Int(window.frame.height)) points")
+      }
+      let steps: [(TimeInterval, () -> Void)] = [
+        (1.2, { save("window-behind") }),
+        (0.1, { drawInFront(window) }),
+        (0.8, { save("window-in-front") }),
+        (0.1, { made(out.appendingPathComponent("tinySA 2026-11-27 at 22.15.00.gif")) }),
+        (0.45, { save("link-pulse-a") }),
+        (0.3, { save("link-pulse-b") }),
+        (0.75, { save("link-pulse-c") }),
+        (4, { save("link-after") }),
+        (0.1, { window.setContentSize(NSSize(width: 480, height: 320)) }),
+        (0.9, {
+          save("window-narrowest")
+          exit(0)
+        }),
+      ]
+      func run(_ index: Int) {
+        guard index < steps.count else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + steps[index].0) {
+          steps[index].1()
+          run(index + 1)
+        }
+      }
+      run(0)
+    }
+
+    /// `window` drawn as the window in front is, by AppKit's own switches for it, though the app never comes forward:
+    /// so a picture shows what the user sees, and nobody's typing is taken.
+    private static func drawInFront(_ window: NSWindow) {
+      for name in ["_setForceActiveControls:", "_setForceMainAppearance:", "_setHasActiveAppearance:"] {
+        let selector = NSSelectorFromString(name)
+        guard window.responds(to: selector) else {
+          print("AppKit has no \(name)")
+          continue
+        }
+        typealias Setter = @convention(c) (AnyObject, Selector, Bool) -> Void
+        unsafeBitCast(window.method(for: selector), to: Setter.self)(window, selector, true)
+      }
+      window.contentView?.superview?.needsDisplay = true  // the frame, the toolbar with it
+    }
+
     private static func pictures(in folder: URL) -> [Snapshot] {
       let files = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
       return files.filter { $0.pathExtension.lowercased() == "png" }.sorted { $0.path < $1.path }.compactMap { url in
@@ -276,6 +337,8 @@
       let right = String(UnicodeScalar(NSRightArrowFunctionKey)!)
       var steps: [(TimeInterval, () -> Void)] = [
         (3, { picture("1-opened") }),
+        (0.1, { drawInFront(sheet) }),
+        (0.8, { picture("1b-in-front") }),
         (0.1, {
           renders.removeAll()
           key(" ", 49)

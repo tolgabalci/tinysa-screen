@@ -31,7 +31,10 @@ All notable changes are listed here, newest first. Versions follow [Semantic Ver
 - Under the screen, at the left, the time into the GIF of its length ("0:10 / 2:30"), ticking with the clock at the
   right, in a progress bar that fills as the GIF plays (blue over grey, a step a second). Through a second no picture
   came from the analyzer, the times tick on in pink, white again with the next picture.
-- A pause at the end, 5 seconds unless set otherwise (0 to 10), holding the last frame with "End of recording" in red
+- The date under the screen starts with the day of the week, in capitals: "FRI, Nov 27, 2026", so a GIF watched later
+  says what day it was. "END OF RECORDING" keeps clear of the date and time; on the original tinySA's narrower screen,
+  where it ran into them, they step aside for the pause at the end.
+- A pause at the end, 3 seconds unless set otherwise (0 to 10), holding the last frame with "END OF RECORDING" in red
   under the screen when it's longer than a second; and looping can be turned off, to play once. Both in the editor and
   in Settings, with the new count and bar, all on at first. With the date, the time, the count and the bar all off,
   the GIF has no strip.
@@ -52,7 +55,12 @@ All notable changes are listed here, newest first. Versions follow [Semantic Ver
   The Python helpers' `Feeder.pass_taps` keeps the clicks as far apart as the app dates them.
 - After Record makes a GIF, a "Last recording" link appears right of it, and opens that GIF to watch: in the app the
   Mac opens GIFs with, or in the browser when that app would show it still (Preview, the Mac's own choice for GIFs, and
-  image editors such as Pixelmator, Photoshop or GIMP) or none does.
+  image editors such as Pixelmator, Photoshop or GIMP) or none does. It pulses for a few seconds when a GIF is saved,
+  to show where to find it (with Reduce Motion on, it lights up without pulsing).
+- On macOS 26 and later the app has the Mac's current look. Its toolbar buttons are bright in the window in front
+  (they stayed grey) and stand apart, with room between them (they touched). The app said it was built for macOS 13's
+  SDK, which those versions show in their old look: SwiftPM's build engine linked it without naming the SDK. The
+  build now names it, and stops if the app says otherwise.
 
 ## 1.3.3 (2026-11-27)
 

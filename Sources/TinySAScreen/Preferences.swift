@@ -43,7 +43,7 @@ enum Preferences {
       Key.gifShowsElapsed: true,
       Key.gifShowsProgress: true,
       Key.gifLoops: true,
-      Key.gifPauseAtEnd: 5,
+      Key.gifPauseAtEnd: 3,
       Key.gifScale: 2,
       Key.inkSeconds: 3,
       Key.floatOnTop: false,

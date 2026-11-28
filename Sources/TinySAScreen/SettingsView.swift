@@ -15,7 +15,7 @@ struct SettingsView: View {
   @AppStorage(Preferences.Key.gifShowsProgress) private var showsProgress = true
   @AppStorage(Preferences.Key.gifScale) private var scale = 2
   @AppStorage(Preferences.Key.gifLoops) private var loops = true
-  @AppStorage(Preferences.Key.gifPauseAtEnd) private var pauseAtEnd = 5
+  @AppStorage(Preferences.Key.gifPauseAtEnd) private var pauseAtEnd = 3
   @AppStorage(Preferences.Key.controlEnabled) private var controlEnabled = true
   @AppStorage(Preferences.Key.inkSeconds) private var inkSeconds = 3
   @AppStorage(Preferences.Key.peakWindow) private var peakWindow = 60

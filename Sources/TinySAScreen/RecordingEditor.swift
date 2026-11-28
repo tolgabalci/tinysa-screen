@@ -23,7 +23,7 @@ struct RecordingEditor: View {
   @AppStorage(Preferences.Key.gifShowsProgress) private var showsProgress = true
   @AppStorage(Preferences.Key.gifScale) private var scale = 2
   @AppStorage(Preferences.Key.gifLoops) private var loops = true
-  @AppStorage(Preferences.Key.gifPauseAtEnd) private var pauseAtEnd = 5
+  @AppStorage(Preferences.Key.gifPauseAtEnd) private var pauseAtEnd = 3
   @StateObject private var stills = StillCache()
   @StateObject private var estimate = SizeEstimate()
   @FocusState private var typingFolder: Bool

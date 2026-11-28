@@ -2,12 +2,12 @@ import CoreGraphics
 import CoreText
 import Foundation
 
-/// The strip under the screen in a GIF: at its bottom right the date and time of each moment, in the Mac's own date and
-/// time formats, the time to the second so it ticks as the GIF plays; at its bottom left how far into the recording the
-/// moment is, of how long it is ("0:10 / 2:30"), in a bar that fills as the GIF plays. White on black like the
-/// analyzer's own text, smoothed in a few levels; pink through a second no picture came in, and "End of recording" in
-/// red in the middle through the pause at the end. Its colours are few (the bar's square, the text's levels over what
-/// it's on), so they fit the GIF's 256 with the screen's.
+/// The strip under the screen in a GIF: at its bottom right the date and time of each moment, as the Mac's language
+/// writes them, the day of the week first ("FRI, Nov 27, 2026") and the time to the second so it ticks as the GIF
+/// plays; at its bottom left how far into the recording the moment is, of how long it is ("0:10 / 2:30"), in a bar that
+/// fills as the GIF plays. White on black like the analyzer's own text, smoothed in a few levels; pink through a second
+/// no picture came in, and "END OF RECORDING" in red in the middle through the pause at the end. Its colours are few
+/// (the bar's square, the text's levels over what it's on), so they fit the GIF's 256 with the screen's.
 struct CaptionStrip {
   /// Shades of text over what it's on, from none to all.
   static let levels = 8
@@ -47,12 +47,17 @@ struct CaptionStrip {
   private let date: DateFormatter?
   private let time: DateFormatter?
   private let showsElapsed: Bool
-  /// The bar's place: from the left margin, as wide as leaves room for "End of recording" in the middle.
+  /// The bar's place: from the left margin, as wide as leaves room for "END OF RECORDING".
   private let bar: (x: Int, y: Int, width: Int, height: Int)?
+  /// Where "END OF RECORDING" starts: in the middle, or left of there as far as the date and time may reach.
+  private let endingX: CGFloat
+  /// Through the pause at the end, no date and time: on a screen too narrow for them beside "END OF RECORDING" (the
+  /// original tinySA's, 320 pixels wide).
+  private let endingHidesClock: Bool
   /// The strip last drawn: moments within a second say the same.
   private var last: (words: Words, pixels: [UInt32])?
 
-  static let ending = "End of recording"
+  static let ending = "END OF RECORDING"
 
   /// Nil when the strip has nothing to say.
   init?(width: Int, scale: Int, options: GIFOptions) {
@@ -60,31 +65,67 @@ struct CaptionStrip {
     self.width = width
     self.scale = scale
     height = 16 * scale
-    func formatter(date: DateFormatter.Style, time: DateFormatter.Style) -> DateFormatter {
-      let formatter = DateFormatter()
-      formatter.locale = options.locale
-      formatter.timeZone = options.timeZone
-      formatter.dateStyle = date
-      formatter.timeStyle = time
-      return formatter
+    date = options.showsDate ? Self.dayFormatter(locale: options.locale, timeZone: options.timeZone) : nil
+    if options.showsTime {
+      let time = DateFormatter()
+      time.locale = options.locale
+      time.timeZone = options.timeZone
+      time.dateStyle = .none
+      time.timeStyle = .medium
+      self.time = time
+    } else {
+      time = nil
     }
-    date = options.showsDate ? formatter(date: .medium, time: .none) : nil
-    time = options.showsTime ? formatter(date: .none, time: .medium) : nil
     showsElapsed = options.showsElapsed
     // The system font with digits of one width, so the time doesn't shift as it ticks.
     let base = CTFontCreateUIFontForLanguage(.system, CGFloat(11 * scale), nil)!
     let descriptor = CTFontDescriptorCreateCopyWithFeature(
       CTFontCopyFontDescriptor(base), kNumberSpacingType as CFNumber, kMonospacedNumbersSelector as CFNumber)
     font = CTFontCreateWithFontDescriptor(descriptor, CGFloat(11 * scale), nil)
+    // Laid out once for the whole GIF, for the widest date and time it may show, so nothing moves as it plays.
+    let (margin, gap) = (CGFloat(6 * scale), CGFloat(4 * scale))
+    let ending = Self.measure(Self.ending, font)
+    let clock = Self.widestClock(date: date, time: time, font: font)
+    // The left needs room for the count ("0:10 / 2:30", its digits one width), and the bar around it.
+    let count = showsElapsed ? Self.measure("0:00 / 0:00", font) : 0
+    let left = options.showsProgress ? max(CGFloat(24 * scale), count + 2 * gap) : count
+    let middle = (CGFloat(width) - ending) / 2
+    let beside = clock > 0 ? min(middle, CGFloat(width) - margin - clock - gap - ending) : middle
+    endingHidesClock = beside - gap - margin < left
+    endingX = endingHidesClock ? middle : beside
     if options.showsProgress {
-      let margin = 6 * scale
-      let ending = Int(Self.measure(Self.ending, font).rounded(.up))
-      let room = (width - ending) / 2 - margin - 4 * scale
-      let barWidth = max(min(width * 38 / 100, room), 24 * scale)
-      bar = (margin, 2 * scale, barWidth, 12 * scale)
+      let room = Int(endingX - gap - margin)
+      bar = (Int(margin), 2 * scale, max(min(width * 38 / 100, room), Int(left.rounded(.up))), 12 * scale)
     } else {
       bar = nil
     }
+  }
+
+  /// "FRI, Nov 27, 2026": the date with its day of the week first, in capitals, as the language writes them.
+  static func dayFormatter(locale: Locale, timeZone: TimeZone) -> DateFormatter {
+    let formatter = DateFormatter()
+    formatter.locale = locale
+    formatter.timeZone = timeZone
+    formatter.setLocalizedDateFormatFromTemplate("EEEyMMMd")
+    formatter.shortWeekdaySymbols = formatter.shortWeekdaySymbols.map { $0.uppercased(with: locale) }
+    return formatter
+  }
+
+  /// The widest the date and time can be: each month, each day of the week, two digits of hour.
+  private static func widestClock(date: DateFormatter?, time: DateFormatter?, font: CTFont) -> CGFloat {
+    guard let formatter = date ?? time else { return 0 }
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = formatter.timeZone
+    var widest: CGFloat = 0
+    for month in 1...12 {
+      for day in 22...28 {
+        let parts = DateComponents(year: 2026, month: month, day: day, hour: 22, minute: 58, second: 58)
+        guard let moment = calendar.date(from: parts) else { continue }
+        let text = [date?.string(from: moment), time?.string(from: moment)].compactMap { $0 }.joined(separator: "   ")
+        widest = max(widest, measure(text, font))
+      }
+    }
+    return widest.rounded(.up)
   }
 
   /// The date and time at a moment, as the strip's right says it.
@@ -96,7 +137,8 @@ struct CaptionStrip {
   func words(_ caption: Caption) -> Words {
     var words = Words(
       left: showsElapsed ? "\(Self.duration(caption.elapsed)) / \(Self.duration(caption.total))" : "",
-      right: text(at: caption.clock), center: caption.ended ? Self.ending : "", stale: caption.stale)
+      right: caption.ended && endingHidesClock ? "" : text(at: caption.clock),
+      center: caption.ended ? Self.ending : "", stale: caption.stale)
     if let bar {
       let played = caption.total > 0 ? min(max(Double(caption.elapsed) / Double(caption.total), 0), 1) : 1
       words.filled = Int((played * Double(bar.width)).rounded())
@@ -131,7 +173,7 @@ struct CaptionStrip {
     let parts: [(String, Ink, (CGFloat) -> CGFloat)] = [
       (words.left, ink, left),
       (words.right, ink, { [width] textWidth in CGFloat(width) - margin - textWidth }),
-      (words.center, .red, { [width] textWidth in (CGFloat(width) - textWidth) / 2 }),
+      (words.center, .red, { [endingX] _ in endingX }),
     ]
     let top = Self.levels - 1
     for (text, partInk, x) in parts where !text.isEmpty {

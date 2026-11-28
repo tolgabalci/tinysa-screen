@@ -133,23 +133,63 @@ final class GIFTests: XCTestCase {
     }
   }
 
-  /// The date and time read as the Mac shows them; the count of seconds as minutes and seconds.
+  /// The date and time read as the Mac's language writes them, the day of the week first in capitals; the count of
+  /// seconds as minutes and seconds.
   func testCaptionText() {
     func strip(_ options: GIFOptions) -> CaptionStrip? { CaptionStrip(width: 480, scale: 1, options: options) }
     let moment = Date(timeIntervalSince1970: 1_791_000_000)  // 2026-10-03 04:00:00 UTC
     let us = strip(
       GIFOptions(locale: Locale(identifier: "en_US"), timeZone: TimeZone(identifier: "America/Los_Angeles")!))
-    XCTAssertEqual(us?.text(at: moment).replacingOccurrences(of: "\u{202F}", with: " "), "Oct 2, 2026   9:00:00 PM")
+    XCTAssertEqual(
+      us?.text(at: moment).replacingOccurrences(of: "\u{202F}", with: " "), "FRI, Oct 2, 2026   9:00:00 PM")
     let uk = strip(
       GIFOptions(showsDate: false, locale: Locale(identifier: "en_GB"), timeZone: TimeZone(identifier: "UTC")!))
     XCTAssertEqual(uk?.text(at: moment), "04:00:00")
+    let french = strip(GIFOptions(showsTime: false, locale: Locale(identifier: "fr_FR"), timeZone: .gmt))
+    XCTAssertEqual(french?.text(at: moment), "SAM. 3 oct. 2026")
     let count = strip(GIFOptions(showsDate: false, showsTime: false, showsElapsed: true))
     let words = count?.words(Caption(clock: moment, elapsed: 70, total: 150, ended: true))
     XCTAssertEqual(words?.left, "1:10 / 2:30")
     XCTAssertEqual(words?.right, "")
-    XCTAssertEqual(words?.center, "End of recording")
+    XCTAssertEqual(words?.center, "END OF RECORDING")
     XCTAssertEqual(CaptionStrip.duration(-20), "\u{2212}0:20")
     XCTAssertNil(strip(GIFOptions(showsDate: false, showsTime: false)))
+  }
+
+  /// Through the pause at the end, "END OF RECORDING" never runs into the date and time: on the tinySA Ultra's screen
+  /// it keeps clear of them, even on a wide day; on the original tinySA's, too narrow for all three, they step aside
+  /// for the pause. The bar never meets either.
+  func testEndOfRecordingKeepsClearOfTheDate() throws {
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(identifier: "America/Los_Angeles")!
+    // "WED, Sep 30, 2026   10:58:58 PM", as wide as the date and time get.
+    let wide = try XCTUnwrap(
+      calendar.date(from: DateComponents(year: 2026, month: 9, day: 30, hour: 22, minute: 58, second: 58)))
+    for (width, clockAtTheEnd) in [(480, true), (320, false)] {
+      for scale in [1, 2] {
+        var options = GIFOptions(scale: scale, showsElapsed: true, showsProgress: true, pauseAtEnd: 3)
+        options.locale = Locale(identifier: "en_US")
+        options.timeZone = calendar.timeZone
+        let name = "\(width) wide at \(scale)×"
+        var strip = try XCTUnwrap(CaptionStrip(width: width * scale, scale: scale, options: options))
+        /// The first and last columns `words` draw in.
+        func columns(_ words: CaptionStrip.Words) -> (first: Int, last: Int) {
+          let pixels = strip.pixels(for: words)
+          let drawn = pixels.indices.filter { pixels[$0] != CaptionStrip.black }.map { $0 % (width * scale) }
+          return (drawn.min() ?? .max, drawn.max() ?? .min)
+        }
+        let playing = strip.words(Caption(clock: wide, elapsed: 30, total: 30))
+        let end = strip.words(Caption(clock: wide, elapsed: 30, total: 30, ended: true))
+        XCTAssertEqual(end.center, "END OF RECORDING", name)
+        XCTAssertEqual(end.right.isEmpty, !clockAtTheEnd, name)
+        let clock = columns(CaptionStrip.Words(right: playing.right))
+        let bar = columns(CaptionStrip.Words(left: playing.left, filled: playing.filled))
+        let ending = columns(CaptionStrip.Words(center: end.center))
+        XCTAssertLessThan(bar.last, clock.first, "\(name): the bar left of the date")
+        XCTAssertLessThan(bar.last, ending.first, "\(name): the bar left of the end")
+        if clockAtTheEnd { XCTAssertLessThan(ending.last, clock.first, "\(name): the end left of the date") }
+      }
+    }
   }
 
   /// Moments a tenth of a second of playing apart, on tenths of the clock: each the frame on the screen then, and the
@@ -218,7 +258,7 @@ final class GIFTests: XCTestCase {
     XCTAssertEqual(sparse.images[1].canvas, Self.screen(blockAt: 10 + 10 * 9).pixels.map(Self.rgb))
   }
 
-  /// A pause at the end holds the last frame, with "End of recording" in red in the middle of the strip when it's
+  /// A pause at the end holds the last frame, with "END OF RECORDING" in red in the middle of the strip when it's
   /// longer than a second; without looping the GIF plays once.
   func testPausesAtTheEndAndPlaysOnce() throws {
     let clip = Self.clip([(0, Self.screen(blockAt: 10)), (1, Self.screen(blockAt: 60))], end: 2)

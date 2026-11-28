@@ -228,7 +228,7 @@ yellow ends:
 - **The keys are QuickTime Player's**: ← and → step a frame (⇧ a second), ⌥← and ⌥→ go to the GIF's start and end,
   and I and O set its start or end at the playhead. ⌘Z undoes.
 - **Beside the picture**: what goes under the screen (the date, the time, the time into the GIF of its length,
-  "0:10 / 2:30", and a progress bar it sits in), whether it loops, how long it pauses at the end (5
+  "0:10 / 2:30", and a progress bar it sits in), whether it loops, how long it pauses at the end (3
   seconds unless you say), its resolution, and its **speed**, 1× to 20×: a minute at 10× plays in 6 seconds. Faster
   than 1×, **Frames a second** is Full, every frame of the recording, unless you bring it down to 10 or fewer for a
   smaller file, each frame the screen as it was then. The **estimated GIF size** shows in large type, green under 2 MB,
@@ -241,9 +241,10 @@ Hold ⌥ while recording and Stop becomes **Stop & Save**: the GIF is saved as i
 Stop, without the editor (⌥⌘R too). A recording stops by itself two minutes after Record and opens the editor; one
 running, or in the editor, when you quit is saved as it is.
 
-**Last recording**, a link right of Record once you've made a GIF, opens the latest one to watch: in the app your Mac
-opens GIFs with, or in your browser when that app would show it still (Preview, which is the Mac's own choice, and
-image editors such as Pixelmator, Photoshop or GIMP) or no app opens GIFs.
+**Last recording**, a link right of Record once you've made a GIF, opens the latest one to watch (it pulses for a few
+seconds when a GIF is saved, to show where it is): in the app your Mac opens GIFs with, or in your browser when that
+app would show it still (Preview, which is the Mac's own choice, and image editors such as Pixelmator, Photoshop or
+GIMP) or no app opens GIFs.
 
 ![A GIF made by tinySA Screen: the 2.4 GHz band, Wi-Fi bursts, the date and time ticking under the screen](docs/images/gif-2400mhz-wifi.gif)
 
@@ -255,11 +256,11 @@ What's in a GIF:
 - **The screen exactly**, frame by frame as the analyzer drew it, in real time (or as many times faster as you chose):
   the GIF moves on in tenths of a second, each the screen as it was then, so it plays as it happened, its seconds
   exactly a second apart in any player. No dithering, no blur: a tinySA's screen has fewer colours than a GIF holds.
-- **A strip under the screen**: at its right the date and time, in your Mac's formats, the time to the second; at its
-  left a bar that fills as the GIF plays, with the time into the GIF of its length in it ("0:10 / 2:30"), ticking
-  with the clock. Through a second when no picture came from the analyzer the times tick on in pink, white again with
-  the next. Through the pause at the end, "End of recording" in red. All on unless you turn them off; turn all four
-  off and there's no strip.
+- **A strip under the screen**: at its right the day, date and time ("FRI, Nov 27, 2026   10:15:32 PM", as your
+  Mac's language writes them), the time to the second; at its left a bar that fills as the GIF plays, with the time
+  into the GIF of its length in it ("0:10 / 2:30"), ticking with the clock. Through a second when no picture came from
+  the analyzer the times tick on in pink, white again with the next. Through the pause at the end, "END OF RECORDING"
+  in red. All on unless you turn them off; turn all four off and there's no strip.
 - **Small files**: only the rows of the screen that changed since the frame before are stored, and a screen that keeps
   still costs nothing. A minute of a busy band takes about 550 KB at the sharp size (220 KB small); with the
   analyzer's waterfall on, which changes every sweep, 3 to 6 MB (under half that small).

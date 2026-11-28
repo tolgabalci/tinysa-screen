@@ -33,7 +33,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
   /// ⌥ is down: Stop is Stop & Save.
   private var optionDown = false
   /// The link to the latest GIF, right of Record, once there is one.
-  private let lastGIFButton = LinkButton()
+  private let lastGIFLink = LastGIFLink()
+  private var lastGIFButton: LinkButton { lastGIFLink.button }
   private var lastGIF: URL?
   private let pointerButton = NSButton()
   private let penButton = NSButton()
@@ -106,6 +107,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     preferencesChanged()
     NotificationCenter.default.addObserver(
       self, selector: #selector(preferencesChanged), name: UserDefaults.didChangeNotification, object: nil)
+    #if DEBUG
+      // The window alone, pictured, without the analyzer or the control socket: EditorDemo.window.
+      if let screen = ProcessInfo.processInfo.environment["TINYSA_SCREEN_WINDOW_DEMO"] {
+        EditorDemo.window(
+          window, screen: URL(fileURLWithPath: screen),
+          show: { [weak self] image in self.map { $0.session($0.session, show: image) } },
+          made: { [weak self] url in self?.showLastGIF(url) })
+        return
+      }
+    #endif
     startControl()
     session.delegate = self
     session.start()
@@ -242,11 +253,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
   }
 
   func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-    [.flexibleSpace, .pointer, .pen, .peaks, .band, .record, .lastGIF]
+    [.flexibleSpace, .pointer, .pen, .peaks, .band, .record, .lastGIF] + NSToolbarItem.Identifier.gaps
   }
 
   func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-    [.flexibleSpace, .pointer, .pen, .peaks, .band, .record]
+    let gaps = NSToolbarItem.Identifier.gaps
+    return [.flexibleSpace, .pointer, .pen, gaps[0], .peaks, gaps[1], .band, gaps[2], .record]
   }
 
   func toolbar(
@@ -287,9 +299,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
       item.visibilityPriority = .high
     case .lastGIF:
       item.label = "Last recording"
-      item.view = lastGIFButton
+      item.view = lastGIFLink
       item.menuFormRepresentation = menuForm("Open Last Recording", #selector(openLastGIF(_:)))
       item.visibilityPriority = .high
+    case let gap where NSToolbarItem.Identifier.gaps.contains(gap):
+      // Room between the buttons: an item of nothing, without the glass that macOS 26 and later put behind each one
+      // (with it, an empty button would show). AppKit makes it about 20 points wide, so the buttons are about 45
+      // points apart instead of 12. The first items to give way when the window is narrow.
+      let nothing = NSView()
+      nothing.translatesAutoresizingMaskIntoConstraints = false
+      nothing.widthAnchor.constraint(equalToConstant: 1).isActive = true
+      item.view = nothing
+      item.isBordered = false
+      item.visibilityPriority = NSToolbarItem.VisibilityPriority(rawValue: NSToolbarItem.VisibilityPriority.low.rawValue - 1)
     default:
       return nil
     }
@@ -348,17 +370,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     modifiersChanged(NSApp.isActive ? NSEvent.modifierFlags : [])
   }
 
-  /// The link to the GIF just made, right of Record.
+  /// The link to the GIF just made, right of Record, pulsing for a few seconds to show where it is.
   private func showLastGIF(_ url: URL) {
     lastGIF = url
     lastGIFButton.setLink("Last recording")
     lastGIFButton.toolTip = "Open \(url.lastPathComponent), the GIF made last"
     lastGIFButton.setAccessibilityLabel("Open the last recording")
-    guard let toolbar = window.toolbar, !toolbar.items.contains(where: { $0.itemIdentifier == .lastGIF }) else {
-      return
+    if let toolbar = window.toolbar, !toolbar.items.contains(where: { $0.itemIdentifier == .lastGIF }) {
+      let record = toolbar.items.firstIndex { $0.itemIdentifier == .record } ?? toolbar.items.count - 1
+      toolbar.insertItem(withItemIdentifier: NSToolbarItem.Identifier.gaps[3], at: record + 1)
+      toolbar.insertItem(withItemIdentifier: .lastGIF, at: record + 2)
     }
-    let record = toolbar.items.firstIndex { $0.itemIdentifier == .record } ?? toolbar.items.count - 1
-    toolbar.insertItem(withItemIdentifier: .lastGIF, at: record + 1)
+    // Once the toolbar has put the link in its place.
+    DispatchQueue.main.async { [weak self] in self?.lastGIFLink.drawAttention() }
   }
 
   /// Opens the latest GIF where it plays: in the app the Mac opens GIFs with, or in the browser when that app shows a
@@ -604,6 +628,66 @@ extension NSToolbarItem.Identifier {
   static let band = NSToolbarItem.Identifier("band")
   static let record = NSToolbarItem.Identifier("record")
   static let lastGIF = NSToolbarItem.Identifier("lastGIF")
+  /// The room between the buttons, and before the link to the last GIF.
+  static let gaps = (1...4).map { NSToolbarItem.Identifier("gap\($0)") }
+}
+
+/// The link to the last GIF in the toolbar, with a glow behind it that pulses for a few seconds when a GIF is saved,
+/// to show where to find it.
+final class LastGIFLink: NSView {
+  let button = LinkButton()
+  private let glow = NSView()
+
+  override init(frame: NSRect) {
+    super.init(frame: frame)
+    glow.wantsLayer = true
+    glow.alphaValue = 0
+    for view in [glow, button] {
+      view.translatesAutoresizingMaskIntoConstraints = false
+      addSubview(view)
+      NSLayoutConstraint.activate([
+        view.leadingAnchor.constraint(equalTo: leadingAnchor), view.trailingAnchor.constraint(equalTo: trailingAnchor),
+        view.topAnchor.constraint(equalTo: topAnchor), view.bottomAnchor.constraint(equalTo: bottomAnchor),
+      ])
+    }
+  }
+
+  required init?(coder: NSCoder) { fatalError("not from a nib") }
+
+  override func layout() {
+    super.layout()
+    glow.layer?.cornerRadius = glow.bounds.height / 2
+  }
+
+  /// The glow, a ring in the accent color around a light wash of it (the link's blue stays easy to read on it), pulses
+  /// three times in 4.5 seconds; with Reduce Motion on, it holds still as long.
+  func drawAttention() {
+    guard let layer = glow.layer else { return }
+    effectiveAppearance.performAsCurrentDrawingAppearance {
+      layer.backgroundColor = NSColor.controlAccentColor.withAlphaComponent(0.2).cgColor
+      layer.borderColor = NSColor.controlAccentColor.cgColor
+    }
+    layer.borderWidth = 2
+    let seconds: CFTimeInterval = 4.5
+    let animation: CAAnimation
+    if NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+      let still = CAKeyframeAnimation(keyPath: "opacity")
+      still.values = [0, 1, 1, 0]
+      still.keyTimes = [0, 0.05, 0.93, 1]
+      still.duration = seconds
+      animation = still
+    } else {
+      let pulse = CABasicAnimation(keyPath: "opacity")
+      pulse.fromValue = 0
+      pulse.toValue = 1
+      pulse.duration = seconds / 6
+      pulse.autoreverses = true
+      pulse.repeatCount = 3
+      pulse.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+      animation = pulse
+    }
+    layer.add(animation, forKey: "attention")  // replacing one still running
+  }
 }
 
 /// A link in the toolbar: its text in the link color, the pointing hand over it. The toolbar buttons' own bezel, shown
