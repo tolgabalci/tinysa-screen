@@ -177,8 +177,9 @@ analyzer cut its sweep short, and a feeding program's pictures are all there is 
   peak keeping its number and time. The first reading after a macOS update takes most of a minute: the text recognition
   compiles its models for the Mac's Neural Engine, once for each program and macOS version. The window shows the
   frequencies and levels once that's done, and `tinysa-screen peaks` waits for it. What changes the hold wholesale
-  (starting over and why, other levels, labels changed or unreadable) goes to the Mac's log: `log show --predicate
-  'subsystem == "io.github.tolgabalci.tinysa-screen"' --last 1h`.
+  (starting over and why, other levels, labels changed or unreadable) goes to the Mac's log: `/usr/bin/log show
+  --predicate 'subsystem == "io.github.tolgabalci.tinysa-screen"' --last 1h` (the full path, as zsh has a `log` command
+  of its own).
 - **What covers the graph**: the analyzer's menu, its light buttons down the screen's right side, and its keypads,
   light over most of the screen, are told from the graph by their pixels (`ScreenState`, as Escape tells them). Under
   a menu nothing is read (its buttons and their edges read as levels at the top of the graph) and the graph stays the

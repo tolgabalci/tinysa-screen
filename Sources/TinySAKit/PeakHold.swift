@@ -125,8 +125,9 @@ public final class PeakHold: @unchecked Sendable {
 
   private static let log = Logger(subsystem: "io.github.tolgabalci.tinysa-screen", category: "peak hold")
 
-  /// What changes the hold wholesale, for the Mac's log (`log show --predicate 'subsystem ==
-  /// "io.github.tolgabalci.tinysa-screen"' --last 1h`): the live hold's, not a replay's.
+  /// What changes the hold wholesale, for the Mac's log (`/usr/bin/log show --predicate 'subsystem ==
+  /// "io.github.tolgabalci.tinysa-screen"' --last 1h`; zsh's own `log` is another command): the live hold's, not a
+  /// replay's.
   private func note(_ message: @autoclosure () -> String) {
     guard readsLabels else { return }
     let message = message()

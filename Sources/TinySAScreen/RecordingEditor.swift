@@ -306,8 +306,9 @@ struct RecordingEditor: View {
         }
         Text(
           model.speed <= 1
-            ? "Faster than 1× to choose"
-            : model.framesPerSecond == nil ? "Every frame: as smooth as it was" : "As it plays: fewer make it smaller")
+            ? "Set Speed above 1× to choose fewer frames"
+            : model.framesPerSecond == nil
+              ? "Every frame: smoothest, largest file" : "Fewer frames: smaller file, less smooth")
           .font(.callout)  // as Speed's "Plays in"
           .foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
