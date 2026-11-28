@@ -22,6 +22,7 @@ struct SettingsView: View {
   @AppStorage(Preferences.Key.peakColor) private var peakColor = PeakColor.cyan.rawValue
   @AppStorage(Preferences.Key.peakCount) private var peakCount = 5
   @AppStorage(Preferences.Key.peakListed) private var peakListed = true
+  @AppStorage(Preferences.Key.peakArrowColor) private var peakArrowColor = PeakColor.orange.rawValue
   @AppStorage(Preferences.Key.screenshotPeaks) private var screenshotPeaks = true
   @AppStorage(Preferences.Key.savedBands) private var savedBandsData = Data()
 
@@ -86,6 +87,18 @@ struct SettingsView: View {
           .help(
             "Each peak numbered, and in a box its time, frequency and level, in the order they came in. Off, each "
               + "peak's time, megahertz and level beside it.")
+        Picker("Arrows", selection: $peakArrowColor) {
+          ForEach(PeakColor.allCases) { color in
+            Label {
+              Text(color.name)
+            } icon: {
+              Image(nsImage: color.swatch)
+            }
+            .tag(color.rawValue)
+          }
+        }
+        .disabled(peakListed)
+        .help("The color of an arrow from a peak's label moved away from it, where peaks crowd together")
         Toggle("In screenshots too", isOn: $screenshotPeaks)
           .help("Screenshots (⌘S, ⌘C) show the peak hold while it's on, at twice the screen's size so it can be read")
       } header: {

@@ -16,6 +16,8 @@ final class PeakOverlay {
   var color = PeakColor.cyan.color
   /// The readouts listed in a box, the peaks numbered; or beside each peak.
   var listed = true
+  /// The arrows' colour, from labels moved away from their peaks.
+  var arrowColor = PeakColor.orange.color
 
   init() {
     line.fillColor = nil
@@ -132,7 +134,7 @@ final class PeakOverlay {
     marks.addSublayer(box)
   }
 
-  /// A line in the hold's colour from a label to its peak's top, its head there.
+  /// A line in the arrows' colour from a label to its peak's top, its head there.
   private func arrow(from: CGPoint, to: CGPoint, scale: CGFloat) -> CAShapeLayer {
     let layer = CAShapeLayer()
     let length = hypot(to.x - from.x, to.y - from.y)
@@ -151,11 +153,11 @@ final class PeakOverlay {
     tip.closeSubpath()
     let shaft = CAShapeLayer()
     shaft.path = line
-    shaft.strokeColor = color.cgColor
-    shaft.lineWidth = max(1, 0.6 * scale)
+    shaft.strokeColor = arrowColor.cgColor
+    shaft.lineWidth = max(1, scale)
     shaft.fillColor = nil
     layer.path = tip
-    layer.fillColor = color.cgColor
+    layer.fillColor = arrowColor.cgColor
     layer.addSublayer(shaft)
     layer.shadowColor = NSColor.black.cgColor
     layer.shadowOpacity = 0.8

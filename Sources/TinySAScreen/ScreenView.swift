@@ -142,6 +142,16 @@ final class ScreenView: NSView {
     }
   }
 
+  /// The arrows' colour, from peak labels moved away from their peaks.
+  var peakArrowColor: NSColor {
+    get { peaks.arrowColor }
+    set {
+      guard newValue != peaks.arrowColor else { return }
+      peaks.arrowColor = newValue
+      drawPeaks()
+    }
+  }
+
   /// The peak hold's readouts listed in a box, the peaks numbered; or beside each peak.
   var peaksListed: Bool {
     get { peaks.listed }

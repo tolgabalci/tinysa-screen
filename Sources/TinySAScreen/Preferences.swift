@@ -24,6 +24,7 @@ enum Preferences {
     static let peakCount = "peakCount"
     static let peakColor = "peakColor"
     static let peakListed = "peakListed"
+    static let peakArrowColor = "peakArrowColor"
     static let screenshotPeaks = "screenshotPeaks"
     static let gifShowsPeaks = "gifShowsPeaks"
     static let saveFolderBookmark = "saveFolderBookmark"
@@ -55,6 +56,7 @@ enum Preferences {
       Key.peakColor: PeakColor.cyan.rawValue,
       Key.peakCount: 5,
       Key.peakListed: true,
+      Key.peakArrowColor: PeakColor.orange.rawValue,
       Key.screenshotPeaks: true,
       Key.gifShowsPeaks: true,
     ])
@@ -101,7 +103,13 @@ enum Preferences {
 
   /// The peak hold's look: its colour, its readouts in a box or beside each peak.
   static var peakLook: PeakLook {
-    PeakLook(color: peakColor.gifColor, listed: defaults.bool(forKey: Key.peakListed))
+    PeakLook(
+      color: peakColor.gifColor, listed: defaults.bool(forKey: Key.peakListed), arrowColor: peakArrowColor.gifColor)
+  }
+
+  /// The arrows' colour, from peak labels moved away from their peaks.
+  static var peakArrowColor: PeakColor {
+    PeakColor(rawValue: defaults.string(forKey: Key.peakArrowColor) ?? "") ?? .orange
   }
 
   /// The peak hold's readouts listed in a box, the peaks numbered; or beside each peak.

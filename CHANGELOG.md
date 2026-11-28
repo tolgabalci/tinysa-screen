@@ -68,8 +68,9 @@ All notable changes are listed here, newest first. Versions follow [Semantic Ver
   editor's Peaks, on unless turned off). The recorder keeps the hold's changes with the frames.
 - Each peak has the time its level came in. The box lists the peaks in the order they came in, a line each: number,
   time to the second, frequency, level ("Peak hold since" is gone). With Settings › Peak hold › List the peaks in a
-  box off, each peak has a label beside it instead (11:09:21 PM / 911 MHz / −58 dBm); where peaks crowd together, a
-  newer peak's label moves to the nearest clear spot, above first, with an arrow to its peak.
+  box off, each peak has a label beside it instead (11:09:21 / 911 MHz / −58 dBm); where peaks crowd together, a
+  newer peak's label moves to the nearest clear spot, above first, with an arrow to its peak that passes behind no
+  other label, in a colour of its own (orange unless Settings › Peak hold › Arrows says otherwise).
 - The analyzer's menu was read as the trace: its buttons down the screen's right side held as peaks at the top of the
   graph (+10 dBm), and opening it could start the hold over. Nothing is read from under a menu now, nor while a
   keypad is open, which started the hold over too.

@@ -86,7 +86,10 @@ final class PeakPictureTests: XCTestCase {
     peak.time = start
     peak.frequency = 910_740_000
     peak.level = -58.4
-    XCTAssertEqual(peak.label(locale: us, timeZone: utc).map(plain), ["12:16:40 AM", "911 MHz", "−58 dBm"])
+    XCTAssertEqual(peak.label(locale: us, timeZone: utc), ["12:16:40", "911 MHz", "−58 dBm"], "no AM or PM")
+    let british = Locale(identifier: "en_GB")  // a 24-hour clock: nothing to drop
+    XCTAssertEqual(
+      peak.label(locale: british, timeZone: utc).first, PeakHold.clock(start, locale: british, timeZone: utc))
   }
 
   /// Labels go right of their peaks, left at the graph's right edge, and never over one another or a peak's top.
@@ -152,6 +155,60 @@ final class PeakPictureTests: XCTestCase {
         CGImageDestinationAddImage(destination, try XCTUnwrap(still.image()), nil)
         CGImageDestinationFinalize(destination)
       }
+    }
+  }
+
+  /// However peaks crowd, a label moved away has an arrow that passes behind no label placed before it, and no label
+  /// moved away sits on an arrow placed before it.
+  func testArrowsPassNoOtherLabel() {
+    var seed: UInt64 = 0x2545_F491_4F6C_DD1D
+    func random(_ range: ClosedRange<CGFloat>) -> CGFloat {
+      seed = seed &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
+      return range.lowerBound + CGFloat(seed >> 11) / CGFloat(1 << 53) * (range.upperBound - range.lowerBound)
+    }
+    let bounds = CGRect(x: 60, y: 0, width: 900, height: 480)
+    let size = CGSize(width: 76, height: 44)
+    var moved = 0
+    for _ in 0..<200 {
+      let count = 6 + Int(random(0...4))
+      let tops = (0..<count).map { _ in CGPoint(x: random(70...950), y: random(60...420)) }
+      let places = PeakLabels.place(Array(repeating: size, count: count), at: tops, within: bounds, gap: 8)
+      for (i, place) in places.enumerated() where place.away {
+        moved += 1
+        XCTAssertTrue(bounds.contains(place.rect))
+        let (from, to) = PeakLabels.arrow(from: place.rect, to: tops[i])
+        for j in 0..<i {
+          XCTAssertFalse(PeakLabels.crosses(from, to, places[j].rect.insetBy(dx: 0.5, dy: 0.5)), "behind label \(j)")
+          if places[j].away {
+            let earlier = PeakLabels.arrow(from: places[j].rect, to: tops[j])
+            XCTAssertFalse(PeakLabels.crosses(earlier.from, earlier.to, place.rect), "on label \(j)'s arrow")
+          }
+        }
+      }
+    }
+    XCTAssertGreaterThan(moved, 50, "crowds enough to move labels")
+  }
+
+  /// A low peak by the graph's left edge, tall ones around it: its label moves clear, its arrow passing no label.
+  func testALowPeakByTheEdgeAmongTallOnes() throws {
+    let scene = screen(peaks: [(40, 150), (60, 40), (90, 46), (130, 43), (200, 40)])
+    var state = try held([(scene, 0)])
+    XCTAssertEqual(state.peaks.count, 5)
+    // The low one by the edge came in last.
+    for i in state.peaks.indices {
+      state.peaks[i].time = start.addingTimeInterval(state.peaks[i].column == 40 ? 10 : Double(i))
+    }
+    let still = GIF.still(
+      scene, caption: Caption(clock: start),
+      options: GIFOptions(scale: 2, showsDate: false, showsTime: false, peaks: PeakLook(listed: false)), peaks: state)
+    let orange = still.pixels.filter { $0 == PeakLook.Color.orange.pixel }.count
+    XCTAssertGreaterThan(orange, 0, "an arrow, in its own colour")
+    if let folder = ProcessInfo.processInfo.environment["TINYSA_SCREEN_TEST_PICTURES"] {
+      let url = URL(fileURLWithPath: folder).appendingPathComponent("peaks-edge.png")
+      let destination = try XCTUnwrap(
+        CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil))
+      CGImageDestinationAddImage(destination, try XCTUnwrap(still.image()), nil)
+      CGImageDestinationFinalize(destination)
     }
   }
 

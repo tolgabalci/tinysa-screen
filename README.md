@@ -174,10 +174,11 @@ came in.
 1  11:09:21 PM  911.27 MHz  −55 dBm
 ```
 
-With **Settings › Peak hold › List the peaks in a box** off, each peak has its own label beside it instead: when, the
-megahertz to the nearest and the level ("11:09:21 PM / 911 MHz / −58 dBm"). Where peaks crowd together, the older
-peak's label stays beside it and a newer one's moves to the nearest clear spot, above first, with an arrow to its
-peak. **Clear Peaks**, beside Peaks while the hold is on (⌥⌘⌫), starts it over.
+With **Settings › Peak hold › List the peaks in a box** off, each peak has its own label beside it instead: when
+(without AM or PM, for room), the megahertz to the nearest and the level ("11:09:21 / 911 MHz / −58 dBm"). Where peaks
+crowd together, the older peak's label stays beside it and a newer one's moves to the nearest clear spot, above first,
+with an arrow to its peak that passes behind no other label (orange, so it isn't taken for the held line; Settings ›
+Peak hold › Arrows). **Clear Peaks**, beside Peaks while the hold is on (⌥⌘⌫), starts it over.
 
 It's done on the Mac, from the analyzer's screen after each sweep: the analyzer's own traces, markers and settings
 stay as they are, and it works on a feeding program's pictures too. The frequencies and levels come from the screen's

@@ -468,6 +468,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     showClearPeaks(on)
     view.peakColor = Preferences.peakColor.color
     view.peaksListed = Preferences.peakListed
+    view.peakArrowColor = Preferences.peakArrowColor.color
     let settings = (Preferences.peakWindow, Preferences.peakCount)
     if peakSettings.map({ $0.0 != settings.0 || $0.1 != settings.1 }) ?? true {
       peakSettings = settings

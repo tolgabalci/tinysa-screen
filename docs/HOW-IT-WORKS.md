@@ -188,8 +188,10 @@ analyzer cut its sweep short, and a feeding program's pictures are all there is 
   exact. The recorder keeps the hold's changes with the frames (and always the latest, so a recording knows it from
   its start), and each moment of a GIF draws the hold as it was then. Labels beside peaks are placed oldest peak first:
   beside its top, right, left or above, clear of the labels placed and of every peak's line; where none of those is
-  clear, the nearest clear spot around it (to the side counting half as far again, below three times), with an arrow
-  to its peak.
+  clear, the nearest clear spot around it (to the side counting half as far again, below three times), slid inside
+  the graph at its edges, whose arrow to its peak passes behind no label placed before it and which sits on no arrow
+  placed before it. The arrows are in a colour of their own, orange unless chosen otherwise, so none is taken for the
+  held line.
 
 ## The app's look
 

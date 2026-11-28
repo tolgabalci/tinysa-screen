@@ -8,10 +8,14 @@ public struct PeakLook: Hashable, Sendable {
   public var color: Color
   /// The readouts in a box, the peaks numbered; or beside each peak: when, the megahertz and the level.
   public var listed: Bool
+  /// The colour of the arrows from labels moved away from their peaks: not the hold's, so an arrow isn't taken for
+  /// part of its line.
+  public var arrowColor: Color
 
-  public init(color: Color = .cyan, listed: Bool = true) {
+  public init(color: Color = .cyan, listed: Bool = true, arrowColor: Color = .orange) {
     self.color = color
     self.listed = listed
+    self.arrowColor = arrowColor
   }
 
   public struct Color: Hashable, Sendable {
@@ -26,6 +30,7 @@ public struct PeakLook: Hashable, Sendable {
     }
 
     public static let cyan = Color(red: 0, green: 255, blue: 255)
+    public static let orange = Color(red: 255, green: 153, blue: 26)
 
     var pixel: UInt32 { Snapshot.pixel(r: red, g: green, b: blue) }
   }
@@ -57,11 +62,11 @@ extension PeakHold.State {
 }
 
 extension PeakHold.Peak {
-  /// Written beside the peak when the peaks aren't listed in a box: when its level came in, its frequency to the
-  /// nearest megahertz and its level to the decibel, a line each: "11:09:21 PM", "911 MHz", "−58 dBm". Before the
-  /// screen's labels are read, when only.
+  /// Written beside the peak when the peaks aren't listed in a box: when its level came in (without AM or PM, for
+  /// room), its frequency to the nearest megahertz and its level to the decibel, a line each: "11:09:21", "911 MHz",
+  /// "−58 dBm". Before the screen's labels are read, when only.
   public func label(locale: Locale = .current, timeZone: TimeZone = .current) -> [String] {
-    var lines = time.map { [PeakHold.clock($0, locale: locale, timeZone: timeZone)] } ?? []
+    var lines = time.map { [PeakHold.clock($0, locale: locale, timeZone: timeZone, dayPeriod: false)] } ?? []
     if let frequency, let level {
       lines.append("\(Int((Double(frequency) / 1e6).rounded())) MHz")
       lines.append(PeakHold.level(level, resolution: 1))
@@ -83,12 +88,23 @@ extension PeakHold {
     return text.replacingOccurrences(of: "-", with: "−")
   }
 
-  /// The time of day to the second, as the Mac writes it: "11:09:21 PM".
-  public static func clock(_ moment: Date, locale: Locale = .current, timeZone: TimeZone = .current) -> String {
+  /// The time of day to the second, as the Mac writes it: "11:09:21 PM"; without its AM or PM, "11:09:21".
+  public static func clock(
+    _ moment: Date, locale: Locale = .current, timeZone: TimeZone = .current, dayPeriod: Bool = true
+  ) -> String {
     var calendar = Calendar(identifier: .gregorian)
     calendar.timeZone = timeZone
-    return moment.formatted(
+    let text = moment.formatted(
       Date.FormatStyle(date: .omitted, time: .standard, locale: locale, calendar: calendar, timeZone: timeZone))
+    guard !dayPeriod else { return text }
+    // The language's own time, its AM or PM taken out (a 24-hour clock has none).
+    let names = DateFormatter()
+    names.locale = locale
+    var plain = text
+    for symbol in [names.amSymbol, names.pmSymbol] where !(symbol ?? "").isEmpty {
+      plain = plain.replacingOccurrences(of: symbol!, with: "")
+    }
+    return plain.trimmingCharacters(in: .whitespaces)
   }
 }
 
@@ -102,14 +118,16 @@ public enum PeakLabels {
 
   /// Places for labels of `sizes` for peaks whose tops are at `tops`, inside `bounds`, top-down, taken in `order` (the
   /// oldest peak's first, so a newer one gives way): beside its top, right or left, or above it, where that's clear of
-  /// the labels placed and of every peak (its top, and its line down from there); else the nearest clear spot around
-  /// it, a spot to the side counting further and one below further still (above is the graph's emptier part), with an
-  /// arrow; else beside it all the same.
+  /// the labels placed, their arrows, and every peak (its top, and its line down from there); else the nearest clear
+  /// spot around it (one to the side counting half as far again, one below three times: above is the graph's emptier
+  /// part), slid inside the graph at its edges, whose arrow to the peak passes no other label; else beside it all the
+  /// same.
   public static func place(
     _ sizes: [CGSize], at tops: [CGPoint], order: [Int]? = nil, within bounds: CGRect, gap: CGFloat
   ) -> [Place] {
     var places = sizes.map { Place(rect: CGRect(origin: .zero, size: $0), away: false) }
     var taken: [CGRect] = []
+    var arrows: [(from: CGPoint, to: CGPoint)] = []
     // Each peak's line, from its top down.
     let stems = tops.map { CGRect(x: $0.x - 1, y: $0.y, width: 2, height: max(bounds.maxY - $0.y, 0)) }
     for i in order ?? Array(sizes.indices) where i < sizes.count && i < tops.count {
@@ -118,6 +136,12 @@ public enum PeakLabels {
         bounds.contains(rect) && !taken.contains { $0.intersects(rect) }
           && !tops.contains { rect.insetBy(dx: -2, dy: -2).contains($0) }
           && !stems.contains { $0.intersects(rect) }
+          && !arrows.contains { crosses($0.from, $0.to, rect.insetBy(dx: -1, dy: -1)) }
+      }
+      /// Its arrow passes no other label.
+      func clearWay(_ rect: CGRect) -> Bool {
+        let (from, to) = arrow(from: rect, to: top)
+        return !taken.contains { crosses(from, to, $0.insetBy(dx: 0.5, dy: 0.5)) }
       }
       func at(_ center: CGPoint) -> CGRect {
         CGRect(x: center.x - size.width / 2, y: center.y - size.height / 2, width: size.width, height: size.height)
@@ -139,16 +163,37 @@ public enum PeakLabels {
           for direction in directions {
             let offset = CGPoint(x: direction.x * CGFloat(ring) * step.x, y: direction.y * CGFloat(ring) * step.y)
             let weight: CGFloat = direction.y > 0 ? 3 : direction.y == 0 ? 1.5 : 1
-            spots.append((hypot(offset.x, offset.y) * weight, at(CGPoint(x: top.x + offset.x, y: top.y + offset.y))))
+            // Slid inside the graph at its edges, where a peak near one has its room.
+            let rect = inside(at(CGPoint(x: top.x + offset.x, y: top.y + offset.y)), bounds)
+            let center = CGPoint(x: rect.midX - top.x, y: rect.midY - top.y)
+            spots.append((hypot(center.x, center.y) * weight, rect))
           }
         }
-        place = spots.sorted { $0.cost < $1.cost }.first { fits($0.rect) }.map { Place(rect: $0.rect, away: true) }
+        place = spots.sorted { $0.cost < $1.cost }.first { fits($0.rect) && clearWay($0.rect) }
+          .map { Place(rect: $0.rect, away: true) }
       }
       let chosen = place ?? Place(rect: inside(beside[0], bounds), away: false)
       places[i] = chosen
       taken.append(chosen.rect)
+      if chosen.away { arrows.append(arrow(from: chosen.rect, to: top)) }
     }
     return places
+  }
+
+  /// Whether the line from `a` to `b` passes through `rect` (a stretch of it inside, not a touch of an edge).
+  static func crosses(_ a: CGPoint, _ b: CGPoint, _ rect: CGRect) -> Bool {
+    var (low, high): (CGFloat, CGFloat) = (0, 1)
+    let (dx, dy) = (b.x - a.x, b.y - a.y)
+    for (p, q) in [(-dx, a.x - rect.minX), (dx, rect.maxX - a.x), (-dy, a.y - rect.minY), (dy, rect.maxY - a.y)] {
+      if p == 0 {
+        if q <= 0 { return false }
+        continue
+      }
+      let t = q / p
+      if p < 0 { low = max(low, t) } else { high = min(high, t) }
+      if low >= high { return false }
+    }
+    return true
   }
 
   /// The arrow from a label away from its peak: from the label's edge nearest the peak's top to that top.
@@ -301,7 +346,7 @@ struct PeakPicture {
     }
   }
 
-  /// A line in the hold's colour from a label to its peak's top, its head there.
+  /// A line in the arrows' colour from a label to its peak's top, its head there.
   private func drawArrow(_ arrow: (from: CGPoint, to: CGPoint), into pixels: inout [UInt32]) {
     let (from, to) = arrow
     let length = hypot(to.x - from.x, to.y - from.y)
@@ -310,9 +355,7 @@ struct PeakPicture {
     let head = CGFloat(5 * scale)
     let base = CGPoint(x: to.x - ux * head, y: to.y - uy * head)
     var mask = [Bool](repeating: false, count: width * height)
-    stroke(
-      from: (Int(from.x), Int(from.y)), to: (Int(base.x), Int(base.y)), thickness: max(1, scale / 2 + scale % 2),
-      into: &mask)
+    stroke(from: (Int(from.x), Int(from.y)), to: (Int(base.x), Int(base.y)), thickness: scale, into: &mask)
     // The head: a triangle, its tip at the top.
     let side = CGFloat(2.5 * Double(scale))
     let corners = [
@@ -333,7 +376,8 @@ struct PeakPicture {
         if inside { mask[y * width + x] = true }
       }
     }
-    for i in pixels.indices where mask[i] { pixels[i] = color }
+    let ink = look.arrowColor.pixel
+    for i in pixels.indices where mask[i] { pixels[i] = ink }
   }
 
   /// White words on black in a box edged in the hold's colour.
