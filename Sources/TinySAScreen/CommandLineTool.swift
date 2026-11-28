@@ -13,7 +13,7 @@ enum CommandLineTool {
     Usage:
       tinysa-screen                     open the app
       tinysa-screen record --seconds N --output FILE.gif [options]
-                                        record the screen for N seconds (1 to 120) as an animated GIF
+                                        record the screen for N seconds (1 to 300) as an animated GIF
       tinysa-screen capture [--seconds N] --output FILE.gif [options]
                                         save the last N seconds the open app keeps (all of them without --seconds)
       tinysa-screen screenshot --output FILE.png [--sharp] [--json]
@@ -140,8 +140,8 @@ enum CommandLineTool {
     if let seconds = request.seconds {
       switch command {
       case "record", "capture":
-        guard (1...FrameRecorder.longest).contains(seconds) else {
-          return fail("--seconds: 1 to \(Int(FrameRecorder.longest))")
+        guard (1...FrameRecorder.longestAllowed).contains(seconds) else {
+          return fail("--seconds: 1 to \(Int(FrameRecorder.longestAllowed))")
         }
       case "peaks": break  // checked below
       default: return fail("--seconds goes with record, capture and peaks")
@@ -258,9 +258,10 @@ enum CommandLineTool {
         lines.append("tinySA Screen \(reply.version ?? "") is open, without a picture: \(reply.note ?? "")")
       }
       if let kept = reply.keptSeconds, kept > 0 {
-        lines.append("Capture keeps \(Int(kept)) s (\(Int(reply.availableSeconds ?? 0)) s so far).")
+        lines.append(
+          "The last \(Int(kept)) s are kept (\(Int(reply.availableSeconds ?? 0)) s so far), for Record and capture.")
       } else {
-        lines.append("Capture keeps no seconds (Settings › Keep the latest seconds).")
+        lines.append("No seconds are kept (Settings › Recording › Keep in memory), so capture has none.")
       }
       if let recordings = reply.recordings, recordings > 0 { lines.append("Recording now: \(recordings).") }
     } else {

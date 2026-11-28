@@ -2,6 +2,99 @@
 
 All notable changes are listed here, newest first. Versions follow [Semantic Versioning](https://semver.org).
 
+## 1.4.0 (2026-11-28)
+
+- Record starts before it's pressed, and Stop opens an editor. The app keeps the last minute of the screen in memory
+  (Settings › Recording: 15 seconds to 5 minutes, or nothing), and a recording's GIF starts 5 seconds before Record was
+  pressed (Settings: from when it's pressed, as far back as what's kept goes); the button shows the GIF's length so
+  far. Stop opens the editor: the whole recording on a filmstrip, with the GIF between two yellow handles to trim it or
+  to take in more of the seconds kept from before Record (dimmed, Record marked above them). The picture shows the
+  frame at the playhead as the GIF will, date and time included, and follows a handle while it's dragged (⌥ for finer
+  steps); Play loops the GIF. The keys are QuickTime Player's: Space, ← and → a frame (⇧ a second), ⌥← and ⌥→ to the
+  GIF's start and end, I and O to set them at the playhead, and ⌘Z. Then Save (Return) or Copy (⌘C), with the date,
+  time and size chosen and the file's size shown; Cancel asks before it deletes the recording.
+- The editor is a window of its own, as large as the screen comfortably takes: on a 1440 × 900 screen its picture is
+  1.5 times the analyzer's screen, on a larger one twice, its pixels shown whole, beside a column with the date, time
+  and size, and the filmstrip runs the window's width. It can be resized, and the next opens at the size it was left
+  at. The app's window stays where it is, still showing the analyzer, and Record can start again while an editor is
+  open (each recording gets its own).
+- Save to, in the editor: the folder the GIF is saved in, the Desktop at first. Type over it (a folder that isn't there
+  yet is made when the GIF is saved), choose one with Choose…, or drop one on it; Save says when it can't save there.
+  The folder a GIF is saved in is kept for the next, and for Stop & Save and screenshots (⌘S) too, so Settings no
+  longer has Save to.
+- With ⌥ held, Stop is Stop & Save (⌥⌘R): the GIF is saved as it is, without the editor. Quitting saves a recording
+  running, or the GIF in each editor, as it is.
+- GIFs keep real time in any player. They move on in tenths of a second on the clock, each moment the screen as it was
+  then, so the time under the screen ticks exactly a second apart and, at their own speed, no image is shorter than a
+  twentieth of a second. Before, images came at the frames' own times, some a few hundredths of a second long, which
+  players can treat differently.
+- Under the screen, at the left, the time into the GIF of its length ("0:10 / 2:30"), ticking with the clock at the
+  right, in a progress bar that fills as the GIF plays (blue over grey, a step a second). Through a second no picture
+  came from the analyzer, the times tick on in pink, white again with the next picture.
+- The date under the screen starts with the day of the week, in capitals: "FRI, Nov 27, 2026", so a GIF watched later
+  says what day it was. "END OF RECORDING" keeps clear of the date and time; on the original tinySA's narrower screen,
+  where it ran into them, they step aside for the pause at the end.
+- A pause at the end, 3 seconds unless set otherwise (0 to 10), holding the last frame with "END OF RECORDING" in red
+  under the screen when it's longer than a second; and looping can be turned off, to play once. Both in the editor and
+  in Settings, with the new count and bar, all on at first. With the date, the time, the count and the bar all off,
+  the GIF has no strip.
+- Speed in the editor, 1× to 20×: a minute at 10× plays in 6 seconds, and the editor plays it so. Faster, Frames a
+  second is Full, every frame of the recording, unless brought down to 10 or fewer (1 at the least), trading
+  smoothness for a smaller file, each frame the screen as it was then.
+- The editor's column is the GIF's choices: what's under the screen, playing, Resolution (was Size), speed, frames,
+  and the estimated GIF size in large type, green under 2 MB, orange to 10 MB, red past. At the bottom: Copy (green) at
+  the left; Save to, its field taking the window's width, Choose…, Save and Cancel at the right.
+- Capture (⇧⌘R) is gone: Record does what it did, and from further back if wanted. The command line's `capture` stays.
+- A recording runs two minutes at most after Record, as before, or up to five (Settings › Recording), so a GIF can be up
+  to ten minutes long; at the limit it stops and opens the editor. The command line's `record` takes up to 300 seconds.
+- A quick click on the analyzer's screen, and the window's Escape, are noticed now: the analyzer sees a touch only
+  when it next looks, up to a few tenths of a second with its screen shown live, and lost one released before then. On
+  firmware v1.4-333, taps typed back to back, as Escape typed them, were noticed 0 times in 6. Each touch is now held at
+  least 0.4 s before its release, over USB and through a feeding program alike (22 of 24 noticed), still short of a
+  long press (0.5 s), and the next touch goes down 0.1 s after a release at least, so two quick clicks stay two clicks.
+  The Python helpers' `Feeder.pass_taps` keeps the clicks as far apart as the app dates them.
+- After Record makes a GIF, a "Last recording" link appears right of it, and opens that GIF to watch: in the app the
+  Mac opens GIFs with, or in the browser when that app would show it still (Preview, the Mac's own choice for GIFs, and
+  image editors such as Pixelmator, Photoshop or GIMP) or none does. It pulses for a few seconds when a GIF is saved,
+  to show where to find it (with Reduce Motion on, it lights up without pulsing).
+- The title bar's buttons are larger (16-point words and symbols), bright in the window in front and dimmer behind,
+  as other apps' are (they stayed grey in front), with room between them (they touched). The app keeps the look it
+  has on macOS 26 and later, now on purpose: macOS 27 gives an app built for it Liquid Glass with no way out, so the
+  build says macOS 13's SDK (it did by accident before) and stops if it doesn't. Band is a button like the others,
+  its menu below it.
+- Clear Peaks, beside Peaks while the hold is on (⌥⌘⌫), starts the hold over.
+- The peak hold is in screenshots while it's on (at twice the screen's size, so its words can be read; Settings can
+  leave it out), and in GIFs where it was on while recording, at each moment as it was then: the editor's Peaks
+  chooses labels (the first choice), a box, or none. The recorder keeps the hold's changes with the frames.
+- New peak capture at the start, in the editor and on unless unchecked: the GIF's peak hold starts over at the GIF's
+  start, as if Clear Peaks had been pressed then, and holds what comes in as it plays, so someone watching sees the
+  peaks of those seconds and none from before them; Clear Peaks pressed while recording still clears it where it was.
+  Moving the start captures them again from there. Unchecked, the GIF shows the hold as the window did, peaks from
+  before its start included.
+- Each peak has the time its level came in, and the Peaks button, a menu now like Band (or Settings › Peak hold ›
+  Show peaks as), chooses how they show, or none:
+  - Labels beside the peaks (11:09:21 / 911 MHz / −58 dBm, each line centred in its label), the first choice. Where
+    peaks crowd together, a newer peak's label goes close by, over the graph if need be: touching its peak with no arrow
+    where that's clearly its own, else far enough for an arrow that shows, angled or upright rather than level, passing
+    behind no other label. Labels are edged, and arrows drawn, in a colour of their own: orange unless Settings › Peak
+    hold › Labels and arrows says otherwise.
+  - A box over the graph, as before: the hold's period ("Peak hold, last 1:00"; "since" is gone), then the peaks in
+    the order they came in, a line each: number, time to the second, frequency, level.
+  - A list beside the screen, the window wider for it: every peak since the app started, a row each, never taken
+    out, the newest at the bottom (it follows them unless the pointer is over it); a peak no longer held greyed; the
+    pointer over a row rings its peak on the screen; Save writes the list as a CSV file. GIFs and screenshots show
+    the box then.
+- The analyzer's menu was read as the trace: its buttons down the screen's right side held as peaks at the top of the
+  graph (+10 dBm), and opening it could start the hold over. Nothing is read from under a menu now, nor while a
+  keypad is open, which started the hold over too.
+- The peak hold keeps its peaks when the analyzer's levels change. With the tinySA's automatic reference level on,
+  strong signals raised the reference level and their end lowered it again, and each change started the hold over: every
+  peak gone at once, a while after the signals had stopped. Held levels now move to where they are on the new scale,
+  keeping their numbers and times (one above the new top stays at the top), as they do when the decibels a division or
+  the waterfall's size change; another span still starts the hold over. The hold also writes what changes it wholesale
+  to the Mac's log (subsystem io.github.tolgabalci.tinysa-screen).
+- In the editor, a double click on an end of the GIF takes it to the recording's very start or very end.
+
 ## 1.3.3 (2026-11-27)
 
 - The peak hold no longer takes the analyzer's marker readout ("1: 166.4MHz -55.4dBm", written in the trace's yellow

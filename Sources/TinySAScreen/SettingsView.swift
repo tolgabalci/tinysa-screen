@@ -3,72 +3,62 @@ import Combine
 import SwiftUI
 import TinySAKit
 
-/// Settings (⌘,): what Capture keeps, how GIFs look, and whether clicks tap the analyzer.
+/// Settings (⌘,): how recordings start and stop, how GIFs look, and whether clicks tap the analyzer.
 struct SettingsView: View {
   @AppStorage(Preferences.Key.keepRecent) private var keepRecent = true
   @AppStorage(Preferences.Key.keepRecentSeconds) private var keepRecentSeconds = 60
+  @AppStorage(Preferences.Key.recordLeadIn) private var recordLeadIn = 5
+  @AppStorage(Preferences.Key.recordLongest) private var recordLongest = 120
   @AppStorage(Preferences.Key.gifShowsDate) private var showsDate = true
   @AppStorage(Preferences.Key.gifShowsTime) private var showsTime = true
+  @AppStorage(Preferences.Key.gifShowsElapsed) private var showsElapsed = true
+  @AppStorage(Preferences.Key.gifShowsProgress) private var showsProgress = true
   @AppStorage(Preferences.Key.gifScale) private var scale = 2
+  @AppStorage(Preferences.Key.gifLoops) private var loops = true
+  @AppStorage(Preferences.Key.gifPauseAtEnd) private var pauseAtEnd = 3
   @AppStorage(Preferences.Key.controlEnabled) private var controlEnabled = true
   @AppStorage(Preferences.Key.inkSeconds) private var inkSeconds = 3
   @AppStorage(Preferences.Key.peakWindow) private var peakWindow = 60
   @AppStorage(Preferences.Key.peakColor) private var peakColor = PeakColor.cyan.rawValue
   @AppStorage(Preferences.Key.peakCount) private var peakCount = 5
+  @AppStorage(Preferences.Key.peakDisplay) private var peakDisplay = PeakDisplay.labels.rawValue
+  @AppStorage(Preferences.Key.peakLabelColor) private var peakLabelColor = PeakColor.orange.rawValue
+  @AppStorage(Preferences.Key.screenshotPeaks) private var screenshotPeaks = true
   @AppStorage(Preferences.Key.savedBands) private var savedBandsData = Data()
-  @AppStorage(Preferences.Key.saveFolderPath) private var saveFolderPath = ""
-  @AppStorage(Preferences.Key.saveFolderBookmark) private var saveFolderBookmark = Data()
-
-  private enum SaveChoice: Hashable { case desktop, chosen, other }
-  /// Every two seconds: the folder can go (a drive unplugged) or come back while Settings is open.
-  @State private var folderCheck = 0
-
-  private var saveFolder: SaveFolder {
-    SaveFolder(
-      bookmark: saveFolderBookmark.isEmpty ? nil : saveFolderBookmark, path: saveFolderPath.isEmpty ? nil : saveFolderPath)
-  }
 
   private var savedBands: [BandPreset] { (try? JSONDecoder().decode([BandPreset].self, from: savedBandsData)) ?? [] }
 
   var body: some View {
     Form {
-      Section {
-        Toggle("Keep the latest seconds for Capture", isOn: $keepRecent)
-        Stepper(value: $keepRecentSeconds, in: 5...120, step: 5) {
-          HStack {
-            Text("Seconds kept")
-            Spacer()
-            Text(CaptureSheet.duration(Double(keepRecentSeconds)))
-              .monospacedDigit()
-              .foregroundStyle(.secondary)
-          }
-        }
-        .disabled(!keepRecent)
-        .accessibilityValue("\(keepRecentSeconds) seconds")
-      } header: {
-        Text("Capture")
-      } footer: {
-        Text(
-          "Capture (⇧⌘R) saves these seconds, or the last part of them, as a GIF: for when something has just happened. They're kept in memory only."
-        )
-        .foregroundStyle(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
-      }
+      recording
       Section {
         Toggle("Date under the screen", isOn: $showsDate)
         Toggle("Time under the screen, to the second", isOn: $showsTime)
-        Picker("Size", selection: $scale) {
+        Toggle("Time into the GIF and its length under the screen (0:10 / 2:30)", isOn: $showsElapsed)
+        Toggle("A bar under the screen that fills as the GIF plays", isOn: $showsProgress)
+        Picker("Resolution", selection: $scale) {
           Text("Sharp: twice the screen's size").tag(2)
           Text("Small: the screen's own size").tag(1)
         }
+        Toggle("Loop", isOn: $loops)
+        Stepper(value: $pauseAtEnd, in: 0...10) {
+          HStack {
+            Text("Pause at the end")
+            Spacer()
+            Text(pauseAtEnd == 0 ? "None" : "\(pauseAtEnd) s").monospacedDigit().foregroundStyle(.secondary)
+          }
+        }
+        .accessibilityValue(pauseAtEnd == 0 ? "None" : "\(pauseAtEnd) seconds")
       } header: {
         Text("GIFs")
       } footer: {
-        Text("Record (⌘R) saves GIFs this way, for up to two minutes; Capture starts from these choices.")
+        Text(
+          "Stop & Save makes GIFs this way. The editor that Stop opens starts with them, and changes them too. A "
+            + "pause longer than a second says \"END OF RECORDING\" under the screen. GIFs and screenshots (⌘S) go to "
+            + "the folder the editor last saved to (its Save to), the Desktop at first.")
           .foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
       }
-      saving
       Section {
         Picker("Hold each level", selection: $peakWindow) {
           ForEach(Preferences.peakWindows, id: \.self) { seconds in
@@ -93,6 +83,29 @@ struct SettingsView: View {
           }
         }
         .accessibilityValue("\(peakCount) peaks")
+        Picker("Show peaks as", selection: $peakDisplay) {
+          ForEach(PeakDisplay.allCases) { display in Text(display.name).tag(display.rawValue) }
+        }
+        .help(
+          "Labels: each peak's time, megahertz and level beside it. Box: each peak numbered, a box with their times, "
+            + "frequencies and levels. List: each peak numbered, and beside the screen every peak since the app "
+            + "started, to save as a CSV file. GIFs and screenshots show the list's peaks as the box.")
+        Picker("Labels and arrows", selection: $peakLabelColor) {
+          ForEach(PeakColor.allCases) { color in
+            Label {
+              Text(color.name)
+            } icon: {
+              Image(nsImage: color.swatch)
+            }
+            .tag(color.rawValue)
+          }
+        }
+        .disabled(peakDisplay == PeakDisplay.box.rawValue)
+        .help(
+          "The color of the peaks' labels' edges and of the arrows from labels moved away from their peaks, where "
+            + "peaks crowd together, so neither is taken for the held line; and of the ring around a peak in the list")
+        Toggle("In screenshots too", isOn: $screenshotPeaks)
+          .help("Screenshots (⌘S, ⌘C) show the peak hold while it's on, at twice the screen's size so it can be read")
       } header: {
         Text("Peak hold")
       } footer: {
@@ -149,57 +162,65 @@ struct SettingsView: View {
     }
     .formStyle(.grouped)
     .frame(minWidth: 460, idealWidth: 480, maxWidth: 640, minHeight: 320, idealHeight: 620)
-    .onReceive(Timer.publish(every: 2, on: .main, in: .common).autoconnect()) { _ in folderCheck += 1 }
   }
 
-  /// Where GIFs and screenshots go: the Desktop, or a folder chosen with Other….
-  private var saving: some View {
-    _ = folderCheck  // looked at again with each check
-    let folder = saveFolder
-    let place = folder.place()
+  /// How far back a recording starts, how far back the editor can take it, and how long it runs.
+  private var recording: some View {
+    let kept = keepRecent ? min(max(keepRecentSeconds, 5), Int(FrameRecorder.longestAllowed)) : 0
+    let keptChoices = Set(Self.keptChoices + (kept > 0 ? [kept] : [])).sorted()
+    let leadIns = Self.leadInChoices.filter { $0 <= kept }
     return Section {
       Picker(
-        "Save to",
-        selection: Binding<SaveChoice>(
-          get: { folder.isDesktop ? .desktop : .chosen },
-          set: { choice in
-            switch choice {
-            case .desktop: Preferences.saveFolder = .desktop
-            case .chosen: break
-            case .other: DispatchQueue.main.async { SaveFolderPanel.choose() }  // after the menu has closed
-            }
+        "Keep in memory",
+        selection: Binding(
+          get: { kept },
+          set: { seconds in
+            keepRecent = seconds > 0
+            if seconds > 0 { keepRecentSeconds = seconds }
           })
       ) {
-        Text("Desktop").tag(SaveChoice.desktop)
-        if !folder.isDesktop {
-          Text(place.missing.map { "\($0) (not found)" } ?? place.name).tag(SaveChoice.chosen)
-        }
-        Divider()
-        Text("Other…").tag(SaveChoice.other)
+        Text("Nothing").tag(0)
+        ForEach(keptChoices, id: \.self) { Text("The last \(Self.spoken($0))").tag($0) }
       }
-      HStack(alignment: .firstTextBaseline) {
-        VStack(alignment: .leading, spacing: 2) {
-          Text(Self.shortPath(folder.path.map { URL(fileURLWithPath: $0) } ?? place.url))
-            .textSelection(.enabled)
-          if place.missing != nil {
-            Text("Not found, so they go to the Desktop until it's back.")
-          }
+      Picker(
+        "Start recordings",
+        selection: Binding(get: { leadIns.last { $0 <= recordLeadIn } ?? 0 }, set: { recordLeadIn = $0 })
+      ) {
+        ForEach(leadIns, id: \.self) { seconds in
+          Text(seconds == 0 ? "When Record is pressed" : "\(Self.spoken(seconds)) before Record").tag(seconds)
         }
-        .foregroundStyle(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
-        Spacer()
-        Button("Show in Finder") { NSWorkspace.shared.open(place.url) }
-          .help("Open the folder GIFs and screenshots go to")
+      }
+      .disabled(kept == 0)
+      Picker(
+        "Stop recordings after",
+        selection: Binding(
+          get: { Self.longestChoices.last { $0 <= recordLongest } ?? Self.longestChoices[0] },
+          set: { recordLongest = $0 })
+      ) {
+        ForEach(Self.longestChoices, id: \.self) { Text(Self.spoken($0)).tag($0) }
       }
     } header: {
-      Text("Saving")
+      Text("Recording")
     } footer: {
       Text(
-        "GIFs (Record and Capture) and screenshots (⌘S) are saved here, named after when they start. A folder that's moved or renamed is followed there; while it can't be found (on a drive that's unplugged, say), files go to the Desktop."
+        "The latest seconds stay in memory only, so a recording can start before Record (⌘R) is pressed. Stop opens "
+          + "the editor, where the GIF can start as far back as they go and either end can be trimmed; ⌥ Stop & Save "
+          + "(⌥⌘R) saves it as it is."
       )
       .foregroundStyle(.secondary)
       .fixedSize(horizontal: false, vertical: true)
     }
+  }
+
+  /// The latest seconds Settings offers to keep, the lead-ins, and the longest recordings.
+  static let keptChoices = [15, 30, 60, 120, 180, 300]
+  static let leadInChoices = [0, 2, 5, 10, 15, 30, 60, 120, 180, 300]
+  static let longestChoices = [60, 120, 180, 240, 300]
+
+  /// "2 seconds", "1 minute", "5 minutes", "90 seconds".
+  static func spoken(_ seconds: Int) -> String {
+    guard seconds >= 60, seconds % 60 == 0 else { return seconds == 1 ? "1 second" : "\(seconds) seconds" }
+    return seconds == 60 ? "1 minute" : "\(seconds / 60) minutes"
   }
 
   /// "Until cleared", "For 10 seconds", "For 1 minute"…
@@ -221,43 +242,8 @@ struct SettingsView: View {
     default: return "\(seconds / 60) Minutes"
     }
   }
-
-  /// A path with the home folder as ~, as Finder's Go to Folder takes it.
-  static func shortPath(_ url: URL) -> String {
-    let home = FileManager.default.homeDirectoryForCurrentUser.path
-    let path = url.path
-    return path == home || path.hasPrefix(home + "/") ? "~" + path.dropFirst(home.count) : path
-  }
 }
 
-/// The folder panel for Settings › Save to › Other….
-@MainActor
-enum SaveFolderPanel {
-  static func choose() {
-    let panel = NSOpenPanel()
-    panel.title = "Save GIFs and Screenshots To"
-    panel.message = "Choose the folder tinySA Screen saves GIFs and screenshots in."
-    panel.prompt = "Choose"
-    panel.canChooseDirectories = true
-    panel.canChooseFiles = false
-    panel.canCreateDirectories = true
-    panel.allowsMultipleSelection = false
-    panel.directoryURL = Preferences.saveFolder.place().url
-    guard panel.runModal() == .OK, let url = panel.url else { return }
-    guard FileManager.default.isWritableFile(atPath: url.path) else {
-      let alert = NSAlert()
-      alert.messageText = "tinySA Screen can't save in “\(FileManager.default.displayName(atPath: url.path))”"
-      alert.informativeText = "Choose a folder you can add files to."
-      alert.runModal()
-      return
-    }
-    do {
-      Preferences.saveFolder = try SaveFolder.chosen(url)
-    } catch {
-      NSAlert(error: error).runModal()
-    }
-  }
-}
 
 /// The Settings window, made when first opened.
 @MainActor

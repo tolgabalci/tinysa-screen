@@ -96,11 +96,20 @@ turns it off.
 does a finger: a touch held half a second (its `BUTTON_DOWN_LONG_TICKS`) is a long press, which on the keypad's erase
 key clears the whole entry and on a value in a form menu turns it into a slider. The mouse is the finger: the button
 down is a touch, each move while it is down (at most 25 a second) another, and the button up the release. A right-click
-holds its touch at least 0.6 s, a long press without holding the button.
+holds its touch at least 0.6 s, a long press without holding the button, and any touch is held at least 0.4 s. The
+analyzer sees a touch only when its UI next looks, once `touch` has stopped its sweep and its screen is drawn, which
+with the live screen on takes up to a few tenths of a second, and a release that comes first takes the touch with it
+(`remote_mouse_down`, read by `touch_check`). On firmware v1.4-333, taps over USB typed back to back, as the window's
+Escape typed them, were noticed 0 times in 6; held 0.15 s, 10 in 14; 0.3 s, 6 in 8; 0.4 s, 22 in 24. The analyzer
+times a press from when it sees it, so 0.4 s stays a tap, short of its long press (0.5 s). And a touch goes down 0.1 s
+after the release before it at least: while a touch is down the analyzer looks for its release every 20 ms
+(`touch_wait_release`), and a touch right after a release would make two quick clicks one long press.
 
 While a feeding program has the analyzer, the app writes the same commands to `taps` in the feed folder, each with the
 time it was clicked, and the program types them (docs/INTEGRATION.md, Clicks as taps); it keeps each touch down as long
-as it was clicked, so a long press stays one when it reads a touch and its release together.
+as it was clicked, so a long press stays one when it reads a touch and its release together. A release is dated 0.4 s
+after its touch at least, and a touch 0.1 s after the release before it, so the program keeps quick clicks as far
+apart too.
 
 **Where a tap lands** (the tinySA Ultra's firmware, `ui_process_touch`). Over a menu a tap picks the item under it, and
 a tap beside a menu closes it (a form menu ignores it). With no menu open the firmware tries, in this order: the SD card
@@ -161,13 +170,62 @@ analyzer cut its sweep short, and a feeding program's pictures are all there is 
   letters are taken for what they look like ("$TART", a Cyrillic "М", "Ö" for an O), each level label belongs to the
   grid line at its top, and the labels that agree on one step a division win (a misread is outvoted). A level label
   ending in a minus was read upside down, as macOS 27 does now and then, and is turned back ("09-" is "−60"); one
-  without its minus may be negative ("30" for "−30"). They are read again only when the white pixels around the
-  graph change, and a span or levels that changed start the hold over. The first reading after a macOS update takes
-  most of a minute: the text recognition compiles its models for the Mac's Neural Engine, once for each program and
-  macOS version. The window shows the frequencies and levels once that's done, and `tinysa-screen peaks` waits for
-  it.
+  without its minus may be negative ("30" for "−30"). They are read again only when the white pixels around the graph
+  change. Another span starts the hold over; other levels of the same span (the reference level, by hand or by the
+  analyzer's automatic reference level, the decibels a division, the waterfall's size when both layouts' labels have
+  been read) move each held level to its row on the new scale, at the graph's top or bottom when it's beyond them, its
+  peak keeping its number and time. The first reading after a macOS update takes most of a minute: the text recognition
+  compiles its models for the Mac's Neural Engine, once for each program and macOS version. The window shows the
+  frequencies and levels once that's done, and `tinysa-screen peaks` waits for it. What changes the hold wholesale
+  (starting over and why, other levels, labels changed or unreadable) goes to the Mac's log: `/usr/bin/log show
+  --predicate 'subsystem == "io.github.tolgabalci.tinysa-screen"' --last 1h` (the full path, as zsh has a `log` command
+  of its own).
+- **What covers the graph**: the analyzer's menu, its light buttons down the screen's right side, and its keypads,
+  light over most of the screen, are told from the graph by their pixels (`ScreenState`, as Escape tells them). Under
+  a menu nothing is read (its buttons and their edges read as levels at the top of the graph) and the graph stays the
+  one held (found beside the menu it's narrower, and the hold would start over); with a keypad open nothing is read at
+  all (the analyzer doesn't sweep while one is).
 - **Peaks**: a top of the held trace that stands at least 6 dB above the valleys on either side (before the next
-  higher ground) and above the trace's median, its noise.
+  higher ground) and above the trace's median, its noise. Each column's held level keeps the time of the sweep that
+  first reached it, so each peak has the time its level came in; the box lists the peaks in that order.
+- **Drawn into a GIF or a screenshot** as the window draws it (`PeakPicture`): the line in the hold's colour edged in
+  black, crisp; the tags, boxes and labels opaque, their words in eight shades over them, so a GIF's colours stay exact.
+  The recorder keeps the hold's changes with the frames (and always the latest, so a recording knows it from its start),
+  and each moment of a GIF draws the hold as it was then. Labels beside peaks, their lines centred, are placed oldest
+  peak first: beside its top, right, left or just above, clear of the labels placed, their arrows and every peak's top
+  (the graph's lines may go under one). Where none of those is clear, the best spot nearby, slid inside the graph at its
+  edges: touching the top (within 2.5 times the gap a label keeps from its peak, and clearly nearer its own top than any
+  other's), with no arrow; or far enough for an arrow to show its line as well as its head (5 times that gap), the arrow
+  short and angled or upright (a level one counts four times as long, a shallow one half as long again; below the top a
+  quarter longer than above), passing behind no label. Nothing in between: an arrow too short is only its head. Close
+  over the graph beats clear and far. The labels' edges and the arrows are in a colour of their own, orange unless
+  chosen otherwise, so neither is taken for the held line.
+- **New peak capture** (`Clip.peaksCapturedAfresh`): the GIF's frames from its start replayed through a hold of their
+  own, the frame showing at the start taken as coming in then, holding levels as long as the window's hold did. Each
+  frame's labels say what the window's hold had read them to say just after it (they aren't read again), and a span
+  it read only after a moment is known from its first frame: a span chosen during the GIF has its frequencies at once,
+  and nothing of the span before is held over. Where the window's hold started over (Clear Peaks, turned off, another
+  period), the GIF has the recorded hold from there on, as the window showed it; a GIF starting where the hold was off
+  is as recorded. Under a millisecond a frame in the app as built (420 frames in a third of a second): the editor
+  replays a moment after its start stops moving, showing no peaks meanwhile, and the size estimate and the GIF saved
+  do the same.
+- **The list beside the screen** (`PeakLog`): a row a peak, matched from one hold to the next by its number and place
+  (2 % of the graph's width, as the numbers are kept), its level and time brought up to date while it's held, kept
+  once it's gone; a peak that comes again after it went is a new row. Its CSV file is the rows as the list shows them,
+  the time with its date and a plain minus for the level, for a spreadsheet.
+
+## The app's look
+
+The app keeps macOS 13's look on macOS 26 and later: macOS draws an app the way of the SDK it says it was built with,
+Liquid Glass from 26's on, and from macOS 27 an app built with a newer SDK can't opt out (`UIDesignRequiresCompatibility`
+is ignored). So `scripts/build-app.sh` writes macOS 13's SDK, the oldest macOS the app runs on, into the app
+(`vtool -set-build-version`), and stops if either architecture says otherwise. Builds said so until 1.4.0 by accident:
+SwiftPM's build engine links without naming the SDK, and clang then writes the deployment target as the SDK's version.
+
+That look leaves a bordered toolbar button's words grey with the window in front too, whatever colour they're given,
+so the buttons with words are borderless, in an outline drawn like that border (`OutlinedToolbarItem`), their words
+and symbols drawn in the toolbar's own ink: bright while the window is the main window of the app in front, dimmer
+behind (`ToolbarLook`). Band is such a button, its menu shown below it from a press.
 
 ## Firmware without the live screen
 
@@ -191,9 +249,10 @@ capture when the firmware has no live screen. A frame the same as the one before
 
 ### Keeping the last minute
 
-Frames are kept in memory packed with LZFSE, a few tens of kilobytes each. A recording keeps them from its start, and
-Capture keeps the last minute (or what Settings says), each from the screen as it was when it began. Nothing goes to
-the disk until a GIF is saved.
+Frames are kept in memory packed with LZFSE, a few tens of kilobytes each. The last minute (or what Settings ›
+Recording says, up to five) is kept all the time, from the screen as it was when it began, so a recording can start
+before Record is pressed: it holds on to its frames from as far back as those went, and the editor's GIF is a part of
+them. Nothing goes to the disk until a GIF is saved.
 
 ### The file
 
@@ -209,12 +268,24 @@ the disk until a GIF is saved.
   with nothing transparent, come out right.
 - **Compression**: GIF's LZW, with codes from one bit more than the colours need up to 12 bits, and a fresh table when
   it fills. Each image's code size is just enough for the colours it uses.
-- **Timing**: each image stays up until the next, in hundredths of a second, rounded from the real times so the GIF
-  lasts as long as the recording. Moments closer than 30 ms are shown as one, since browsers slow down images shorter
-  than 20 ms.
-- **The date and time**: a strip under the screen, the text drawn with the Mac's system font in eight greys, white on
-  black like the analyzer's. Each second the time ticks over adds an image of the strip's rows that changed, half a
-  kilobyte at the screen's size and one and a half at twice that, so the clock runs on while the screen keeps still.
+- **Timing**: the GIF's moments are a tenth of a second of the recording apart, or a fiftieth of a second of playing
+  when it plays more than five times faster, so every frame shows (Full); with fewer frames a second, a frame's share
+  of a second of playing (at 10× and 2 a second, every 5 seconds of the recording). They're on whole multiples of that
+  on the clock, each the screen as it was then, so a frame shows up to a moment late and the clock's seconds fall on
+  moments. Each image stays up until the next one that differs, in hundredths of a second counted from the start so
+  nothing drifts, and none is shorter than two hundredths, which players take as they are (one they take as ten). A
+  pause at the end is one more image, held.
+- **The strip**: the text drawn with the Mac's system font in eight shades, white on black like the analyzer's: the day,
+  date and time at its right ("FRI, Nov 27, 2026", the day in capitals), the time into the GIF of its length at its
+  left, counted on the clock's seconds so both tick together, in a bar that fills a step each tick (square but for its
+  corner pixels, so its colours stay few: a grey to come, a blue played, the text's eight shades over each). Each tick
+  adds an image of the strip's rows that changed, half a kilobyte at the screen's size and one and a half at twice that,
+  so the clock runs on while the screen keeps still. The app notes the time of every picture that comes, the ones the
+  same as the one before too, which aren't kept twice; a moment with none in the second before it (or the recording's
+  time between moments, when faster) is drawn in pink. Through the pause at the end, "END OF RECORDING" in red: in the
+  middle, or left of there as far as the widest date and time can reach; on a screen too narrow for all three (the
+  original tinySA's, 320 pixels), the date and time step aside for the pause. All of it is laid out once for the whole
+  GIF, so nothing moves as it plays.
 - **A comment** in the file says where the picture came from and when.
 
 Measured on 48 seconds of a tinySA Ultra watching the busy 915 MHz band with its big waterfall on, 63 frames, the date

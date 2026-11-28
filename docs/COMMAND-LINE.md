@@ -29,8 +29,8 @@ its full path without the link.)
 
 | Command | What it does |
 | --- | --- |
-| `record --seconds N --output FILE.gif` | Records the screen from now, for N seconds (1 to 120), as an animated GIF. |
-| `capture [--seconds N] --output FILE.gif` | Saves the last N seconds the open app keeps (Settings › Keep the latest seconds), all of them without `--seconds`. For when something has just happened. Needs the app open. |
+| `record --seconds N --output FILE.gif` | Records the screen from now, for N seconds (1 to 300), as an animated GIF. |
+| `capture [--seconds N] --output FILE.gif` | Saves the last N seconds the open app keeps (Settings › Recording › Keep in memory), all of them without `--seconds`. For when something has just happened. Needs the app open. |
 | `screenshot --output FILE.png` | Saves the screen as it is now, at its own size (`--sharp`: twice that). |
 | `sweep [--start F --stop F]` | Says the span the analyzer sweeps, or sets it. Needs the analyzer on USB, a tinySA Ultra. |
 | `peaks [--seconds N] [--count N]` | The highest peaks of the live trace over N seconds (10 by default, at most 600), held from the screen as the app's [peak hold](../README.md#peak-hold) does: the analyzer is asked nothing, so it works on fed pictures too. Up to `--count` peaks (5; at most 9), each at least 6 dB above its valleys and the noise. It answers once the screen's labels are read, which gives the frequencies and levels: at once, as a rule, but the first time after a macOS update the Mac's text recognition prepares itself for tinySA Screen first, which takes most of a minute (minutes on a busy Mac). `peaks` waits up to 90 s after its seconds for that, and its notes say when it took longer. |

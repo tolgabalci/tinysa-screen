@@ -21,6 +21,12 @@ func makeMenuBar() -> NSMenu {
     item.keyEquivalentModifierMask = modifiers
     return item
   }
+  /// Shown in place of the item before it while ⌥ is down.
+  func alternate(_ title: String, _ action: Selector, _ key: String, _ modifiers: NSEvent.ModifierFlags) -> NSMenuItem {
+    let alternate = item(title, action, key, modifiers)
+    alternate.isAlternate = true
+    return alternate
+  }
   func submenu(_ title: String, _ items: [NSMenuItem]) -> NSMenuItem {
     let holder = NSMenuItem(title: title, action: nil, keyEquivalent: "")
     let menu = NSMenu(title: title)
@@ -48,7 +54,7 @@ func makeMenuBar() -> NSMenu {
       item("Save Screenshot", #selector(AppDelegate.saveScreenshot(_:)), "s"),  // "to <the folder>" when shown
       .separator(),
       item("Record GIF", #selector(AppDelegate.toggleRecording(_:)), "r"),
-      item("Capture as GIF…", #selector(AppDelegate.capture(_:)), "r", [.command, .shift]),
+      alternate("Stop and Save Recording", #selector(AppDelegate.stopAndSaveRecording(_:)), "r", [.command, .option]),
       .separator(),
       item("Close", #selector(NSWindow.performClose(_:)), "w"),
     ])
@@ -113,6 +119,10 @@ func makeMenuBar() -> NSMenu {
 if CommandLineTool.isAsked(CommandLine.arguments) {
   exit(CommandLineTool.run(CommandLine.arguments))
 }
+
+#if DEBUG
+  if MainActor.assumeIsolated({ EditorDemo.runIfAsked() }) { exit(0) }
+#endif
 
 MainActor.assumeIsolated {
   let app = NSApplication.shared

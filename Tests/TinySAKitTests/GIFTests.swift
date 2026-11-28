@@ -19,13 +19,23 @@ final class GIFTests: XCTestCase {
     return screen
   }
 
-  static func clip(_ moments: [(TimeInterval, Snapshot)], end: TimeInterval) -> Clip {
+  /// A clip of `moments`, pictures coming every half second besides (a live analyzer, its screen still or not).
+  static func clip(_ moments: [(TimeInterval, Snapshot)], end: TimeInterval, live: Bool = true) -> Clip {
     let frames = moments.map { RecordedFrame($0.1, at: start.addingTimeInterval($0.0)) }
-    return Clip(frames: frames, from: start, to: start.addingTimeInterval(end))!
+    let arrivals = live ? stride(from: 0, through: end, by: 0.5).map { start.addingTimeInterval($0) } : nil
+    return Clip(frames: frames, from: start, to: start.addingTimeInterval(end), arrivals: arrivals)!
   }
 
-  /// Each image of the GIF shows the screen of its moment exactly, kept under the next, for the real time between
-  /// them; only the rows that changed are stored, across the whole width, with no transparent colour.
+  /// A GIF no longer wanted (the editor's size, its handles moved on) stops being made.
+  func testStopsWhenTold() {
+    let clip = Self.clip([(0, Self.screen(blockAt: 10)), (1, Self.screen(blockAt: 50))], end: 2)
+    XCTAssertNil(GIF.make(clip, stop: { true }))
+    XCTAssertNotNil(GIF.make(clip, stop: { false }))
+  }
+
+  /// Each image of the GIF shows the screen of its moment exactly, kept under the next, from the first tenth of a
+  /// second on the clock after it came; only the rows that changed are stored, across the whole width, with no
+  /// transparent colour.
   func testFramesComeOutExactly() throws {
     let screens = [Self.screen(blockAt: 10), Self.screen(blockAt: 50), Self.screen(blockAt: 300)]
     let clip = Self.clip([(0, screens[0]), (0.77, screens[1]), (1.54, screens[2])], end: 2.31)
@@ -35,7 +45,8 @@ final class GIFTests: XCTestCase {
     XCTAssertEqual(decoded.height, 320)
     XCTAssertEqual(decoded.loops, 0, "loops forever")
     XCTAssertEqual(decoded.images.count, 3)
-    XCTAssertEqual(decoded.images.map(\.delay), [77, 77, 77])
+    // The clip starts .4 s past a second: frames that came at .17 and .94 show from .2 and 1.0, 0.8 and 1.6 s in.
+    XCTAssertEqual(decoded.images.map(\.delay), [80, 80, 71])
     for (image, screen) in zip(decoded.images, screens) {
       XCTAssertEqual(image.canvas, screen.pixels.map(Self.rgb), "screen at image \(image)")
       XCTAssertEqual(image.disposal, 1)
@@ -95,7 +106,7 @@ final class GIFTests: XCTestCase {
   /// time ticks over; the screen above stays exact.
   func testTimeTicksUnderTheScreen() throws {
     let screen = Self.screen(blockAt: 10)
-    let clip = Self.clip([(0, screen)], end: 3.0)
+    let clip = Self.clip([(0, screen)], end: 3.0)  // pictures every half second, the same each time
     var options = GIFOptions(showsDate: true, showsTime: true)
     options.locale = Locale(identifier: "en_US")
     options.timeZone = TimeZone(identifier: "UTC")!
@@ -122,34 +133,206 @@ final class GIFTests: XCTestCase {
     }
   }
 
-  /// The date and time read as the Mac shows them.
+  /// The date and time read as the Mac's language writes them, the day of the week first in capitals; the count of
+  /// seconds as minutes and seconds.
   func testCaptionText() {
-    var strip = CaptionStrip(
-      width: 480, scale: 1, showsDate: true, showsTime: true, locale: Locale(identifier: "en_US"),
-      timeZone: TimeZone(identifier: "America/Los_Angeles")!)
+    func strip(_ options: GIFOptions) -> CaptionStrip? { CaptionStrip(width: 480, scale: 1, options: options) }
     let moment = Date(timeIntervalSince1970: 1_791_000_000)  // 2026-10-03 04:00:00 UTC
-    XCTAssertEqual(strip?.text(at: moment).replacingOccurrences(of: "\u{202F}", with: " "), "Oct 2, 2026   9:00:00 PM")
-    strip = CaptionStrip(
-      width: 480, scale: 1, showsDate: false, showsTime: true, locale: Locale(identifier: "en_GB"),
-      timeZone: TimeZone(identifier: "UTC")!)
-    XCTAssertEqual(strip?.text(at: moment), "04:00:00")
-    XCTAssertNil(
-      CaptionStrip(width: 480, scale: 1, showsDate: false, showsTime: false, locale: .current, timeZone: .current))
+    let us = strip(
+      GIFOptions(locale: Locale(identifier: "en_US"), timeZone: TimeZone(identifier: "America/Los_Angeles")!))
+    XCTAssertEqual(
+      us?.text(at: moment).replacingOccurrences(of: "\u{202F}", with: " "), "FRI, Oct 2, 2026   9:00:00 PM")
+    let uk = strip(
+      GIFOptions(showsDate: false, locale: Locale(identifier: "en_GB"), timeZone: TimeZone(identifier: "UTC")!))
+    XCTAssertEqual(uk?.text(at: moment), "04:00:00")
+    let french = strip(GIFOptions(showsTime: false, locale: Locale(identifier: "fr_FR"), timeZone: .gmt))
+    XCTAssertEqual(french?.text(at: moment), "SAM. 3 oct. 2026")
+    let count = strip(GIFOptions(showsDate: false, showsTime: false, showsElapsed: true))
+    let words = count?.words(Caption(clock: moment, elapsed: 70, total: 150, ended: true))
+    XCTAssertEqual(words?.left, "1:10 / 2:30")
+    XCTAssertEqual(words?.right, "")
+    XCTAssertEqual(words?.center, "END OF RECORDING")
+    XCTAssertEqual(CaptionStrip.duration(-20), "\u{2212}0:20")
+    XCTAssertNil(strip(GIFOptions(showsDate: false, showsTime: false)))
   }
 
-  /// Moments closer than 30 ms are shown together, the later frame and clock winning.
-  func testTimelineMergesCloseMoments() {
+  /// Through the pause at the end, "END OF RECORDING" never runs into the date and time: on the tinySA Ultra's screen
+  /// it keeps clear of them, even on a wide day; on the original tinySA's, too narrow for all three, they step aside
+  /// for the pause. The bar never meets either.
+  func testEndOfRecordingKeepsClearOfTheDate() throws {
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(identifier: "America/Los_Angeles")!
+    // "WED, Sep 30, 2026   10:58:58 PM", as wide as the date and time get.
+    let wide = try XCTUnwrap(
+      calendar.date(from: DateComponents(year: 2026, month: 9, day: 30, hour: 22, minute: 58, second: 58)))
+    for (width, clockAtTheEnd) in [(480, true), (320, false)] {
+      for scale in [1, 2] {
+        var options = GIFOptions(scale: scale, showsElapsed: true, showsProgress: true, pauseAtEnd: 3)
+        options.locale = Locale(identifier: "en_US")
+        options.timeZone = calendar.timeZone
+        let name = "\(width) wide at \(scale)×"
+        var strip = try XCTUnwrap(CaptionStrip(width: width * scale, scale: scale, options: options))
+        /// The first and last columns `words` draw in.
+        func columns(_ words: CaptionStrip.Words) -> (first: Int, last: Int) {
+          let pixels = strip.pixels(for: words)
+          let drawn = pixels.indices.filter { pixels[$0] != CaptionStrip.black }.map { $0 % (width * scale) }
+          return (drawn.min() ?? .max, drawn.max() ?? .min)
+        }
+        let playing = strip.words(Caption(clock: wide, elapsed: 30, total: 30))
+        let end = strip.words(Caption(clock: wide, elapsed: 30, total: 30, ended: true))
+        XCTAssertEqual(end.center, "END OF RECORDING", name)
+        XCTAssertEqual(end.right.isEmpty, !clockAtTheEnd, name)
+        let clock = columns(CaptionStrip.Words(right: playing.right))
+        let bar = columns(CaptionStrip.Words(left: playing.left, filled: playing.filled))
+        let ending = columns(CaptionStrip.Words(center: end.center))
+        XCTAssertLessThan(bar.last, clock.first, "\(name): the bar left of the date")
+        XCTAssertLessThan(bar.last, ending.first, "\(name): the bar left of the end")
+        if clockAtTheEnd { XCTAssertLessThan(ending.last, clock.first, "\(name): the end left of the date") }
+      }
+    }
+  }
+
+  /// Moments a tenth of a second of playing apart, on tenths of the clock: each the frame on the screen then, and the
+  /// clock's seconds on a moment.
+  func testTimelineIsOnTenthsOfTheClock() {
     let screens = (0..<3).map { Self.screen(blockAt: 10 + 30 * $0) }
     let frames = [
       RecordedFrame(screens[0], at: Self.start.addingTimeInterval(-5)),
       RecordedFrame(screens[1], at: Self.start.addingTimeInterval(0.59)),
       RecordedFrame(screens[2], at: Self.start.addingTimeInterval(1.2)),
     ]
-    let events = GIF.timeline(frames, start: Self.start, end: Self.start.addingTimeInterval(2), ticks: true)
-    XCTAssertEqual(events.map(\.frame), [0, 1, 2, 2])
-    XCTAssertEqual(events.map { ($0.time * 100).rounded() / 100 }, [0, 0.59, 1.2, 1.6])
-    // The tick at 0.6 s went with the frame at 0.59 s, and its clock with it.
-    XCTAssertEqual(events[1].clock, Self.start.addingTimeInterval(0.6))
+    let clip = Clip(frames: frames, from: Self.start, to: Self.start.addingTimeInterval(2))!
+    let events = GIF.timeline(clip, frames: clip.frames, options: GIFOptions())
+    let times = events.map { ($0.time * 100).rounded() / 100 }
+    // From .4 s past a second: .5 s (a tenth on), then each tenth to the last half a tenth or more before the end.
+    XCTAssertEqual(times.first, 0)
+    XCTAssertEqual(times[1], 0.1)
+    XCTAssertEqual(times.last, 1.9)
+    XCTAssertEqual(events.count, 20)
+    // The frame that came .99 s on the clock shows from 1.0; the one at 1.6, from 1.6.
+    XCTAssertEqual(events.first { $0.frame == 2 - 1 }.map { ($0.time * 100).rounded() / 100 }, 0.6)
+    XCTAssertEqual(events.first { $0.frame == 2 }.map { ($0.time * 100).rounded() / 100 }, 1.2)
+    XCTAssertEqual(events[6].caption.clock, Self.start.addingTimeInterval(0.6))
+  }
+
+  /// The count of seconds ticks with the clock's seconds, and says how long the GIF is; seconds no picture came in are
+  /// stale; the end is the end.
+  func testCaptionsCountWithTheClock() {
+    let frames = [RecordedFrame(Self.screen(blockAt: 10), at: Self.start)]
+    let arrivals = [0, 0.5, 1, 4.2].map { Self.start.addingTimeInterval($0) }
+    let clip = Clip(frames: frames, from: Self.start, to: Self.start.addingTimeInterval(9.8), arrivals: arrivals)!
+    func caption(_ seconds: TimeInterval) -> Caption { clip.caption(at: Self.start.addingTimeInterval(seconds)) }
+    // Start at .4 s past a second, end at 10.2: ten whole seconds of the clock.
+    XCTAssertEqual(caption(0).total, 10)
+    XCTAssertEqual([0, 0.5, 0.6, 1.59, 1.6, 9.8].map { caption($0).elapsed }, [0, 0, 1, 1, 2, 10])
+    XCTAssertEqual(caption(-3).elapsed, -3, "before the GIF, in the editor")
+    // Pictures came at 0, 0.5, 1 and 4.2 s: none in the second up to 2.5 s, nor 4.1; one at 4.2.
+    XCTAssertEqual([0.2, 1.9, 2.0, 2.5, 4.1, 4.2, 5.1, 5.2].map { caption($0).stale },
+      [false, false, true, true, true, false, false, true])
+    XCTAssertTrue(clip.caption(at: clip.end, ended: true).ended)
+  }
+
+  /// Faster, it plays in a tenth of the time, every frame of it, none shorter than two hundredths of a second; ten
+  /// frames a second or fewer make fewer images.
+  func testPlaysFasterWithFewerFrames() throws {
+    let moments = (0..<40).map { (Double($0) * 0.5, Self.screen(blockAt: 10 + 10 * $0)) }
+    let clip = Self.clip(moments, end: 20)
+    func decoded(_ options: GIFOptions) throws -> DecodedGIF {
+      try DecodedGIF(try XCTUnwrap(GIF.make(clip, options: options)).data)
+    }
+    let real = try decoded(GIFOptions(showsDate: false, showsTime: false))
+    XCTAssertEqual(real.images.reduce(0) { $0 + $1.delay }, 2000)
+    XCTAssertEqual(real.images.count, 40)
+    let fast = try decoded(GIFOptions(showsDate: false, showsTime: false, speed: 10))
+    XCTAssertEqual(fast.images.reduce(0) { $0 + $1.delay }, 200, "20 s at 10 times plays in 2")
+    XCTAssertEqual(fast.images.count, 40, "every frame")
+    XCTAssertTrue(fast.images.allSatisfy { $0.delay >= 2 }, "none shorter than two hundredths of a second")
+    let ten = try decoded(GIFOptions(showsDate: false, showsTime: false, speed: 10, framesPerSecond: 10))
+    XCTAssertEqual(ten.images.reduce(0) { $0 + $1.delay }, 200)
+    XCTAssertEqual(ten.images.count, 20, "a tenth of a second of playing each: one frame of each two")
+    XCTAssertTrue(ten.images.allSatisfy { $0.delay >= 5 }, "none shorter than half a tenth of a second")
+    let sparse = try decoded(GIFOptions(showsDate: false, showsTime: false, speed: 10, framesPerSecond: 2))
+    XCTAssertEqual(sparse.images.reduce(0) { $0 + $1.delay }, 200)
+    XCTAssertEqual(sparse.images.count, 4, "two frames a second of playing")
+    // Each image is the screen as it was at its moment, on whole 5 s of the clock: the second at 5.0 s, 4.6 s in.
+    XCTAssertEqual(sparse.images[1].canvas, Self.screen(blockAt: 10 + 10 * 9).pixels.map(Self.rgb))
+  }
+
+  /// A pause at the end holds the last frame, with "END OF RECORDING" in red in the middle of the strip when it's
+  /// longer than a second; without looping the GIF plays once.
+  func testPausesAtTheEndAndPlaysOnce() throws {
+    let clip = Self.clip([(0, Self.screen(blockAt: 10)), (1, Self.screen(blockAt: 60))], end: 2)
+    var options = GIFOptions(showsDate: false, showsTime: true, pauseAtEnd: 5)
+    options.timeZone = TimeZone(identifier: "UTC")!
+    let paused = try DecodedGIF(try XCTUnwrap(GIF.make(clip, options: options)).data)
+    let last = try XCTUnwrap(paused.images.last)
+    XCTAssertEqual(last.delay, 500)
+    XCTAssertEqual(paused.images.reduce(0) { $0 + $1.delay }, 700)
+    XCTAssertEqual(paused.loops, 0, "loops forever")
+    func red(_ canvas: [UInt32]) -> Int {
+      canvas[(480 * 320)...].filter { pixel in
+        let (r, g) = (pixel & 0xFF, pixel >> 8 & 0xFF)
+        return r > 150 && g < 100
+      }.count
+    }
+    XCTAssertGreaterThan(red(last.canvas), 50)
+    XCTAssertEqual(red(paused.images[paused.images.count - 2].canvas), 0, "red only at the end")
+    options.pauseAtEnd = 1
+    options.loops = false
+    let held = try DecodedGIF(try XCTUnwrap(GIF.make(clip, options: options)).data)
+    XCTAssertEqual(held.images.reduce(0) { $0 + $1.delay }, 300)
+    XCTAssertEqual(held.images.last?.delay, 140, "the last image (from 1.6 s, the clock's last second) and the pause")
+    XCTAssertEqual(red(try XCTUnwrap(held.images.last).canvas), 0, "a second's pause: no words")
+    XCTAssertNil(held.loops, "plays once")
+  }
+
+  /// The bar at the strip's left fills as the GIF plays, a second at a time with the count in it, all of it at the end;
+  /// without it, no bar.
+  func testProgressBarFills() throws {
+    let clip = Self.clip([(0, Self.screen(blockAt: 10))], end: 10)
+    var options = GIFOptions(showsDate: false, showsTime: false, showsElapsed: true, showsProgress: true)
+    let gif = try DecodedGIF(try XCTUnwrap(GIF.make(clip, options: options)).data)
+    let (played, toCome) = (Self.rgb(CaptionStrip.filled), Self.rgb(CaptionStrip.track))
+    func count(_ color: UInt32, _ image: DecodedGIF.Image) -> Int {
+      image.canvas[(480 * 320)...].filter { $0 == color }.count
+    }
+    let filled = gif.images.map { count(played, $0) }
+    // From .4 s past a second to 10.4 s: a tick each second of the clock, 11 images.
+    XCTAssertEqual(gif.images.count, 11)
+    XCTAssertEqual(filled.first, 0)
+    XCTAssertEqual(filled, filled.sorted(), "it only fills")
+    XCTAssertGreaterThan(filled[5], 0)
+    XCTAssertEqual(count(toCome, try XCTUnwrap(gif.images.last)), 0, "all of it at the end")
+    XCTAssertGreaterThan(count(toCome, gif.images[0]), 100)
+    options.showsProgress = false
+    let plain = try DecodedGIF(try XCTUnwrap(GIF.make(clip, options: options)).data)
+    XCTAssertTrue(plain.images.allSatisfy { count(played, $0) == 0 && count(toCome, $0) == 0 })
+  }
+
+  /// Through a second no picture came in, the strip's words are pink; white again once one comes.
+  func testSecondsWithoutAPictureArePink() throws {
+    let screen = Self.screen(blockAt: 10)
+    let frames = [RecordedFrame(screen, at: Self.start)]
+    let arrivals = [0, 3.5].map { Self.start.addingTimeInterval($0) }
+    let clip = Clip(frames: frames, from: Self.start, to: Self.start.addingTimeInterval(5), arrivals: arrivals)!
+    var options = GIFOptions(showsDate: false, showsTime: true)
+    options.timeZone = TimeZone(identifier: "UTC")!
+    let gif = try DecodedGIF(try XCTUnwrap(GIF.make(clip, options: options)).data)
+    var time = 0
+    var pink: [(Int, Bool)] = []
+    for image in gif.images {
+      let strip = image.canvas[(480 * 320)...]
+      let brightest = try XCTUnwrap(strip.max { ($0 >> 8 & 0xFF) < ($1 >> 8 & 0xFF) })
+      // White text is as green as red; pink less.
+      pink.append((time, (brightest >> 8 & 0xFF) < 200))
+      time += image.delay
+    }
+    // White to 1 s in, pink from then to 3.5 s, when a picture came, white to 4.5 s, pink after.
+    for (time, isPink) in pink {
+      let expected = (100..<350).contains(time) || time >= 450
+      XCTAssertEqual(isPink, expected, "at \(time) cs")
+    }
+    XCTAssertTrue(pink.contains { $0.1 })
   }
 
   /// Apple's own decoder (the one Safari and Preview use) shows the same frames, for the same time.

@@ -142,6 +142,36 @@ final class ScreenView: NSView {
     }
   }
 
+  /// The peak labels' colour: their edges, and the arrows from labels moved away from their peaks.
+  var peakLabelColor: NSColor {
+    get { peaks.labelColor }
+    set {
+      guard newValue != peaks.labelColor else { return }
+      peaks.labelColor = newValue
+      drawPeaks()
+    }
+  }
+
+  /// The peak hold's readouts: in a box, the peaks numbered; beside each peak; or the numbers only.
+  var peakReadouts: PeakLook.Readouts {
+    get { peaks.readouts }
+    set {
+      guard newValue != peaks.readouts else { return }
+      peaks.readouts = newValue
+      drawPeaks()
+    }
+  }
+
+  /// A peak ringed, by its number: the list's row the pointer is over.
+  var highlightedPeak: Int? {
+    get { peaks.highlighted }
+    set {
+      guard newValue != peaks.highlighted else { return }
+      peaks.highlighted = newValue
+      drawPeaks()
+    }
+  }
+
   private func drawPeaks() {
     let (rect, scale) = pictureRect
     peaks.show(peakState, in: rect, scale: scale, contentsScale: window?.backingScaleFactor ?? 2)
@@ -226,14 +256,10 @@ final class ScreenView: NSView {
     case .pen: text += ", pen on"
     case .none: break
     }
-    if let state = peakState, let scale = state.scale {
-      let span = Double(scale.stop - scale.start) / Double(max(state.graph.right - state.graph.left - 1, 1))
-      let peaks = state.peaks.sorted { $0.number < $1.number }.compactMap { peak -> String? in
-        guard let frequency = peak.frequency, let level = peak.level else { return nil }
-        return "\(peak.number) " + PeakOverlay.frequency(frequency, resolution: span) + " "
-          + PeakOverlay.level(level, resolution: abs(scale.perRow))
-      }
-      text += ". " + PeakOverlay.title(state) + ": " + (peaks.isEmpty ? "no peaks" : peaks.joined(separator: "; "))
+    if let state = peakState, state.scale != nil {
+      let readouts = state.readouts()
+      let peaks = readouts.count < 2 ? "no peaks" : readouts.dropFirst().joined(separator: "; ")
+      text += ". " + state.title + ": " + peaks
     }
     return text
   }

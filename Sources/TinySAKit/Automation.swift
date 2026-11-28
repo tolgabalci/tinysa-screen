@@ -50,8 +50,8 @@ public final class Automation: @unchecked Sendable {
   // MARK: Commands
 
   private func record(_ request: ControlRequest, cancelled: () -> Bool) -> ControlReply {
-    guard let seconds = request.seconds, seconds >= 1, seconds <= FrameRecorder.longest else {
-      return .failure("How long to record: 1 to \(Int(FrameRecorder.longest)) seconds")
+    guard let seconds = request.seconds, seconds >= 1, seconds <= FrameRecorder.longestAllowed else {
+      return .failure("How long to record: 1 to \(Int(FrameRecorder.longestAllowed)) seconds")
     }
     let output: URL
     switch Self.output(request.output) {
@@ -99,7 +99,7 @@ public final class Automation: @unchecked Sendable {
     }
     defer { putBack() }
     let recorder = session.recorder
-    let id = recorder.begin()
+    let id = recorder.begin(longest: seconds)
     let name = request.name ?? "another program"
     changeRecordings { $0[id] = name }
     announce?("Recording \(Int(seconds)) s for \(name)…")
@@ -144,7 +144,7 @@ public final class Automation: @unchecked Sendable {
     }
     let recorder = session.recorder
     guard recorder.keepRecent > 0 else {
-      return .failure("tinySA Screen keeps no seconds: turn on \"Keep the latest seconds\" in its Settings")
+      return .failure("tinySA Screen keeps no seconds: choose how many in its Settings › Recording › Keep in memory")
     }
     if let seconds = request.seconds, seconds < 1 { return .failure("How many seconds: at least 1") }
     guard let clip = recorder.recent(request.seconds), clip.duration >= 1 else {

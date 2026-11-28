@@ -2,8 +2,9 @@ import AppKit
 import TinySAKit
 
 /// The peak hold, drawn over the analyzer's picture: the held trace as a line in its colour (cyan unless another is
-/// chosen), its highest peaks numbered, and their frequencies and levels in a box at the top of the graph, in the corner
-/// the analyzer leaves emptier.
+/// chosen); with the peaks listed, their numbers in tags and their frequencies, levels and times in a box at the top of
+/// the graph, in the corner the analyzer leaves emptier; else beside each peak, when, the megahertz and the level. As
+/// a GIF or a screenshot draws it (`PeakPicture`), the words the same.
 @MainActor
 final class PeakOverlay {
   let layer = CALayer()
@@ -11,8 +12,15 @@ final class PeakOverlay {
   private let marks = CALayer()
   private(set) var state: PeakHold.State?
 
-  /// The line's colour, its tags' and its box's edge.
+  /// The line's colour, its tags' and its boxes' edge.
   var color = PeakColor.cyan.color
+  /// The readouts in a box, the peaks numbered; beside each peak; or the numbers only (the list beside the screen has
+  /// the rest).
+  var readouts = PeakLook.Readouts.box
+  /// The peak whose row the pointer is over in the list: a ring around its top.
+  var highlighted: Int?
+  /// The labels' colour: their edges, the arrows from labels moved away from their peaks, and the ring for the list.
+  var labelColor = PeakColor.orange.color
 
   init() {
     line.fillColor = nil
@@ -56,8 +64,50 @@ final class PeakOverlay {
     line.path = path
     line.lineWidth = max(1, scale * 0.75)
 
-    // Numbered tags at the right of each peak's top (the analyzer centres its own markers above them).
     let font = NSFont.monospacedDigitSystemFont(ofSize: max(8, 5.5 * scale), weight: .semibold)
+    if let number = highlighted, let peak = state.peaks.first(where: { $0.number == number }) {
+      marks.addSublayer(ring(around: point(peak.column, peak.row), scale: scale))
+    }
+    guard readouts != .labels else {
+      // Beside each peak: when, the megahertz and the level, centred, placed as a GIF places them (top-down in the
+      // picture).
+      let padding = 2 * scale
+      let texts = state.peaks.map {
+        text($0.label().joined(separator: "\n"), font: font, color: .white, contentsScale: contentsScale, centred: true)
+      }
+      let sizes = texts.map { text in
+        let size = text.preferredFrameSize()
+        return CGSize(width: size.width + 2 * padding, height: size.height + 2 * padding)
+      }
+      let tops = state.peaks.map { CGPoint(x: (CGFloat($0.column) + 0.5) * scale, y: (CGFloat($0.row) + 0.5) * scale) }
+      let graph = CGRect(
+        x: CGFloat(state.graph.left) * scale, y: CGFloat(state.graph.top) * scale,
+        width: CGFloat(state.graph.right - state.graph.left) * scale,
+        height: CGFloat(state.graph.bottom - state.graph.top) * scale)
+      // The oldest peak's label first: a newer one gives way, moved clear with an arrow to its peak.
+      let order = state.peaks.indices.sorted {
+        (state.peaks[$0].time ?? .distantPast, state.peaks[$0].number)
+          < (state.peaks[$1].time ?? .distantPast, state.peaks[$1].number)
+      }
+      let places = PeakLabels.place(sizes, at: tops, order: order, within: graph, gap: 4 * scale)
+      // From the picture's top-down points to the layer's.
+      func layer(_ point: CGPoint) -> CGPoint { CGPoint(x: rect.minX + point.x, y: rect.maxY - point.y) }
+      for (place, top) in zip(places, tops) where place.away {
+        let (from, to) = PeakLabels.arrow(from: place.rect, to: top)
+        marks.addSublayer(arrow(from: layer(from), to: layer(to), scale: scale))
+      }
+      for (text, place) in zip(texts, places) {
+        let box = readoutBox(scale: scale, edge: labelColor)
+        let r = place.rect
+        box.frame = CGRect(x: rect.minX + r.minX, y: rect.maxY - r.maxY, width: r.width, height: r.height)
+        text.frame = CGRect(x: padding, y: padding, width: r.width - 2 * padding, height: r.height - 2 * padding)
+        box.addSublayer(text)
+        marks.addSublayer(box)
+      }
+      return
+    }
+
+    // Numbered tags at the right of each peak's top (the analyzer centres its own markers above them).
     for peak in state.peaks {
       let top = point(peak.column, peak.row)
       let tag = text("\(peak.number)", font: font, color: .black, contentsScale: contentsScale)
@@ -73,23 +123,11 @@ final class PeakOverlay {
     }
 
     // The readouts, when the labels have been read.
-    guard let scaleRead = state.scale, !state.peaks.isEmpty else { return }
-    let span = Double(scaleRead.stop - scaleRead.start)
-    let perColumn = span / Double(max(state.graph.right - state.graph.left - 1, 1))
-    // By number, as the analyzer lists its own markers: a peak's line stays where it is while the peak is held.
-    var lines = [Self.title(state)]
-    for peak in state.peaks.sorted(by: { $0.number < $1.number }) {
-      guard let frequency = peak.frequency, let level = peak.level else { continue }
-      lines.append(
-        "\(peak.number)  \(Self.frequency(frequency, resolution: perColumn))  \(Self.level(level, resolution: abs(scaleRead.perRow)))")
-    }
+    let lines = state.readouts()
+    guard readouts == .box, !lines.isEmpty else { return }
     let readout = text(lines.joined(separator: "\n"), font: font, color: .white, contentsScale: contentsScale)
     let size = readout.preferredFrameSize()
-    let box = CALayer()
-    box.backgroundColor = NSColor(white: 0, alpha: 0.72).cgColor
-    box.borderColor = color.withAlphaComponent(0.8).cgColor
-    box.borderWidth = 1
-    box.cornerRadius = 3 * scale
+    let box = readoutBox(scale: scale, edge: color)
     let padding = 3 * scale
     // At the emptiest spot the hold found (its top left corner), kept inside the graph.
     let corner = point(state.quietSpot.x, state.quietSpot.y)
@@ -103,30 +141,78 @@ final class PeakOverlay {
     marks.addSublayer(box)
   }
 
-  /// "Peak hold" with how long it keeps levels: "last 1:00", or since when.
-  static func title(_ state: PeakHold.State) -> String {
-    if let window = state.window {
-      let seconds = Int(window)
-      return "Peak hold, last " + (seconds >= 60 ? "\(seconds / 60):\(String(format: "%02d", seconds % 60))" : "\(seconds) s")
-    }
-    return "Peak hold since " + state.since.formatted(date: .omitted, time: .shortened)
+  /// A ring in the labels' colour around a peak's top, for the list's row the pointer is over.
+  private func ring(around top: CGPoint, scale: CGFloat) -> CAShapeLayer {
+    let layer = CAShapeLayer()
+    let radius = 7 * scale
+    layer.path = CGPath(
+      ellipseIn: CGRect(x: top.x - radius, y: top.y - radius, width: 2 * radius, height: 2 * radius), transform: nil)
+    layer.fillColor = nil
+    layer.strokeColor = labelColor.cgColor
+    layer.lineWidth = max(2, scale)
+    layer.shadowColor = NSColor.black.cgColor
+    layer.shadowOpacity = 0.9
+    layer.shadowRadius = 1.5
+    layer.shadowOffset = .zero
+    return layer
   }
 
-  /// A frequency in megahertz with as many decimals as a column of the graph resolves.
-  static func frequency(_ hertz: Int64, resolution: Double) -> String {
-    let decimals = max(0, min(6, Int((-log10(max(resolution, 1) / 1e6)).rounded(.up))))
-    return String(format: "%.\(decimals)f MHz", Double(hertz) / 1e6)
+  /// A line in the labels' colour from a label to its peak's top, its head there.
+  private func arrow(from: CGPoint, to: CGPoint, scale: CGFloat) -> CAShapeLayer {
+    let layer = CAShapeLayer()
+    let length = hypot(to.x - from.x, to.y - from.y)
+    guard length > 1 else { return layer }
+    let (ux, uy) = ((to.x - from.x) / length, (to.y - from.y) / length)
+    let head = 5 * scale
+    let side = 2.5 * scale
+    let base = CGPoint(x: to.x - ux * head, y: to.y - uy * head)
+    let line = CGMutablePath()
+    line.move(to: from)
+    line.addLine(to: base)
+    let tip = CGMutablePath()
+    tip.move(to: to)
+    tip.addLine(to: CGPoint(x: base.x - uy * side, y: base.y + ux * side))
+    tip.addLine(to: CGPoint(x: base.x + uy * side, y: base.y - ux * side))
+    tip.closeSubpath()
+    let shaft = CAShapeLayer()
+    shaft.path = line
+    shaft.strokeColor = labelColor.cgColor
+    shaft.lineWidth = max(1, scale)
+    shaft.fillColor = nil
+    layer.path = tip
+    layer.fillColor = labelColor.cgColor
+    layer.addSublayer(shaft)
+    layer.shadowColor = NSColor.black.cgColor
+    layer.shadowOpacity = 0.8
+    layer.shadowRadius = 1
+    layer.shadowOffset = .zero
+    return layer
   }
 
-  /// A level to the decibel, or the tenth where a row of the graph resolves that finely.
-  static func level(_ dBm: Double, resolution: Double) -> String {
-    let text = resolution < 0.25 ? String(format: "%.1f dBm", dBm) : String(format: "%.0f dBm", dBm)
-    return text.replacingOccurrences(of: "-", with: "−")
+  /// A box for words over the graph: black, mostly opaque, edged in `edge` (the hold's colour for its box, the labels'
+  /// for a label).
+  private func readoutBox(scale: CGFloat, edge: NSColor) -> CALayer {
+    let box = CALayer()
+    box.backgroundColor = NSColor(white: 0, alpha: 0.72).cgColor
+    box.borderColor = edge.withAlphaComponent(0.8).cgColor
+    box.borderWidth = 1
+    box.cornerRadius = 3 * scale
+    return box
   }
 
-  private func text(_ string: String, font: NSFont, color: NSColor, contentsScale: CGFloat) -> CATextLayer {
+  /// Words for a layer, `centred` line by line (a label's), else from the left.
+  private func text(
+    _ string: String, font: NSFont, color: NSColor, contentsScale: CGFloat, centred: Bool = false
+  ) -> CATextLayer {
     let layer = CATextLayer()
-    layer.string = NSAttributedString(string: string, attributes: [.font: font, .foregroundColor: color])
+    var attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color]
+    if centred {
+      let paragraph = NSMutableParagraphStyle()
+      paragraph.alignment = .center
+      attributes[.paragraphStyle] = paragraph
+      layer.alignmentMode = .center
+    }
+    layer.string = NSAttributedString(string: string, attributes: attributes)
     layer.contentsScale = contentsScale
     layer.isWrapped = false
     return layer

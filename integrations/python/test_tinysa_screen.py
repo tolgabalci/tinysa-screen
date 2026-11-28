@@ -339,6 +339,22 @@ class FeederTapsTests(unittest.TestCase):
         self.assertAlmostEqual(waits[0], 0.7, delta=0.05)
         self.assertFalse(self.feeder.pass_taps(live))  # nothing new, nothing down
 
+    def test_passing_them_on_keeps_two_quick_clicks_apart(self):
+        self.commands()
+        now = time.time()
+        self.add(f'touch 10 20 {now:.3f}\nrelease 10 20 {now + 0.4:.3f}\n'
+                 f'touch 10 20 {now + 0.5:.3f}\nrelease 10 20 {now + 0.9:.3f}\n')
+        typed, waits = [], []
+        live = types.SimpleNamespace(cmd=typed.append)
+        with mock.patch.object(tinysa_screen.time, 'sleep', waits.append):
+            self.assertTrue(self.feeder.pass_taps(live))
+        self.assertEqual(typed, ['touch 10 20', 'release 10 20', 'touch 10 20', 'release 10 20'])
+        # Read together: each release waits as long as its button was held, and the second press as long after the
+        # first release as it was clicked, so the analyzer sees two clicks, not one long press.
+        self.assertEqual(len(waits), 3)
+        for wait, expected in zip(waits, [0.4, 0.1, 0.4]):
+            self.assertAlmostEqual(wait, expected, delta=0.05)
+
     def test_a_touch_down_keeps_it_busy_until_released_before_letting_go(self):
         self.commands()
         self.add(f'touch 1 2 {time.time():.3f}\n')

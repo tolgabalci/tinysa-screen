@@ -8,7 +8,7 @@ final class BandController: NSObject, NSMenuDelegate, NSMenuItemValidation {
   private let session: Session
   private let view: ScreenView
   private weak var window: NSWindow?
-  /// The menu of the title bar's Band button: a pull-down, so its first item is the button's own title.
+  /// The menu of the title bar's Band button, shown below it.
   let toolbarMenu = NSMenu(title: "Band")
   /// The menu bar's Band menu, and the one the title bar's overflow menu shows when the window is too narrow for it.
   private let menuBarMenu: NSMenu?
@@ -53,25 +53,34 @@ final class BandController: NSObject, NSMenuDelegate, NSMenuItemValidation {
     if Preferences.defaults.data(forKey: Preferences.Key.savedBands) != savedBands { refresh() }
   }
 
-  /// The title bar's Band button.
-  func makeButton() -> NSPopUpButton {
-    let button = NSPopUpButton(frame: .zero, pullsDown: true)
+  /// The title bar's Band button: its menu below it, from a press (dragging to a band and letting go chooses it) or a
+  /// click. A toolbar button, not a pop-up button, so its words take the toolbar's ink (`ToolbarLook`).
+  func makeButton() -> ToolbarButton {
+    let button = ToolbarButton()
+    button.title = "Band"
+    button.image = ToolbarLook.symbol("antenna.radiowaves.left.and.right")
     button.bezelStyle = .texturedRounded
-    button.menu = toolbarMenu
+    button.imagePosition = .imageLeading
+    button.imageHugsTitle = true
+    button.font = .systemFont(ofSize: ToolbarLook.textSize)
+    button.menuOnPress = toolbarMenu
+    button.target = self
+    button.action = #selector(showToolbarMenu(_:))
     button.toolTip = "Set the tinySA to a band"
     button.setAccessibilityLabel("Band")
+    button.setAccessibilityRole(.popUpButton)
     return button
+  }
+
+  /// The Band button's menu below it (pressed with VoiceOver, say).
+  @objc private func showToolbarMenu(_ sender: ToolbarButton) {
+    sender.showMenu()
   }
 
   func menuNeedsUpdate(_ menu: NSMenu) { fill(menu) }
 
   private func fill(_ menu: NSMenu) {
     menu.removeAllItems()
-    if menu === toolbarMenu {
-      let title = NSMenuItem(title: "Band", action: nil, keyEquivalent: "")
-      title.image = NSImage(systemSymbolName: "antenna.radiowaves.left.and.right", accessibilityDescription: nil)
-      menu.addItem(title)
-    }
     if let reason = unavailableReason {
       let note = NSMenuItem(title: reason, action: nil, keyEquivalent: "")
       note.isEnabled = false

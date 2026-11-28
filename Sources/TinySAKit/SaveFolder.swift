@@ -1,9 +1,9 @@
 import Foundation
 
-/// Where the app saves GIFs and screenshots: the Desktop, or a folder chosen in Settings. A chosen folder is kept as a
-/// bookmark as well as a path, so it is found again after it is moved or renamed. While it can't be found (on a drive
-/// that is unplugged, say) or can't be written to, files go to the Desktop instead, and the app says so: a recording is
-/// never lost for want of its folder.
+/// Where the app saves GIFs and screenshots: the Desktop, or the folder the GIF editor last saved to. A chosen folder
+/// is kept as a bookmark as well as a path, so it is found again after it is moved or renamed. While it can't be found
+/// (on a drive that is unplugged, say) or can't be written to, files go to the Desktop instead, and the app says so: a
+/// recording is never lost for want of its folder.
 public struct SaveFolder: Equatable, Sendable {
   /// A bookmark to the chosen folder, and its path when chosen; both nil for the Desktop.
   public let bookmark: Data?
@@ -116,5 +116,66 @@ public struct SaveFolder: Equatable, Sendable {
       return false
     }
     return !url.resolvingSymlinksInPath().pathComponents.contains { $0 == ".Trash" || $0 == ".Trashes" }
+  }
+}
+
+extension SaveFolder {
+  /// A folder as typed in the editor's Save to (or chosen, or dropped there): where it is, and whether a GIF can go
+  /// there.
+  public struct Typed: Equatable, Sendable {
+    public enum Status: Equatable, Sendable {
+      /// A folder that's there, and can be written in.
+      case ready
+      /// Not there yet: made when the GIF is saved, in the nearest folder above it that's there, which can be written
+      /// in.
+      case new
+      /// A file, not a folder.
+      case file
+      /// A folder, or the nearest one above it that's there, that can't be written in.
+      case locked
+      /// Nothing typed.
+      case empty
+    }
+
+    public let url: URL?
+    public let status: Status
+
+    public var canSave: Bool { status == .ready || status == .new }
+  }
+
+  /// `text` as a folder: "~" is the home folder, and a path starting with neither "/" nor "~" goes from it.
+  public static func typed(_ text: String, home: URL = FileManager.default.homeDirectoryForCurrentUser) -> Typed {
+    let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !text.isEmpty else { return Typed(url: nil, status: .empty) }
+    let path: String
+    if text == "~" {
+      path = home.path
+    } else if text.hasPrefix("~/") {
+      path = home.path + text.dropFirst()
+    } else if text.hasPrefix("/") {
+      path = text
+    } else {
+      path = home.appendingPathComponent(text).path
+    }
+    let url = URL(fileURLWithPath: path, isDirectory: true).standardizedFileURL
+    let manager = FileManager.default
+    var isFolder: ObjCBool = false
+    if manager.fileExists(atPath: url.path, isDirectory: &isFolder) {
+      guard isFolder.boolValue else { return Typed(url: url, status: .file) }
+      return Typed(url: url, status: manager.isWritableFile(atPath: url.path) ? .ready : .locked)
+    }
+    var above = url.deletingLastPathComponent()
+    while !manager.fileExists(atPath: above.path, isDirectory: &isFolder), above.path != "/" {
+      above = above.deletingLastPathComponent()
+    }
+    guard isFolder.boolValue else { return Typed(url: url, status: .file) }  // a file where a folder would go
+    return Typed(url: url, status: manager.isWritableFile(atPath: above.path) ? .new : .locked)
+  }
+
+  /// A folder's path as Finder's Go to Folder takes it, the home folder as "~".
+  public static func shortPath(_ url: URL, home: URL = FileManager.default.homeDirectoryForCurrentUser) -> String {
+    let home = home.standardizedFileURL.path
+    let path = url.standardizedFileURL.path
+    return path == home || path.hasPrefix(home + "/") ? "~" + path.dropFirst(home.count) : path
   }
 }

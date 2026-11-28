@@ -2,9 +2,10 @@ import AppKit
 import SwiftUI
 import TinySAKit
 
-/// Record and Capture: GIFs of the analyzer's screen. Record runs from ⌘R until it is stopped (or for two minutes, the
-/// longest a GIF runs) and saves to the folder chosen in Settings (the Desktop at first); Capture saves the latest
-/// seconds kept, as many of them as wanted.
+/// Record: GIFs of the analyzer's screen. A recording holds on to the seconds kept from before Record was pressed
+/// (Settings › Recording), runs from ⌘R until it is stopped or has run as long as Settings lets it, and Stop opens the
+/// editor with its GIF starting the lead-in set in Settings before Record, to trim it or take in more of the seconds
+/// before; ⌥ Stop & Save saves that GIF as it is. GIFs go to the folder chosen in Settings (the Desktop at first).
 @MainActor
 final class GIFController {
   private let recorder: FrameRecorder
@@ -17,10 +18,14 @@ final class GIFController {
   var notLive: (note: String, since: Date)?
   /// Recording began, ticked or ended: for the toolbar and the menus.
   var onChange: (() -> Void)?
+  /// A GIF written (saved, or copied as a file): its file, for the toolbar's link to it.
+  var onMade: ((URL) -> Void)?
 
-  private var recording: UUID?
+  /// The recording running: the recorder's, how long it may run, and how far before Record its GIF starts.
+  private var recording: (id: UUID, longest: TimeInterval, leadIn: TimeInterval)?
   private var timer: Timer?
-  private var sheet: NSWindow?
+  /// The editors Stop opened, while they're open: one for each recording stopped, each in its own window.
+  private var editors: [EditorWindow] = []
   /// GIFs being made and written, and what waits for them (quitting).
   private var saving = 0
   private var whenSaved: [() -> Void] = []
@@ -34,19 +39,37 @@ final class GIFController {
   }
 
   var isRecording: Bool { recording != nil }
+  var isEditing: Bool { !editors.isEmpty }
+  /// An editor is the window in front: its ⌘S and ⌘C are its own.
+  var isEditorKey: Bool { editors.contains { $0.window.isKeyWindow } }
 
-  /// How long the recording has been running.
+  /// How long the recording has been running since Record was pressed.
   var elapsed: TimeInterval {
-    guard let recording, let started = recorder.started(recording) else { return 0 }
+    guard let recording, let started = recorder.started(recording.id) else { return 0 }
     return Date().timeIntervalSince(started)
   }
 
-  var canCapture: Bool { sheet == nil && recorder.recentSeconds() >= 1 }
+  /// How long the recording's GIF is so far, as Stop & Save would save it: from the lead-in before Record (as far back
+  /// as the seconds kept went) to now.
+  var length: TimeInterval {
+    guard let recording, let started = recorder.started(recording.id), let from = recorder.clipStart(recording.id)
+    else { return 0 }
+    return Date().timeIntervalSince(max(from, started.addingTimeInterval(-recording.leadIn)))
+  }
+
+  /// How far before Record the GIF starts, and the longest the recording runs after it: those of the recording
+  /// running, or Settings' for the next.
+  var leadIn: TimeInterval { recording?.leadIn ?? TimeInterval(Preferences.recordLeadIn) }
+  var longest: TimeInterval { recording?.longest ?? TimeInterval(Preferences.recordLongest) }
+
+  /// Record can start, with a picture to record (editors open or not), or stop.
+  var canRecord: Bool { isRecording || recorder.hasSnapshot }
 
   // MARK: Record
 
-  func toggleRecording() {
-    if isRecording { stopRecording() } else { startRecording() }
+  /// Record, or Stop: the editor opens, or with `andSave` (⌥), the GIF is saved as it is.
+  func toggleRecording(andSave: Bool = false) {
+    if isRecording { stopRecording(andSave: andSave) } else { startRecording() }
   }
 
   func startRecording() {
@@ -59,73 +82,109 @@ final class GIFController {
       view.flash("Nothing to record yet: no picture from the tinySA.")
       return
     }
-    recording = recorder.begin()
+    let longest = TimeInterval(Preferences.recordLongest)
+    let id = recorder.begin(before: TimeInterval(Preferences.keptSeconds), longest: longest)
+    recording = (id, longest, TimeInterval(Preferences.recordLeadIn))
     let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
       MainActor.assumeIsolated { self?.tick() }
     }
-    RunLoop.main.add(timer, forMode: .common)  // the time and the 2:00 stop go on while a menu is open
+    RunLoop.main.add(timer, forMode: .common)  // the time and the stop at the longest go on while a menu is open
     self.timer = timer
     onChange?()
   }
 
   private func tick() {
-    if elapsed >= FrameRecorder.longest {
+    if let recording, elapsed >= recording.longest {
       stopRecording(reachedLimit: true)
     } else {
       onChange?()
     }
   }
 
-  func stopRecording(reachedLimit: Bool = false) {
-    guard let id = recording else { return }
+  /// Stops the recording and opens the editor with its GIF, or with `andSave`, saves that GIF as it is.
+  func stopRecording(andSave: Bool = false, reachedLimit: Bool = false) {
+    guard let (id, longest, leadIn) = recording else { return }
     recording = nil
     timer?.invalidate()
     timer = nil
+    let began = recorder.started(id) ?? Date()
     onChange?()
     guard let clip = recorder.end(id, at: notLive?.since ?? Date()) else {
       view.flash("Nothing was recorded: no picture came.")
       return
     }
-    let note = reachedLimit ? "Recording stopped at 2:00, the longest a GIF runs. " : ""
-    save(clip, options: options(), note: note)
-  }
-
-  // MARK: Capture
-
-  /// Opens the Capture sheet with the seconds kept up to now.
-  func capture() {
-    guard sheet == nil, let window else { return }
-    guard let clip = recorder.recent(at: notLive?.since ?? Date()), clip.duration >= 1 else {
-      view.flash(notLive.map { "Nothing to capture: \($0.note)" } ?? "Nothing to capture yet.")
-      return
-    }
-    let host = NSHostingController(
-      rootView: CaptureSheet(clip: clip) { [weak self] choice in self?.finishCapture(clip, choice) })
-    let sheet = NSWindow(contentViewController: host)
-    sheet.title = "Capture"
-    self.sheet = sheet
-    onChange?()
-    window.beginSheet(sheet)
-  }
-
-  private func finishCapture(_ clip: Clip, _ choice: CaptureSheet.Choice?) {
-    if let sheet { window?.endSheet(sheet) }
-    sheet = nil
-    onChange?()
-    guard let choice else { return }
-    let part = clip.last(choice.seconds)
-    switch choice.action {
-    case .save: save(part, options: options())
-    case .copy: copy(part, options: options())
+    let trim = Trim(clip, began: began, leadIn: leadIn)
+    let note =
+      reachedLimit
+      ? "Recording stopped at \(TimeText.duration(longest)), the longest Settings › Recording lets it run." : nil
+    if andSave || window == nil {
+      save(clip.part(trim), options: options(), note: note.map { $0 + " " } ?? "")
+    } else {
+      edit(clip, began: began, trim: trim, note: note)
     }
   }
+
+  // MARK: The editor
+
+  private func edit(_ clip: Clip, began: Date, trim: Trim, note: String?) {
+    let model = TrimModel(clip: clip, began: began, trim: trim)
+    let editor = EditorWindow(model: model, note: note) { [weak self, weak model] action in
+      guard let self, let model else { return }
+      self.finishEditing(model, action)
+    }
+    editors.append(editor)
+    onChange?()
+    editor.show(over: window, nth: editors.count - 1)
+    // Stopped by itself while another app is in front: the Dock icon bounces once.
+    if !NSApp.isActive { NSApp.requestUserAttention(.informationalRequest) }
+  }
+
+  private func finishEditing(_ model: TrimModel, _ action: RecordingEditor.Action?) {
+    guard let index = editors.firstIndex(where: { $0.model === model }) else { return }
+    let editor = editors.remove(at: index)
+    model.pause()
+    editor.close()
+    window?.makeKeyAndOrderFront(nil)
+    onChange?()
+    guard let action else { return }
+    let part = model.clip.part(model.trim)
+    let options = options(speed: model.speed, framesPerSecond: model.effectiveFramesPerSecond)
+    switch action {
+    case .save: save(part, options: options, note: keepFolder(model))
+    case .copy: copy(part, options: options)
+    }
+  }
+
+  /// The folder Save to shows, kept for this GIF and the next (Stop & Save and screenshots too), made first when it's
+  /// new; a note when it can't be made (the GIF then goes where the GIFs went before).
+  private func keepFolder(_ model: TrimModel) -> String {
+    guard model.folder != model.keptFolder else { return "" }  // as it was: the folder kept, followed when moved
+    let typed = SaveFolder.typed(model.folder)
+    guard let url = typed.url, typed.canSave else { return "" }
+    do {
+      if typed.status == .new { try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true) }
+      Preferences.saveFolder = try SaveFolder.chosen(url)
+      return ""
+    } catch {
+      return "\(url.lastPathComponent) couldn't be made (\(error.localizedDescription)). "
+    }
+  }
+
+  #if DEBUG
+    /// The editors' windows and models, for the demo's script.
+    var editorWindows: [NSWindow] { editors.map(\.window) }
+    var editorModels: [TrimModel] { editors.map(\.model) }
+  #endif
 
   // MARK: Making GIFs
 
-  private func options() -> GIFOptions {
-    GIFOptions(
-      scale: Preferences.gifScale, showsDate: Preferences.gifShowsDate, showsTime: Preferences.gifShowsTime,
-      comment: nil)
+  /// How GIFs look and play: Settings' (and the editor's last), at their own speed and every frame unless the editor
+  /// says otherwise.
+  private func options(speed: Double = 1, framesPerSecond: Int? = nil) -> GIFOptions {
+    var options = Preferences.gifOptions
+    options.speed = speed
+    options.framesPerSecond = framesPerSecond
+    return options
   }
 
   /// The GIF's comment: where the picture came from, and when.
@@ -145,7 +204,10 @@ final class GIFController {
     var options = options
     options.comment = comment(clip)
     saving += 1
+    // New peak capture: the hold replayed from the GIF's start, on the queue (under a millisecond a frame).
+    let fresh = options.peaks == nil ? nil : Preferences.gifFreshPeakCount
     Self.queue.async {
+      let clip = fresh.map { clip.peaksCapturedAfresh(count: $0) } ?? clip
       let result = GIF.make(clip, options: options)
       DispatchQueue.main.async {
         MainActor.assumeIsolated {
@@ -164,9 +226,11 @@ final class GIFController {
     for done in waiting { done() }
   }
 
-  /// Stops a recording and saves it, then calls `done` once every GIF in the making is written: for quitting.
+  /// Stops a recording and saves it, and saves the GIF each editor shows, then calls `done` once every GIF in the
+  /// making is written: for quitting, so that no recording is lost to it.
   func finish(then done: @escaping () -> Void) {
-    if isRecording { stopRecording() }
+    if isRecording { stopRecording(andSave: true) }
+    for editor in editors { finishEditing(editor.model, .save) }
     if saving == 0 {
       done()
     } else {
@@ -174,7 +238,7 @@ final class GIFController {
     }
   }
 
-  var isBusy: Bool { isRecording || saving > 0 }
+  var isBusy: Bool { isRecording || !editors.isEmpty || saving > 0 }
 
   private func save(_ clip: Clip, options: GIFOptions, note: String = "") {
     view.flash(note + "Making the GIF…")
@@ -188,6 +252,7 @@ final class GIFController {
         }
         if let moved = saved.moved { Preferences.saveFolder = moved }
         self.view.flash(note + saved.note(size: Self.size(result.data.count)))
+        self.onMade?(saved.url)
       } catch {
         self.view.flash("The GIF couldn't be saved: \(error.localizedDescription)")
       }
@@ -212,6 +277,7 @@ final class GIFController {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.writeObjects([item])
         self.view.flash("Copied the GIF (\(Self.size(result.data.count)))")
+        self.onMade?(url)
       } catch {
         self.view.flash("The GIF couldn't be copied: \(error.localizedDescription)")
       }

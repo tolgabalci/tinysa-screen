@@ -133,9 +133,12 @@ held half a second is a long press (a right-click in the window is one). Your pr
 1. Reads `taps` like a log that starts over: at first from its end (clicks from before are old), then on from where it
    was, whole lines only (the last one may still be on its way). When the file is another one (its inode changed: the
    app starts a new one when it opens, and when it has grown large) or shorter than where you were, from its start.
-2. Types the commands while the analyzer draws nothing, as any command, each touch held as long as it was clicked: when
-   a touch and its release come together (your program was busy), wait the difference before the release, or a long
-   press becomes a tap.
+2. Types the commands while the analyzer draws nothing, as any command, as far apart as they were clicked: when a
+   touch and its release come together (your program was busy), wait the difference before the release, or a long
+   press becomes a tap; and when a release and the next touch come together, wait the difference before the touch, or
+   two quick clicks become one long press. The app dates a release 0.4 s after its touch at least, and a touch 0.1 s
+   after the release before it: the analyzer sees a touch only when its UI next looks, and loses one released before
+   then, and while a touch is down it looks for the release every 20 ms.
 3. Doesn't wait for a sweep while a touch is down: the analyzer stops sweeping until the release.
 4. Leaves out a touch clicked more than 5 seconds ago (it came while you couldn't pass it on), but never the release of
    a touch it typed. A touch down 10 seconds with nothing new is released by your program (the app quit mid-click), and
