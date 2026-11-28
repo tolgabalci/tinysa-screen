@@ -357,7 +357,9 @@ struct PeakPicture {
     }
     for (lines, place) in zip(labels, places) {
       let rect = place.rect
-      drawBox(lines, x: Int(rect.minX), y: Int(rect.minY), width: Int(rect.width), padding: padding, into: &pixels)
+      drawBox(
+        lines, x: Int(rect.minX), y: Int(rect.minY), width: Int(rect.width), padding: padding, centred: true,
+        into: &pixels)
     }
   }
 
@@ -395,15 +397,17 @@ struct PeakPicture {
     for i in pixels.indices where mask[i] { pixels[i] = ink }
   }
 
-  /// White words on black in a box edged in the hold's colour.
+  /// White words on black in a box edged in the hold's colour, each line `centred` (a label's) or from the left.
   private func drawBox(
-    _ lines: [String], x: Int, y: Int, width boxWidth: Int, padding: Int, into pixels: inout [UInt32]
+    _ lines: [String], x: Int, y: Int, width boxWidth: Int, padding: Int, centred: Bool = false,
+    into pixels: inout [UInt32]
   ) {
     let boxHeight = lines.count * lineHeight + 2 * padding
     fill((x, y, boxWidth, boxHeight), color, into: &pixels)
     fill((x + 1, y + 1, boxWidth - 2, boxHeight - 2), Self.black, into: &pixels)
     for (i, line) in lines.enumerated() {
-      write(line, x: x + padding, y: y + padding + i * lineHeight, ink: Self.white, over: Self.black, into: &pixels)
+      let left = centred ? x + (boxWidth - measure(line)) / 2 : x + padding
+      write(line, x: left, y: y + padding + i * lineHeight, ink: Self.white, over: Self.black, into: &pixels)
     }
   }
 

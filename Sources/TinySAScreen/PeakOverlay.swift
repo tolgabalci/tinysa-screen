@@ -69,10 +69,11 @@ final class PeakOverlay {
       marks.addSublayer(ring(around: point(peak.column, peak.row), scale: scale))
     }
     guard readouts != .labels else {
-      // Beside each peak: when, the megahertz and the level, placed as a GIF places them (top-down in the picture).
+      // Beside each peak: when, the megahertz and the level, centred, placed as a GIF places them (top-down in the
+      // picture).
       let padding = 2 * scale
       let texts = state.peaks.map {
-        text($0.label().joined(separator: "\n"), font: font, color: .white, contentsScale: contentsScale)
+        text($0.label().joined(separator: "\n"), font: font, color: .white, contentsScale: contentsScale, centred: true)
       }
       let sizes = texts.map { text in
         let size = text.preferredFrameSize()
@@ -198,9 +199,19 @@ final class PeakOverlay {
     return box
   }
 
-  private func text(_ string: String, font: NSFont, color: NSColor, contentsScale: CGFloat) -> CATextLayer {
+  /// Words for a layer, `centred` line by line (a label's), else from the left.
+  private func text(
+    _ string: String, font: NSFont, color: NSColor, contentsScale: CGFloat, centred: Bool = false
+  ) -> CATextLayer {
     let layer = CATextLayer()
-    layer.string = NSAttributedString(string: string, attributes: [.font: font, .foregroundColor: color])
+    var attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color]
+    if centred {
+      let paragraph = NSMutableParagraphStyle()
+      paragraph.alignment = .center
+      attributes[.paragraphStyle] = paragraph
+      layer.alignmentMode = .center
+    }
+    layer.string = NSAttributedString(string: string, attributes: attributes)
     layer.contentsScale = contentsScale
     layer.isWrapped = false
     return layer

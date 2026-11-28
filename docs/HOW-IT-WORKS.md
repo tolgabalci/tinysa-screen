@@ -184,17 +184,17 @@ analyzer cut its sweep short, and a feeding program's pictures are all there is 
   higher ground) and above the trace's median, its noise. Each column's held level keeps the time of the sweep that
   first reached it, so each peak has the time its level came in; the box lists the peaks in that order.
 - **Drawn into a GIF or a screenshot** as the window draws it (`PeakPicture`): the line in the hold's colour edged in
-  black, crisp; the tags, boxes and labels opaque, their words in eight shades over them, so a GIF's colours stay
-  exact. The recorder keeps the hold's changes with the frames (and always the latest, so a recording knows it from
-  its start), and each moment of a GIF draws the hold as it was then. Labels beside peaks are placed oldest peak first:
-  beside its top, right, left or just above, clear of the labels placed, their arrows and every peak's top (the
-  graph's lines may go under one). Where none of those is clear, the best spot nearby, slid inside the graph at its
-  edges: touching the top (within 2.5 times the gap a label keeps from its peak, and clearly nearer its own top than
-  any other's), with no arrow; or far enough for an arrow to show its line as well as its head (5 times that gap),
-  the arrow short and angled or upright (a level one counts four times as long, a shallow one half as long again;
-  below the top a quarter longer than above), passing behind no label. Nothing in between: an arrow too short is only
-  its head. Close over the graph beats clear and far. The arrows are in a colour of their own, orange unless chosen
-  otherwise, so none is taken for the held line.
+  black, crisp; the tags, boxes and labels opaque, their words in eight shades over them, so a GIF's colours stay exact.
+  The recorder keeps the hold's changes with the frames (and always the latest, so a recording knows it from its start),
+  and each moment of a GIF draws the hold as it was then. Labels beside peaks, their lines centred, are placed oldest
+  peak first: beside its top, right, left or just above, clear of the labels placed, their arrows and every peak's top
+  (the graph's lines may go under one). Where none of those is clear, the best spot nearby, slid inside the graph at its
+  edges: touching the top (within 2.5 times the gap a label keeps from its peak, and clearly nearer its own top than any
+  other's), with no arrow; or far enough for an arrow to show its line as well as its head (5 times that gap), the arrow
+  short and angled or upright (a level one counts four times as long, a shallow one half as long again; below the top a
+  quarter longer than above), passing behind no label. Nothing in between: an arrow too short is only its head. Close
+  over the graph beats clear and far. The arrows are in a colour of their own, orange unless chosen otherwise, so none
+  is taken for the held line.
 - **New peak capture** (`Clip.peaksCapturedAfresh`): the GIF's frames from its start replayed through a hold of their
   own, the frame showing at the start taken as coming in then, holding levels as long as the window's hold did. Each
   frame's labels say what the window's hold had read them to say just after it (they aren't read again), and a span

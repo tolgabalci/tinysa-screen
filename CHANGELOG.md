@@ -73,10 +73,10 @@ All notable changes are listed here, newest first. Versions follow [Semantic Ver
   before its start included.
 - Each peak has the time its level came in, and the Peaks button, a menu now like Band (or Settings › Peak hold ›
   Show peaks as), chooses how they show, or none:
-  - Labels beside the peaks (11:09:21 / 911 MHz / −58 dBm), the first choice. Where peaks crowd together, a newer
-    peak's label goes close by, over the graph if need be: touching its peak with no arrow where that's clearly its
-    own, else far enough for an arrow that shows, angled or upright rather than level, passing behind no other label,
-    in a colour of its own (orange unless Settings › Peak hold › Arrows says otherwise).
+  - Labels beside the peaks (11:09:21 / 911 MHz / −58 dBm, each line centred in its label), the first choice. Where
+    peaks crowd together, a newer peak's label goes close by, over the graph if need be: touching its peak with no arrow
+    where that's clearly its own, else far enough for an arrow that shows, angled or upright rather than level, passing
+    behind no other label, in a colour of its own (orange unless Settings › Peak hold › Arrows says otherwise).
   - A box over the graph, as before: the hold's period ("Peak hold, last 1:00"; "since" is gone), then the peaks in
     the order they came in, a line each: number, time to the second, frequency, level.
   - A list beside the screen, the window wider for it: every peak since the app started, a row each, never taken
