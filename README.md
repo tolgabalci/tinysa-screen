@@ -105,14 +105,11 @@ That builds the app and puts it in `~/Applications`, where Spotlight finds it.
 
 ### Using the analyzer with your mouse
 
-The picture is the analyzer's touch screen. Click it and the tinySA reacts as if you tapped its glass: here the main
-menu, opened from the Mac. Hold the mouse button to keep touching, to drag a marker along the trace, say, and a touch
-held half a second is a long press (on the keypad, the erase key then clears the whole entry). A right-click, a
-two-finger click or a Control-click is a long press without holding. Esc takes the analyzer back to its main screen:
-a number you're typing is cancelled and an open menu closes. Clicks go through even while the call's window is the
-active one.
-
-![The analyzer's main menu, opened by a click in tinySA Screen](docs/images/window-menu.jpg)
+The picture is the analyzer's touch screen. Click it and the tinySA reacts as if you tapped its glass. Hold the mouse
+button to keep touching, to drag a marker along the trace, say, and a touch held half a second is a long press (on the
+keypad, the erase key then clears the whole entry). A right-click, a two-finger click or a Control-click is a long press
+without holding. Esc takes the analyzer back to its main screen: a number you're typing is cancelled and an open menu
+closes. Clicks go through even while the call's window is the active one.
 
 When no live picture can come, a note over the picture says why: no tinySA on USB, another program using it, or the
 analyzer lent to a program for a while. Quit tinySA Screen before you unplug the analyzer or hand it to another program
