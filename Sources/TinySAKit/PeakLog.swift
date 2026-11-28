@@ -27,15 +27,18 @@ public struct PeakLog: Sendable {
 
   public init() {}
 
-  /// The hold as it is now (nil when it's off or starting over) into the list; whether the list changed.
+  /// The hold as it is now (nil when it's off or starting over) into the list; whether the list changed. While its
+  /// labels are being read, the list waits for them.
   @discardableResult
   public mutating func update(with state: PeakHold.State?) -> Bool {
     let (before, beforeTitle) = (entries, title)
-    if let state { title = state.title }
-    guard let state, let scale = state.scale else {
+    guard let state else {
       for i in entries.indices { entries[i].held = false }
       return entries != before || title != beforeTitle
     }
+    title = state.title
+    // Labels being read (other levels, another span): the rows wait for them, held as they were.
+    guard let scale = state.scale else { return title != beforeTitle }
     let width = state.graph.right - state.graph.left
     let perColumn = Double(scale.stop - scale.start) / Double(max(width - 1, 1))
     let near = max(3, width / 50)

@@ -87,6 +87,12 @@ All notable changes are listed here, newest first. Versions follow [Semantic Ver
 - The analyzer's menu was read as the trace: its buttons down the screen's right side held as peaks at the top of the
   graph (+10 dBm), and opening it could start the hold over. Nothing is read from under a menu now, nor while a
   keypad is open, which started the hold over too.
+- The peak hold keeps its peaks when the analyzer's levels change. With the tinySA's automatic reference level on,
+  strong signals raised the reference level and their end lowered it again, and each change started the hold over: every
+  peak gone at once, a while after the signals had stopped. Held levels now move to where they are on the new scale,
+  keeping their numbers and times (one above the new top stays at the top), as they do when the decibels a division or
+  the waterfall's size change; another span still starts the hold over. The hold also writes what changes it wholesale
+  to the Mac's log (subsystem io.github.tolgabalci.tinysa-screen).
 - In the editor, a double click on an end of the GIF takes it to the recording's very start or very end.
 
 ## 1.3.3 (2026-11-27)

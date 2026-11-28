@@ -1,10 +1,14 @@
 import Foundation
+import os
 
 /// The highest level the analyzer's live trace has reached at each point of the graph, held on the Mac: from the
 /// screen's pixels after each sweep, so the analyzer's own traces, markers and settings are left as they are, and fed
 /// pictures work as well as the analyzer on USB. Its highest peaks are found and, once the screen's labels are read,
-/// given their frequency and level. The hold starts over when the span or the levels change, and can keep only the
-/// latest seconds. Frames come from the session's thread; `onChange` is called there.
+/// given their frequency and level. The hold starts over when the span changes; when the levels change (the reference
+/// level, by hand or by the analyzer's automatic reference level, the decibels a division, the waterfall's size), what
+/// it holds moves to where those levels are now. It can keep only the latest seconds. Frames come from the session's
+/// thread; `onChange` is called there. What changes the hold wholesale is logged (subsystem
+/// io.github.tolgabalci.tinysa-screen, category "peak hold").
 public final class PeakHold: @unchecked Sendable {
   public struct Peak: Equatable, Sendable {
     /// Its number on the screen, as an analyzer's marker stays on its peak: kept while the hold holds the peak (moved
@@ -119,6 +123,20 @@ public final class PeakHold: @unchecked Sendable {
     self.readsLabels = readsLabels
   }
 
+  private static let log = Logger(subsystem: "io.github.tolgabalci.tinysa-screen", category: "peak hold")
+
+  /// What changes the hold wholesale, for the Mac's log (`log show --predicate 'subsystem ==
+  /// "io.github.tolgabalci.tinysa-screen"' --last 1h`): the live hold's, not a replay's.
+  private func note(_ message: @autoclosure () -> String) {
+    guard readsLabels else { return }
+    let message = message()
+    Self.log.notice("\(message, privacy: .public)")
+  }
+
+  /// The peaks numbered before what's shown was kept apart (the labels changed to ones not read yet), numbered again
+  /// when the labels turn out to be the same span's.
+  private var numberedBefore: [Peak]?
+
   /// The span and levels the labels of `screen` say, read before (by the recording's own hold): not read again.
   public func know(_ scale: GraphScale, for screen: Snapshot) {
     guard let graph = Graph.find(on: screen) else { return }
@@ -134,6 +152,7 @@ public final class PeakHold: @unchecked Sendable {
         holdWindow = newValue.map { max(1, $0) }
         startOver()
       }
+      note("Hold period now \(newValue.map { "\(Int($0)) s" } ?? "until cleared"): starting over")
       onChange?(nil)
     }
   }
@@ -149,6 +168,7 @@ public final class PeakHold: @unchecked Sendable {
   /// Starts the hold over.
   public func reset() {
     lock.locked { startOver() }
+    note("Cleared (Clear Peaks, or the hold turned off): starting over")
     onChange?(nil)
   }
 
@@ -159,26 +179,79 @@ public final class PeakHold: @unchecked Sendable {
     heldSince = nil
     apartSince = nil
     numbered.removeAll()
+    numberedBefore = nil
     current = nil
     labels = nil
     rowsScale = nil
     latest = nil
   }
 
-  /// Labels read, now or before: the rows kept apart join the held ones under the same span and levels, and replace
-  /// them under others.
-  private func settle(_ scale: GraphScale, at time: Date) {
+  /// Labels read, now or before, on `graph`: the rows kept apart join the held ones under the same span and levels. At
+  /// other levels of the same span (the reference level changed, by hand or by the analyzer's automatic reference
+  /// level, the decibels a division, the waterfall's size), the held ones move first to where their levels are now;
+  /// under another span the ones kept apart replace them.
+  private func settle(_ scale: GraphScale, at time: Date, graph: Graph) {
     defer {
       rowsScale = scale
       apart.removeAll()
       apartSince = nil
+      numberedBefore = nil
     }
     guard let rowsScale, rowsScale != scale else {
       buckets += apart
+      if let numberedBefore { numbered = numberedBefore }
       return
     }
-    buckets = apart
-    heldSince = apartSince ?? time
+    guard rowsScale.start == scale.start, rowsScale.stop == scale.stop else {
+      note(
+        "Another span, \(Self.span(scale)) (was \(Self.span(rowsScale))): starting over"
+          + (apartSince.map { ", from \(Self.clock($0))" } ?? ""))
+      buckets = apart
+      heldSince = apartSince ?? time
+      numbered.removeAll()  // another span's peaks aren't the ones before
+      return
+    }
+    note(
+      "Other levels, \(Self.levels(scale)) (were \(Self.levels(rowsScale))): what's held moved to them, "
+        + "\(Self.span(scale)) as before")
+    buckets = buckets.map { Self.move($0, from: rowsScale, to: scale, on: graph) } + apart
+    if let numberedBefore { numbered = numberedBefore }
+  }
+
+  /// A bucket's rows at other levels: each where its level is now, at the graph's top or bottom when it's beyond them
+  /// (as the analyzer draws a trace beyond them).
+  private static func move(_ bucket: Bucket, from old: GraphScale, to new: GraphScale, on graph: Graph) -> Bucket {
+    var bucket = bucket
+    bucket.rows = bucket.rows.map { row in
+      row.map { row in
+        let level = old.level(atRow: Double(row))
+        let moved = ((level - new.level0) / new.perRow).rounded()
+        return Int(min(max(moved, Double(graph.top)), Double(graph.bottom)))
+      }
+    }
+    return bucket
+  }
+
+  /// For the log: "902.000–928.000 MHz".
+  private static func span(_ scale: GraphScale) -> String {
+    String(format: "%.3f–%.3f MHz", Double(scale.start) / 1e6, Double(scale.stop) / 1e6)
+  }
+
+  /// For the log: "+10.0 dBm at row 0, -0.417 dB a row".
+  private static func levels(_ scale: GraphScale) -> String {
+    String(format: "%+.1f dBm at row 0, %.3f dB a row", scale.level0, scale.perRow)
+  }
+
+  /// For the log: "rows 0–240, 24 a division".
+  private static func rows(_ graph: Graph) -> String {
+    let step = graph.gridRows.count > 1 ? graph.gridRows[1] - graph.gridRows[0] : 0
+    return "rows \(graph.top)–\(graph.bottom), \(step) a division"
+  }
+
+  private static func clock(_ time: Date) -> String {
+    let formatter = DateFormatter()
+    formatter.dateFormat = "HH:mm:ss.SSS"
+    return formatter.string(from: time)
   }
 
   /// Numbers for the peaks found (highest first), as an analyzer's markers stay on their peaks: a peak within 2 % of
@@ -258,7 +331,21 @@ public final class PeakHold: @unchecked Sendable {
     let print = graph.labelPrint(on: screen)
     let state = lock.locked { () -> State? in
       if let known { scales[print] = known }
-      if let current, current.graph != graph { startOver() }  // another layout (the waterfall's size changed)
+      // Another layout: the grid's rows elsewhere with the same columns (the waterfall's size changed) keeps what's
+      // held, moved to the levels there, when both layouts' labels have been read; else it starts over.
+      if let current, current.graph != graph {
+        let sameColumns = current.graph.left == graph.left && current.graph.right == graph.right
+        if sameColumns, rowsScale != nil, scales[print] != nil {
+          note(
+            "The graph's rows changed (\(Self.rows(current.graph)), now \(Self.rows(graph)): the waterfall's size): "
+              + "what's held moves with the levels")
+        } else {
+          note(
+            "The graph changed (columns \(current.graph.left)–\(current.graph.right), \(Self.rows(current.graph)); "
+              + "now \(graph.left)–\(graph.right), \(Self.rows(graph))): starting over")
+          startOver()
+        }
+      }
       frames += 1
       let frame = Frame(screen: screen, graph: graph, print: print, number: frames)
       latest = frame
@@ -274,10 +361,13 @@ public final class PeakHold: @unchecked Sendable {
         unread = frame
       }
       let scale = scales[print]
+      if changed { note(scale == nil ? "The labels changed: reading them" : "The labels changed to ones read before") }
       if let scale {
-        settle(scale, at: time)
+        settle(scale, at: time, graph: graph)
       } else if changed, apartSince == nil, !buckets.isEmpty {
+        note("Meanwhile only what comes in shows, the rest held apart")
         apartSince = time
+        numberedBefore = numbered
         numbered.removeAll()  // what's shown now may be another span: its peaks aren't the ones before
       }
       if heldSince == nil { heldSince = time }
@@ -358,12 +448,15 @@ public final class PeakHold: @unchecked Sendable {
   /// shown (the new state, to tell). Under the lock.
   private func finishRead(_ job: Frame, _ scale: GraphScale?) -> State? {
     reading = false
-    guard let scale else { return nil }  // unreadable (a menu over the labels): no readouts until they're back
+    guard let scale else {
+      note("The labels couldn't be read (a menu over them, say): read again later")
+      return nil  // unreadable: no readouts until they're back
+    }
     if scales.count > 32 { scales.removeAll() }
     scales[job.print] = scale
     // Labels that changed again meanwhile are read next.
     guard var state = current, state.graph == job.graph, job.print == labels else { return nil }
-    settle(scale, at: Date())
+    settle(scale, at: Date(), graph: job.graph)
     (state.rows, state.times) = Self.highest(buckets, count: state.rows.count)
     state.since = heldSince ?? state.since
     state.scale = scale

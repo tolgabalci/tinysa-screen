@@ -45,6 +45,19 @@ final class PeakLogTests: XCTestCase {
     XCTAssertFalse(log.update(with: nil), "nothing changed")
   }
 
+  /// While the hold reads new labels (other levels, another span), the list waits: its peaks stay held, no row added.
+  func testTheListWaitsWhileLabelsAreRead() {
+    var log = PeakLog()
+    log.update(with: state([peak(1, at: 100, 905, -40, 0)]))
+    var reading = state([peak(1, at: 100, 905, -40, 0)])
+    reading.scale = nil
+    XCTAssertFalse(log.update(with: reading))
+    XCTAssertEqual(log.entries.count, 1)
+    XCTAssertTrue(log.entries[0].held)
+    log.update(with: state([peak(1, at: 100, 905, -40, 0)]))
+    XCTAssertEqual(log.entries.count, 1, "the same row, not a new one")
+  }
+
   /// The CSV: a header, then a row a peak, its date and time to the second with AM or PM, its megahertz as the list
   /// shows them, its level with a plain minus.
   func testTheListAsACSVFile() {

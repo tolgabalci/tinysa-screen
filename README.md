@@ -207,9 +207,14 @@ a menu, or from the screen while a keypad is open.
   cleared (View › Clear Peak Hold, ⌥⌘⌫).
 - **Its colour**: cyan, the one colour none of the analyzer's own traces has (they're yellow, green, red and magenta),
   so the held line never passes for one of them, a green max hold say. Settings › Peak hold › Color chooses another.
-- **Another span or other levels** (a band chosen, the reference level changed) start it over, from the first sweep
-  on them: until their labels are read, the line shows only what came since, never the old span's levels. A menu
-  opened over the labels for a while doesn't lose what was held.
+- **Other levels keep what's held**: when the reference level changes (by hand, or by the analyzer's automatic reference
+  level as strong signals come and go), or the decibels a division, or the waterfall's size (to one whose labels were
+  read before), each held level moves to where it is on the new scale, its peak keeping its number and time; one above
+  the new top stays at the top, as the analyzer draws it. Until new levels' labels are read, the line shows only what
+  came since.
+- **Another span** (a band chosen) starts it over, from the first sweep on it: until its labels are read, the line shows
+  only what came since, never the old span's levels. A menu opened over the labels for a while doesn't lose what was
+  held.
 
 Settings also chooses how many peaks to label (up to 9). Screenshots show the peak hold while it's on (at twice the
 screen's size, so it can be read; Settings › Peak hold › In screenshots too), and GIFs show it where it was on, unless
