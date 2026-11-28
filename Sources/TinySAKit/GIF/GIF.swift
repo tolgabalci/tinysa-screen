@@ -13,13 +13,15 @@ public struct GIFOptions: Hashable, Sendable {
   public var showsProgress: Bool
   /// Played in a loop, or once.
   public var loops: Bool
-  /// Seconds the last frame is held at the end; longer than a second, "End of recording" shows in red in the strip.
+  /// Seconds the last frame is held at the end; longer than a second, "END OF RECORDING" shows in red in the strip.
   public var pauseAtEnd: TimeInterval
   /// Times faster than it happened it plays, 1 to 20: a minute at 10 plays in 6 seconds.
   public var speed: Double
   /// Frames a second of its playing at most, 1 to 10, for a smaller file when it plays faster; nil, every frame of the
   /// recording (up to 50 a second of playing, as many as players show).
   public var framesPerSecond: Int?
+  /// The peak hold drawn over the screen as the window draws it, for a clip recorded with it on; nil, none.
+  public var peaks: PeakLook?
   /// The formats of the date and time: the Mac's own, by default.
   public var locale: Locale
   public var timeZone: TimeZone
@@ -29,8 +31,8 @@ public struct GIFOptions: Hashable, Sendable {
   public init(
     scale: Int = 1, showsDate: Bool = true, showsTime: Bool = true, showsElapsed: Bool = false,
     showsProgress: Bool = false, loops: Bool = true,
-    pauseAtEnd: TimeInterval = 0, speed: Double = 1, framesPerSecond: Int? = nil, locale: Locale = .current,
-    timeZone: TimeZone = .current, comment: String? = nil
+    pauseAtEnd: TimeInterval = 0, speed: Double = 1, framesPerSecond: Int? = nil, peaks: PeakLook? = nil,
+    locale: Locale = .current, timeZone: TimeZone = .current, comment: String? = nil
   ) {
     self.scale = scale
     self.showsDate = showsDate
@@ -41,6 +43,7 @@ public struct GIFOptions: Hashable, Sendable {
     self.pauseAtEnd = pauseAtEnd
     self.speed = speed
     self.framesPerSecond = framesPerSecond
+    self.peaks = peaks
     self.locale = locale
     self.timeZone = timeZone
     self.comment = comment
@@ -155,6 +158,15 @@ public enum GIF {
     var shown: [UInt32]?
     var shownFrame = -1
     var shownCaption: [UInt32]?
+    // The peak hold over the screen, drawn again each time it changed: its pixels, and the drawing shown last.
+    let peakPicture = options.peaks.flatMap { look in
+      clip.hasPeaks
+        ? PeakPicture(
+          width: canvasWidth, height: screenHeight, scale: scale, look: look, locale: options.locale,
+          timeZone: options.timeZone) : nil
+    }
+    var peaks: (state: PeakHold.State?, pixels: [UInt32]?, drawing: Int) = (nil, nil, 0)
+    var shownPeaks: (pixels: [UInt32]?, drawing: Int) = (nil, 0)
     for (k, event) in events.enumerated() {
       if k % 16 == 0, stop() { return nil }
       progress(Double(k) / Double(events.count))
@@ -163,6 +175,10 @@ public enum GIF {
       guard let pixels else { continue }
       var strip: [UInt32]?
       if let words = caption?.words(event.caption) { strip = caption?.pixels(for: words) }
+      if let peakPicture {
+        let state = clip.peaks(at: event.caption.clock)
+        if state != peaks.state { peaks = (state, state.map { peakPicture.pixels(for: $0) }, peaks.drawing + 1) }
+      }
 
       // The rows that changed: the screen's, at the GIF's size, and the strip's under it.
       var rows: Range<Int>?
@@ -178,13 +194,29 @@ public enum GIF {
           shownCaption.map { changedRows($0, strip, width: canvasWidth, height: stripHeight) } ?? 0..<stripHeight
         if let changed { rows = rows.spanning(changed.lowerBound + screenHeight..<changed.upperBound + screenHeight) }
       }
+      if peaks.drawing != shownPeaks.drawing {
+        let none = [UInt32](repeating: 0, count: canvasWidth * screenHeight)
+        if let changed = changedRows(
+          shownPeaks.pixels ?? none, peaks.pixels ?? none, width: canvasWidth, height: screenHeight)
+        {
+          rows = rows.spanning(changed)
+        }
+      }
       guard let rows else { continue }  // nothing changed: the frame before stays up longer
 
       // Each pixel's own colour, across the whole width.
       var own = [UInt8](repeating: 0, count: canvasWidth * rows.count)
       var i = 0
       for y in rows {
-        if y < screenHeight {
+        if y < screenHeight, let over = peaks.pixels {
+          let row = (y / scale) * width
+          let top = y * canvasWidth
+          for x in 0..<canvasWidth {
+            let hold = over[top + x]
+            own[i] = palette.index(hold != 0 ? hold : pixels[row + x / scale])
+            i += 1
+          }
+        } else if y < screenHeight {
           let row = (y / scale) * width
           for x in 0..<canvasWidth {
             own[i] = palette.index(pixels[row + x / scale])
@@ -202,6 +234,7 @@ public enum GIF {
       shown = pixels
       shownFrame = event.frame
       shownCaption = strip
+      shownPeaks = (peaks.pixels, peaks.drawing)
     }
     progress(1)
     let duration = options.playingTime(of: clip.duration)
@@ -216,8 +249,11 @@ public enum GIF {
     still(screen, caption: Caption(clock: moment), options: options)
   }
 
-  /// A frame as the GIF shows it, the strip under it saying `caption`: for a preview.
-  public static func still(_ screen: Snapshot, caption: Caption, options: GIFOptions) -> Snapshot {
+  /// A frame as the GIF shows it, the strip under it saying `caption`, the peak hold over it as `options.peaks` say:
+  /// for a preview, or a screenshot.
+  public static func still(
+    _ screen: Snapshot, caption: Caption, options: GIFOptions, peaks: PeakHold.State? = nil
+  ) -> Snapshot {
     let scale = min(max(options.scale, 1), 4)
     let width = screen.width * scale
     var strip = CaptionStrip(width: width, scale: scale, options: options)
@@ -226,6 +262,12 @@ public enum GIF {
     for y in 0..<screenHeight {
       let row = (y / scale) * screen.width
       for x in 0..<width { pixels[y * width + x] = screen.pixels[row + x / scale] }
+    }
+    if let look = options.peaks, let peaks {
+      let hold = PeakPicture(
+        width: width, height: screenHeight, scale: scale, look: look, locale: options.locale,
+        timeZone: options.timeZone)
+      for (i, pixel) in hold.pixels(for: peaks).enumerated() where pixel != 0 { pixels[i] = pixel }
     }
     if let words = strip?.words(caption), let colors = strip?.pixels(for: words) {
       for (i, color) in colors.enumerated() { pixels[screenHeight * width + i] = color }

@@ -142,6 +142,16 @@ final class ScreenView: NSView {
     }
   }
 
+  /// The peak hold's readouts listed in a box, the peaks numbered; or beside each peak.
+  var peaksListed: Bool {
+    get { peaks.listed }
+    set {
+      guard newValue != peaks.listed else { return }
+      peaks.listed = newValue
+      drawPeaks()
+    }
+  }
+
   private func drawPeaks() {
     let (rect, scale) = pictureRect
     peaks.show(peakState, in: rect, scale: scale, contentsScale: window?.backingScaleFactor ?? 2)
@@ -226,14 +236,9 @@ final class ScreenView: NSView {
     case .pen: text += ", pen on"
     case .none: break
     }
-    if let state = peakState, let scale = state.scale {
-      let span = Double(scale.stop - scale.start) / Double(max(state.graph.right - state.graph.left - 1, 1))
-      let peaks = state.peaks.sorted { $0.number < $1.number }.compactMap { peak -> String? in
-        guard let frequency = peak.frequency, let level = peak.level else { return nil }
-        return "\(peak.number) " + PeakOverlay.frequency(frequency, resolution: span) + " "
-          + PeakOverlay.level(level, resolution: abs(scale.perRow))
-      }
-      text += ". " + PeakOverlay.title(state) + ": " + (peaks.isEmpty ? "no peaks" : peaks.joined(separator: "; "))
+    if let state = peakState, state.scale != nil {
+      let readouts = state.readouts()
+      text += ". " + state.title + ": " + (readouts.isEmpty ? "no peaks" : readouts.joined(separator: "; "))
     }
     return text
   }

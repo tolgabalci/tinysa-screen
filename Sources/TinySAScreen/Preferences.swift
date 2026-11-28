@@ -23,6 +23,9 @@ enum Preferences {
     static let peakWindow = "peakWindow"
     static let peakCount = "peakCount"
     static let peakColor = "peakColor"
+    static let peakListed = "peakListed"
+    static let screenshotPeaks = "screenshotPeaks"
+    static let gifShowsPeaks = "gifShowsPeaks"
     static let saveFolderBookmark = "saveFolderBookmark"
     static let saveFolderPath = "saveFolderPath"
     static let editorWidth = "editorWidth"
@@ -51,6 +54,9 @@ enum Preferences {
       Key.peakWindow: 60,  // the latest minute, as a monitor holds peaks; 0 keeps them until cleared
       Key.peakColor: PeakColor.cyan.rawValue,
       Key.peakCount: 5,
+      Key.peakListed: true,
+      Key.screenshotPeaks: true,
+      Key.gifShowsPeaks: true,
     ])
   }
 
@@ -84,12 +90,25 @@ enum Preferences {
   /// Seconds the last frame is held, 0 to 10.
   static var gifPauseAtEnd: Int { min(max(defaults.integer(forKey: Key.gifPauseAtEnd), 0), 10) }
 
-  /// How GIFs look and play, as Settings and the editor last left them: at their own speed, every frame.
+  /// How GIFs look and play, as Settings and the editor last left them: at their own speed, every frame; the peak
+  /// hold drawn over the screen where it was on, unless turned off.
   static var gifOptions: GIFOptions {
     GIFOptions(
       scale: gifScale, showsDate: gifShowsDate, showsTime: gifShowsTime, showsElapsed: gifShowsElapsed,
-      showsProgress: gifShowsProgress, loops: gifLoops, pauseAtEnd: TimeInterval(gifPauseAtEnd))
+      showsProgress: gifShowsProgress, loops: gifLoops, pauseAtEnd: TimeInterval(gifPauseAtEnd),
+      peaks: defaults.bool(forKey: Key.gifShowsPeaks) ? peakLook : nil)
   }
+
+  /// The peak hold's look: its colour, its readouts in a box or beside each peak.
+  static var peakLook: PeakLook {
+    PeakLook(color: peakColor.gifColor, listed: defaults.bool(forKey: Key.peakListed))
+  }
+
+  /// The peak hold's readouts listed in a box, the peaks numbered; or beside each peak.
+  static var peakListed: Bool { defaults.bool(forKey: Key.peakListed) }
+
+  /// Screenshots show the peak hold while it's on.
+  static var screenshotPeaks: Bool { defaults.bool(forKey: Key.screenshotPeaks) }
 
   /// Seconds a pen stroke stays before it fades.
   static var inkSeconds: Int { min(max(defaults.integer(forKey: Key.inkSeconds), 1), 30) }
@@ -179,6 +198,13 @@ enum PeakColor: String, CaseIterable, Identifiable {
     case .red: return NSColor(srgbRed: 1, green: 0.3, blue: 0.3, alpha: 1)
     case .white: return NSColor(white: 0.95, alpha: 1)
     }
+  }
+
+  /// The colour in a GIF or a screenshot.
+  var gifColor: PeakLook.Color {
+    let rgb = color.usingColorSpace(.sRGB) ?? color
+    func byte(_ value: CGFloat) -> UInt8 { UInt8((min(max(value, 0), 1) * 255).rounded()) }
+    return PeakLook.Color(red: byte(rgb.redComponent), green: byte(rgb.greenComponent), blue: byte(rgb.blueComponent))
   }
 
   /// A dot of the colour, for menus.

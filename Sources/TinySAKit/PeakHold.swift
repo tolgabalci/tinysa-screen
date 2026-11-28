@@ -16,12 +16,16 @@ public final class PeakHold: @unchecked Sendable {
     /// Read from the screen's labels; nil until they are.
     public var frequency: Int64?
     public var level: Double?
+    /// When its level came in: the sweep that first reached it, held since.
+    public var time: Date?
   }
 
   public struct State: Equatable, Sendable {
     public var graph: Graph
     /// The highest row reached in each column (the top is row 0), nil where nothing has been seen.
     public var rows: [Int?]
+    /// When each column's highest row came in: the sweep that first reached it.
+    public var times: [Date?]
     public var scale: GraphScale?
     /// The highest peaks, highest first, each with its number.
     public var peaks: [Peak]
@@ -33,10 +37,31 @@ public final class PeakHold: @unchecked Sendable {
     /// top): its top left corner, in the screen's pixels.
     public var quietSpot = (x: 0, y: 0)
 
-    public static func == (a: State, b: State) -> Bool {
-      a.graph == b.graph && a.rows == b.rows && a.scale == b.scale && a.peaks == b.peaks && a.since == b.since
-        && a.window == b.window && a.quietSpot == b.quietSpot
+    public init(
+      graph: Graph, rows: [Int?], times: [Date?]? = nil, scale: GraphScale?, peaks: [Peak], since: Date,
+      window: TimeInterval?, quietSpot: (x: Int, y: Int) = (0, 0)
+    ) {
+      self.graph = graph
+      self.rows = rows
+      self.times = times ?? Array(repeating: nil, count: rows.count)
+      self.scale = scale
+      self.peaks = peaks
+      self.since = since
+      self.window = window
+      self.quietSpot = quietSpot
     }
+
+    public static func == (a: State, b: State) -> Bool {
+      a.graph == b.graph && a.rows == b.rows && a.times == b.times && a.scale == b.scale && a.peaks == b.peaks
+        && a.since == b.since && a.window == b.window && a.quietSpot == b.quietSpot
+    }
+  }
+
+  /// A second's highest rows (or the whole hold's), and when each came in.
+  private struct Bucket {
+    var second: Int
+    var rows: [Int?]
+    var times: [Date?]
   }
 
   /// The size of the readouts' box, in the screen's pixels, for `peakCount` peaks.
@@ -50,12 +75,12 @@ public final class PeakHold: @unchecked Sendable {
   private var count = 5
   private var current: State?
   /// The highest rows of each second (or one bucket for the whole hold), under the labels `rowsScale` was read from.
-  private var buckets: [(second: Int, rows: [Int?])] = []
+  private var buckets: [Bucket] = []
   /// The rows since the labels changed to ones not read yet, kept apart (and shown alone) until they are read: then
   /// they join the held rows under the same span and levels (a menu covered the labels for a while), or replace them
   /// under others (another span), so neither the old span's levels show over the new one nor the new one's first
   /// sweeps are lost.
-  private var apart: [(second: Int, rows: [Int?])] = []
+  private var apart: [Bucket] = []
   /// When the held rows began, and the ones kept apart.
   private var heldSince: Date?
   private var apartSince: Date?
@@ -170,34 +195,52 @@ public final class PeakHold: @unchecked Sendable {
     return peaks
   }
 
-  /// `rows` into the bucket for `second` (one bucket for the whole hold without a window).
-  private static func add(_ rows: [Int?], at second: Int, window: TimeInterval?, to set: inout [(second: Int, rows: [Int?])]) {
-    let key = window == nil ? 0 : second
+  /// `rows`, which came in at `time`, into the bucket for its second (one bucket for the whole hold without a window).
+  private static func add(_ rows: [Int?], at time: Date, window: TimeInterval?, to set: inout [Bucket]) {
+    let key = window == nil ? 0 : Int(time.timeIntervalSinceReferenceDate.rounded(.down))
     if set.last?.second != key || set.last?.rows.count != rows.count {
-      set.append((key, Array(repeating: nil, count: rows.count)))
+      let none = [Int?](repeating: nil, count: rows.count)
+      set.append(Bucket(second: key, rows: none, times: Array(repeating: nil, count: rows.count)))
     }
-    var last = set[set.count - 1].rows
+    var last = set[set.count - 1]
     for i in rows.indices {
-      if let row = rows[i] { last[i] = min(last[i] ?? row, row) }
-    }
-    set[set.count - 1].rows = last
-  }
-
-  /// The highest row of each column over some buckets.
-  private static func highest(_ set: [(second: Int, rows: [Int?])], count: Int) -> [Int?] {
-    var held = [Int?](repeating: nil, count: count)
-    for bucket in set where bucket.rows.count == count {
-      for i in held.indices {
-        if let row = bucket.rows[i] { held[i] = min(held[i] ?? row, row) }
+      if let row = rows[i], row < last.rows[i] ?? .max {
+        last.rows[i] = row
+        last.times[i] = time
       }
     }
-    return held
+    set[set.count - 1] = last
   }
 
-  /// The screen after a sweep.
+  /// The highest row of each column over some buckets, and when it first came in.
+  private static func highest(_ set: [Bucket], count: Int) -> (rows: [Int?], times: [Date?]) {
+    var held = [Int?](repeating: nil, count: count)
+    var times = [Date?](repeating: nil, count: count)
+    for bucket in set where bucket.rows.count == count {
+      for i in held.indices {
+        if let row = bucket.rows[i], row < held[i] ?? .max {
+          held[i] = row
+          times[i] = bucket.times[i]
+        }
+      }
+    }
+    return (held, times)
+  }
+
+  /// The screen after a sweep. What covers the graph isn't the trace: with a keypad over it nothing is read (the
+  /// analyzer doesn't sweep while one is open), and with a menu down its right side nothing from under the menu (its
+  /// buttons and their edges read as levels at the top of the graph, held there as peaks), the graph the one held
+  /// (found with the menu over it, it's narrower, and the hold would start over).
   public func add(_ screen: Snapshot, at time: Date) {
-    guard let graph = Graph.find(on: screen) else { return }
-    let rows = graph.traceRows(on: screen)
+    let covered = ScreenState.of(screen)
+    guard !covered.isKeypad else { return }
+    let held = covered == .menu ? lock.locked { current?.graph } : nil
+    guard let graph = held ?? Graph.find(on: screen) else { return }
+    var rows = graph.traceRows(on: screen)
+    if covered == .menu {
+      let menu = Self.menuLeft(screen)
+      for i in rows.indices where graph.left + i >= menu { rows[i] = nil }
+    }
     let print = graph.labelPrint(on: screen)
     let state = lock.locked { () -> State? in
       if let current, current.graph != graph { startOver() }  // another layout (the waterfall's size changed)
@@ -225,16 +268,17 @@ public final class PeakHold: @unchecked Sendable {
       if heldSince == nil { heldSince = time }
       let second = Int(time.timeIntervalSinceReferenceDate.rounded(.down))
       if apartSince == nil {
-        Self.add(rows, at: second, window: holdWindow, to: &buckets)
+        Self.add(rows, at: time, window: holdWindow, to: &buckets)
       } else {
-        Self.add(rows, at: second, window: holdWindow, to: &apart)
+        Self.add(rows, at: time, window: holdWindow, to: &apart)
       }
       if let holdWindow {
         buckets.removeAll { Double(second - $0.second) >= holdWindow }
         apart.removeAll { Double(second - $0.second) >= holdWindow }
       }
+      let held = Self.highest(apartSince == nil ? buckets : apart, count: rows.count)
       var state = State(
-        graph: graph, rows: Self.highest(apartSince == nil ? buckets : apart, count: rows.count), scale: scale,
+        graph: graph, rows: held.rows, times: held.times, scale: scale,
         peaks: [], since: apartSince ?? heldSince ?? time, window: holdWindow,
         quietSpot: Self.quietSpot(
           screen, graph: graph, size: Self.readoutSize(peaks: count),
@@ -246,6 +290,10 @@ public final class PeakHold: @unchecked Sendable {
     onChange?(state)
     readLabelsIfNeeded()
   }
+
+  /// Where the analyzer's menu begins, its buttons down the screen's right side (80 pixels of the tinySA Ultra's 480),
+  /// a little to the left for their edges.
+  static func menuLeft(_ screen: Snapshot) -> Int { screen.width - screen.width / 6 - 6 }
 
   private func readLabelsIfNeeded() {
     guard let job = lock.locked({ takeJob(orLatest: false) }) else { return }
@@ -300,7 +348,7 @@ public final class PeakHold: @unchecked Sendable {
     // Labels that changed again meanwhile are read next.
     guard var state = current, state.graph == job.graph, job.print == labels else { return nil }
     settle(scale, at: Date())
-    state.rows = Self.highest(buckets, count: state.rows.count)
+    (state.rows, state.times) = Self.highest(buckets, count: state.rows.count)
     state.since = heldSince ?? state.since
     state.scale = scale
     state.peaks = number(Self.peaks(in: state, count: count), width: job.graph.right - job.graph.left)
@@ -402,7 +450,7 @@ public final class PeakHold: @unchecked Sendable {
         ? max(leftValley, rightValley) : leftOpen ? rightValley : rightOpen ? leftValley : min(leftValley, rightValley)
       guard base - row >= minimum, noise - row >= minimum else { continue }
       let column = state.graph.left + i
-      var peak = Peak(column: column, row: row)
+      var peak = Peak(column: column, row: row, time: i < state.times.count ? state.times[i] : nil)
       if let scale = state.scale {
         peak.frequency = scale.frequency(column: column, of: state.graph)
         peak.level = scale.level(atRow: Double(row))

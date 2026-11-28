@@ -57,10 +57,23 @@ All notable changes are listed here, newest first. Versions follow [Semantic Ver
   Mac opens GIFs with, or in the browser when that app would show it still (Preview, the Mac's own choice for GIFs, and
   image editors such as Pixelmator, Photoshop or GIMP) or none does. It pulses for a few seconds when a GIF is saved,
   to show where to find it (with Reduce Motion on, it lights up without pulsing).
-- On macOS 26 and later the app has the Mac's current look. Its toolbar buttons are bright in the window in front
-  (they stayed grey) and stand apart, with room between them (they touched). The app said it was built for macOS 13's
-  SDK, which those versions show in their old look: SwiftPM's build engine linked it without naming the SDK. The
-  build now names it, and stops if the app says otherwise.
+- The title bar's buttons are larger (16-point words and symbols), bright in the window in front and dimmer behind,
+  as other apps' are (they stayed grey in front), with room between them (they touched). The app keeps the look it
+  has on macOS 26 and later, now on purpose: macOS 27 gives an app built for it Liquid Glass with no way out, so the
+  build says macOS 13's SDK (it did by accident before) and stops if it doesn't. Band is a button like the others,
+  its menu below it.
+- Clear Peaks, beside Peaks while the hold is on (⌥⌘⌫), starts the hold over.
+- The peak hold is in screenshots while it's on (at twice the screen's size, so its words can be read; Settings can
+  leave it out), and in GIFs where it was on while recording, drawn as the window drew it at each moment (the
+  editor's Peaks, on unless turned off). The recorder keeps the hold's changes with the frames.
+- Each peak has the time its level came in. The box lists the peaks in the order they came in, a line each: number,
+  time to the second, frequency, level ("Peak hold since" is gone). With Settings › Peak hold › List the peaks in a
+  box off, each peak has a label beside it instead (11:09:21 PM / 911 MHz / −58 dBm); where peaks crowd together, a
+  newer peak's label moves to the nearest clear spot, above first, with an arrow to its peak.
+- The analyzer's menu was read as the trace: its buttons down the screen's right side held as peaks at the top of the
+  graph (+10 dBm), and opening it could start the hold over. Nothing is read from under a menu now, nor while a
+  keypad is open, which started the hold over too.
+- In the editor, a double click on an end of the GIF takes it to the recording's very start or very end.
 
 ## 1.3.3 (2026-11-27)
 

@@ -21,6 +21,8 @@ struct SettingsView: View {
   @AppStorage(Preferences.Key.peakWindow) private var peakWindow = 60
   @AppStorage(Preferences.Key.peakColor) private var peakColor = PeakColor.cyan.rawValue
   @AppStorage(Preferences.Key.peakCount) private var peakCount = 5
+  @AppStorage(Preferences.Key.peakListed) private var peakListed = true
+  @AppStorage(Preferences.Key.screenshotPeaks) private var screenshotPeaks = true
   @AppStorage(Preferences.Key.savedBands) private var savedBandsData = Data()
 
   private var savedBands: [BandPreset] { (try? JSONDecoder().decode([BandPreset].self, from: savedBandsData)) ?? [] }
@@ -51,7 +53,7 @@ struct SettingsView: View {
       } footer: {
         Text(
           "Stop & Save makes GIFs this way. The editor that Stop opens starts with them, and changes them too. A "
-            + "pause longer than a second says \"End of recording\" under the screen. GIFs and screenshots (⌘S) go to "
+            + "pause longer than a second says \"END OF RECORDING\" under the screen. GIFs and screenshots (⌘S) go to "
             + "the folder the editor last saved to (its Save to), the Desktop at first.")
           .foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
@@ -80,6 +82,12 @@ struct SettingsView: View {
           }
         }
         .accessibilityValue("\(peakCount) peaks")
+        Toggle("List the peaks in a box", isOn: $peakListed)
+          .help(
+            "Each peak numbered, and in a box its time, frequency and level, in the order they came in. Off, each "
+              + "peak's time, megahertz and level beside it.")
+        Toggle("In screenshots too", isOn: $screenshotPeaks)
+          .help("Screenshots (⌘S, ⌘C) show the peak hold while it's on, at twice the screen's size so it can be read")
       } header: {
         Text("Peak hold")
       } footer: {

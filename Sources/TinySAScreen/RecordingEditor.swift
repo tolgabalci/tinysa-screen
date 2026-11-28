@@ -24,6 +24,7 @@ struct RecordingEditor: View {
   @AppStorage(Preferences.Key.gifScale) private var scale = 2
   @AppStorage(Preferences.Key.gifLoops) private var loops = true
   @AppStorage(Preferences.Key.gifPauseAtEnd) private var pauseAtEnd = 3
+  @AppStorage(Preferences.Key.gifShowsPeaks) private var showsPeaks = true
   @StateObject private var stills = StillCache()
   @StateObject private var estimate = SizeEstimate()
   @FocusState private var typingFolder: Bool
@@ -45,7 +46,8 @@ struct RecordingEditor: View {
       scale: scale, showsDate: showsDate, showsTime: showsTime, showsElapsed: showsElapsed,
       showsProgress: showsProgress, loops: loops,
       pauseAtEnd: TimeInterval(min(max(pauseAtEnd, 0), 10)), speed: model.speed,
-      framesPerSecond: model.effectiveFramesPerSecond)
+      framesPerSecond: model.effectiveFramesPerSecond,
+      peaks: showsPeaks && model.clip.hasPeaks ? Preferences.peakLook : nil)
   }
 
   /// The strip's rows under the screen, at the screen's own size.
@@ -130,7 +132,9 @@ struct RecordingEditor: View {
       let caption = model.clip.caption(
         at: moment, from: model.trim.start, to: model.trim.end, window: max(1, options.stepOfRecording),
         ended: model.pausing && options.pauseAtEnd > 1)
-      let image = stills.image(of: model.clip.frame(at: moment), caption: caption, options: still)
+      let image = stills.image(
+        of: model.clip.frame(at: moment), caption: caption, options: still,
+        peaks: still.peaks == nil ? nil : model.clip.peaks(at: moment))
       let width = CGFloat(screen.width) * shown
       let height = CGFloat(rows) * shown
       // On whole display pixels, so a picture shown at its own pixels isn't blurred by half a pixel.
@@ -224,6 +228,14 @@ struct RecordingEditor: View {
 
   private var side: some View {
     VStack(alignment: .leading, spacing: 14) {
+      group("On the screen") {
+        Toggle("Peaks", isOn: $showsPeaks)
+          .disabled(!model.clip.hasPeaks)
+          .help(
+            model.clip.hasPeaks
+              ? "The peak hold over the screen, as the window showed it while recording"
+              : "Peak Hold was off while this was recorded")
+      }
       group("Under the screen") {
         Toggle("The date", isOn: $showsDate)
         Toggle("The time, to the second", isOn: $showsTime)
@@ -239,7 +251,7 @@ struct RecordingEditor: View {
           Text("Pause at the end: \(pauseAtEnd == 0 ? "none" : "\(pauseAtEnd) s")")
             .monospacedDigit()
         }
-        .help("Hold the last frame this long; longer than a second, \"End of recording\" shows under the screen")
+        .help("Hold the last frame this long; longer than a second, \"END OF RECORDING\" shows under the screen")
         .accessibilityValue(pauseAtEnd == 0 ? "None" : "\(pauseAtEnd) seconds")
       }
       group("Resolution") {
@@ -541,8 +553,11 @@ struct TrimStrip: View {
   @ObservedObject var model: TrimModel
   @StateObject private var filmstrip = Filmstrip()
   @State private var drag: Drag?
+  /// The last press: a second on the same handle as soon after as a double click is one.
+  @State private var lastPress: (part: Part, at: Date)?
 
-  private enum Part { case start, end, playhead }
+  /// What a press moves; `done`, nothing more (a double click on a handle moved it all the way).
+  private enum Part { case start, end, playhead, done }
   /// A drag under way: what it moves, where that is (ahead of or behind the mouse after a finer step or a stop at the
   /// other handle), and where the mouse was.
   private struct Drag {
@@ -645,8 +660,8 @@ struct TrimStrip: View {
     #endif
     .contentShape(Rectangle())
     .help(
-      "Drag a yellow end to trim the GIF, or anywhere else to move the playhead. Space plays; ← and → step a frame; I "
-        + "and O set the start and end at the playhead")
+      "Drag a yellow end to trim the GIF (double-click it for the very start or end), or anywhere else to move the "
+        + "playhead. Space plays; ← and → step a frame; I and O set the start and end at the playhead")
     .gesture(
       DragGesture(minimumDistance: 0)
         .onChanged { value in dragged(value, width: width, start: start, end: end) }
@@ -716,7 +731,9 @@ struct TrimStrip: View {
           }
         }
       }
-      .help("Drag to where the GIF \(isStart ? "starts" : "ends") (⌥ for finer steps)")
+      .help(
+        "Drag to where the GIF \(isStart ? "starts" : "ends") (⌥ for finer steps); double-click for the very "
+          + (isStart ? "start of the recording" : "end"))
   }
 
   // MARK: Dragging
@@ -736,8 +753,19 @@ struct TrimStrip: View {
       drag = Drag(part: part, x: part == .start ? start : part == .end ? end : down, mouse: down)
       model.takeKeys()
       model.beginDrag()
+      // A double click on a handle: the GIF from the very start of the recording, or to its very end.
+      let now = Date()
+      let double = part != .playhead && lastPress.map {
+        $0.part == part && now.timeIntervalSince($0.at) <= NSEvent.doubleClickInterval
+      } == true
+      lastPress = double ? nil : (part, now)
+      if double {
+        if part == .start { model.moveStart(to: model.clip.start) } else { model.moveEnd(to: model.clip.end) }
+        drag?.part = .done
+        return
+      }
     }
-    guard var current = drag else { return }
+    guard var current = drag, current.part != .done else { return }
     // ⌥: a tenth as far as the mouse goes, for the frame wanted when the recording is long.
     let fine = NSEvent.modifierFlags.contains(.option)
     current.x += (value.location.x - current.mouse) * (fine ? 0.1 : 1)
@@ -749,6 +777,7 @@ struct TrimStrip: View {
     case .start: model.moveStart(to: moment)
     case .end: model.moveEnd(to: moment)
     case .playhead: model.seek(to: moment)
+    case .done: break
     }
   }
 }
@@ -1122,20 +1151,20 @@ enum TimeText {
 /// shows or the choices change.
 @MainActor
 final class StillCache: ObservableObject {
-  private var key: (frame: Date, words: Caption, options: GIFOptions)?
+  private var key: (frame: Date, words: Caption, options: GIFOptions, peaks: PeakHold.State?)?
   private var image: CGImage?
 
-  func image(of frame: RecordedFrame?, caption: Caption, options: GIFOptions) -> CGImage? {
+  func image(of frame: RecordedFrame?, caption: Caption, options: GIFOptions, peaks: PeakHold.State?) -> CGImage? {
     guard let frame else { return nil }
     // The same words make the same picture: the clock to the second, the count, the ink, the end.
     var words = caption
     words.clock = Date(timeIntervalSinceReferenceDate: caption.clock.timeIntervalSinceReferenceDate.rounded(.down))
-    if key?.frame != frame.time || key?.words != words || key?.options != options {
-      key = (frame.time, words, options)
+    if key?.frame != frame.time || key?.words != words || key?.options != options || key?.peaks != peaks {
+      key = (frame.time, words, options, peaks)
       #if DEBUG
         let began = Date()
       #endif
-      image = frame.snapshot().flatMap { GIF.still($0, caption: caption, options: options).image() }
+      image = frame.snapshot().flatMap { GIF.still($0, caption: caption, options: options, peaks: peaks).image() }
       #if DEBUG
         let second = words.clock.timeIntervalSinceReferenceDate
         EditorDemo.renders.append((Date(), Date().timeIntervalSince(began), second))

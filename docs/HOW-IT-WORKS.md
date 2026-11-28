@@ -175,8 +175,34 @@ analyzer cut its sweep short, and a feeding program's pictures are all there is 
   most of a minute: the text recognition compiles its models for the Mac's Neural Engine, once for each program and
   macOS version. The window shows the frequencies and levels once that's done, and `tinysa-screen peaks` waits for
   it.
+- **What covers the graph**: the analyzer's menu, its light buttons down the screen's right side, and its keypads,
+  light over most of the screen, are told from the graph by their pixels (`ScreenState`, as Escape tells them). Under
+  a menu nothing is read (its buttons and their edges read as levels at the top of the graph) and the graph stays the
+  one held (found beside the menu it's narrower, and the hold would start over); with a keypad open nothing is read at
+  all (the analyzer doesn't sweep while one is).
 - **Peaks**: a top of the held trace that stands at least 6 dB above the valleys on either side (before the next
-  higher ground) and above the trace's median, its noise.
+  higher ground) and above the trace's median, its noise. Each column's held level keeps the time of the sweep that
+  first reached it, so each peak has the time its level came in; the box lists the peaks in that order.
+- **Drawn into a GIF or a screenshot** as the window draws it (`PeakPicture`): the line in the hold's colour edged in
+  black, crisp; the tags, boxes and labels opaque, their words in eight shades over them, so a GIF's colours stay
+  exact. The recorder keeps the hold's changes with the frames (and always the latest, so a recording knows it from
+  its start), and each moment of a GIF draws the hold as it was then. Labels beside peaks are placed oldest peak first:
+  beside its top, right, left or above, clear of the labels placed and of every peak's line; where none of those is
+  clear, the nearest clear spot around it (to the side counting half as far again, below three times), with an arrow
+  to its peak.
+
+## The app's look
+
+The app keeps macOS 13's look on macOS 26 and later: macOS draws an app the way of the SDK it says it was built with,
+Liquid Glass from 26's on, and from macOS 27 an app built with a newer SDK can't opt out (`UIDesignRequiresCompatibility`
+is ignored). So `scripts/build-app.sh` writes macOS 13's SDK, the oldest macOS the app runs on, into the app
+(`vtool -set-build-version`), and stops if either architecture says otherwise. Builds said so until 1.4.0 by accident:
+SwiftPM's build engine links without naming the SDK, and clang then writes the deployment target as the SDK's version.
+
+That look leaves a bordered toolbar button's words grey with the window in front too, whatever colour they're given,
+so the buttons with words are borderless, in an outline drawn like that border (`OutlinedToolbarItem`), their words
+and symbols drawn in the toolbar's own ink: bright while the window is the main window of the app in front, dimmer
+behind (`ToolbarLook`). Band is such a button, its menu shown below it from a press.
 
 ## Firmware without the live screen
 

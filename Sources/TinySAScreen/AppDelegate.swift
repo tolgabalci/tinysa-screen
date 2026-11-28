@@ -29,16 +29,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
   private var automation: Automation!
   private var control: ControlServer?
   private var otherRecordings: [String] = []
-  private let recordButton = NSButton()
+  private let recordButton = ToolbarButton()
   /// ⌥ is down: Stop is Stop & Save.
   private var optionDown = false
   /// The link to the latest GIF, right of Record, once there is one.
   private let lastGIFLink = LastGIFLink()
   private var lastGIFButton: LinkButton { lastGIFLink.button }
   private var lastGIF: URL?
-  private let pointerButton = NSButton()
-  private let penButton = NSButton()
-  private let peaksButton = NSButton()
+  private let pointerButton = ToolbarButton()
+  private let penButton = ToolbarButton()
+  private let peaksButton = ToolbarButton()
+  /// Beside Peaks while the hold is on.
+  private let clearPeaksButton = ToolbarButton()
   /// The peak hold, while it's on: fed each frame by the session.
   private let peakHold = PeakHold()
   private var peakFrames: UUID?
@@ -66,7 +68,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     setUpToolbarButton(peaksButton, "Peaks", symbol: "chart.xyaxis.line", action: #selector(togglePeakHold(_:)))
     peaksButton.setButtonType(.pushOnPushOff)
     peaksButton.toolTip = "Hold the highest level at each frequency and label the highest peaks, on the Mac (⌥⌘P)"
+    setUpToolbarButton(clearPeaksButton, "Clear Peaks", symbol: "eraser", action: #selector(clearPeakHold(_:)))
+    clearPeaksButton.toolTip = "Start the peak hold over, from the next sweep (⌥⌘⌫)"
+    let recorder = session.recorder
     peakHold.onChange = { [weak self] state in
+      recorder.notePeaks(state, at: Date())  // for GIFs to draw it as the window does
       DispatchQueue.main.async { self?.peaksChanged(state) }
     }
     for button in [pointerButton, penButton] {
@@ -97,6 +103,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     for name in [NSApplication.didBecomeActiveNotification, NSApplication.didResignActiveNotification] {
       NotificationCenter.default.addObserver(self, selector: #selector(updateWindowLevel), name: name, object: nil)
       NotificationCenter.default.addObserver(self, selector: #selector(activeChanged), name: name, object: nil)
+    }
+    // The toolbar bright in front, dimmer behind.
+    for name in [NSWindow.didBecomeMainNotification, NSWindow.didResignMainNotification] {
+      NotificationCenter.default.addObserver(self, selector: #selector(frontChanged), name: name, object: window)
     }
     window.makeKeyAndOrderFront(nil)
     view.onTap = { [weak self] x, y, released in
@@ -174,6 +184,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     }
     self.status = status
     peaksButton.isEnabled = status.instrument != .nanoVNA
+    clearPeaksButton.isEnabled = peaksButton.isEnabled
     if status.instrument == .nanoVNA { view.showPeaks(nil) }
     gifs.source = status.source
     bands.status = status
@@ -244,21 +255,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
   private func setUpToolbarButton(_ button: NSButton, _ title: String, symbol: String, action: Selector) {
     button.title = title
-    button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+    button.image = ToolbarLook.symbol(symbol)
     button.target = self
     button.action = action
     button.bezelStyle = .texturedRounded
     button.imagePosition = .imageLeading
-    button.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+    button.imageHugsTitle = true
+    button.font = ToolbarLook.font
   }
 
   func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
-    [.flexibleSpace, .pointer, .pen, .peaks, .band, .record, .lastGIF] + NSToolbarItem.Identifier.gaps
+    [.flexibleSpace, .pointer, .pen, .peaks, .clearPeaks, .band, .record, .lastGIF] + NSToolbarItem.Identifier.gaps
   }
 
   func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
     let gaps = NSToolbarItem.Identifier.gaps
-    return [.flexibleSpace, .pointer, .pen, gaps[0], .peaks, gaps[1], .band, gaps[2], .record]
+    return [.flexibleSpace, .pointer, gaps[0], .pen, gaps[1], .peaks, gaps[2], .band, gaps[3], .record]
   }
 
   func toolbar(
@@ -284,17 +296,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
       item.visibilityPriority = .low
     case .peaks:
       item.label = "Peaks"
-      item.view = peaksButton
+      item.view = OutlinedToolbarItem(peaksButton)
       item.menuFormRepresentation = menuForm("Peak Hold", #selector(togglePeakHold(_:)))
+    case .clearPeaks:
+      item.label = "Clear Peaks"
+      item.view = OutlinedToolbarItem(clearPeaksButton)
+      item.menuFormRepresentation = menuForm("Clear Peak Hold", #selector(clearPeakHold(_:)))
     case .band:
       item.label = "Band"
-      item.view = bands.makeButton()
+      item.view = OutlinedToolbarItem(bands.makeButton())
       let form = NSMenuItem(title: "Band", action: nil, keyEquivalent: "")
       form.submenu = bands.overflowMenu
       item.menuFormRepresentation = form
     case .record:
       item.label = "Record"
-      item.view = recordButton
+      item.view = OutlinedToolbarItem(recordButton)
       item.menuFormRepresentation = menuForm("Record GIF", #selector(toggleRecording(_:)))
       item.visibilityPriority = .high
     case .lastGIF:
@@ -303,15 +319,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
       item.menuFormRepresentation = menuForm("Open Last Recording", #selector(openLastGIF(_:)))
       item.visibilityPriority = .high
     case let gap where NSToolbarItem.Identifier.gaps.contains(gap):
-      // Room between the buttons: an item of nothing, without the glass that macOS 26 and later put behind each one
-      // (with it, an empty button would show). AppKit makes it about 20 points wide, so the buttons are about 45
-      // points apart instead of 12. The first items to give way when the window is narrow.
+      // Room between the buttons: an item of nothing, 13 points wide, so they're 11 apart (they touched). The first
+      // items to give way when the window is narrow; the » menu leaves them out.
       let nothing = NSView()
       nothing.translatesAutoresizingMaskIntoConstraints = false
-      nothing.widthAnchor.constraint(equalToConstant: 1).isActive = true
+      nothing.widthAnchor.constraint(equalToConstant: 13).isActive = true
       item.view = nothing
       item.isBordered = false
-      item.visibilityPriority = NSToolbarItem.VisibilityPriority(rawValue: NSToolbarItem.VisibilityPriority.low.rawValue - 1)
+      item.visibilityPriority = NSToolbarItem.VisibilityPriority(
+        rawValue: NSToolbarItem.VisibilityPriority.low.rawValue - 1)
     default:
       return nil
     }
@@ -325,7 +341,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
       let length = gifs.length.rounded(.down)
       let time = TimeText.duration(length)
       recordButton.title = optionDown ? "Stop & Save \(time)" : "Stop \(time)"
-      recordButton.image = NSImage(systemSymbolName: "stop.fill", accessibilityDescription: nil)
+      recordButton.image = ToolbarLook.symbol("stop.fill")
       recordButton.contentTintColor = .systemRed
       recordButton.toolTip =
         "Stop, and trim the GIF before it's saved (⌘R); ⌥-click to save it as it is, to \(Preferences.saveFolderName) "
@@ -336,7 +352,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
           : "Stop recording, the GIF is \(TimeText.spoken(length)) long")
     } else {
       recordButton.title = "Record"
-      recordButton.image = NSImage(systemSymbolName: "record.circle", accessibilityDescription: nil)
+      recordButton.image = ToolbarLook.symbol("record.circle")
       recordButton.contentTintColor = nil
       let leadIn = gifs.leadIn
       let from =
@@ -368,6 +384,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
   /// ⌥ isn't seen going up in another app: Stop is as the keys are when the app is in front again.
   @objc private func activeChanged() {
     modifiersChanged(NSApp.isActive ? NSEvent.modifierFlags : [])
+    frontChanged()
+  }
+
+  /// The window came in front or went behind: the toolbar's words and symbols brighten or dim.
+  @objc private func frontChanged() {
+    ToolbarLook.redraw(window.toolbar)
   }
 
   /// The link to the GIF just made, right of Record, pulsing for a few seconds to show where it is.
@@ -378,7 +400,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     lastGIFButton.setAccessibilityLabel("Open the last recording")
     if let toolbar = window.toolbar, !toolbar.items.contains(where: { $0.itemIdentifier == .lastGIF }) {
       let record = toolbar.items.firstIndex { $0.itemIdentifier == .record } ?? toolbar.items.count - 1
-      toolbar.insertItem(withItemIdentifier: NSToolbarItem.Identifier.gaps[3], at: record + 1)
+      toolbar.insertItem(withItemIdentifier: NSToolbarItem.Identifier.gaps[4], at: record + 1)
       toolbar.insertItem(withItemIdentifier: .lastGIF, at: record + 2)
     }
     // Once the toolbar has put the link in its place.
@@ -443,7 +465,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
   private func updatePeakHold() {
     let on = Preferences.peakHold
     peaksButton.state = on ? .on : .off
+    showClearPeaks(on)
     view.peakColor = Preferences.peakColor.color
+    view.peaksListed = Preferences.peakListed
     let settings = (Preferences.peakWindow, Preferences.peakCount)
     if peakSettings.map({ $0.0 != settings.0 || $0.1 != settings.1 }) ?? true {
       peakSettings = settings
@@ -460,6 +484,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
       session.removeFrameHandler(token)
       peakFrames = nil
       peakHold.reset()
+    }
+  }
+
+  /// Clear Peaks beside Peaks, while the hold is on.
+  private func showClearPeaks(_ shown: Bool) {
+    guard let toolbar = window.toolbar else { return }
+    let showing = toolbar.items.contains { $0.itemIdentifier == .clearPeaks }
+    if shown, !showing, let peaks = toolbar.items.firstIndex(where: { $0.itemIdentifier == .peaks }) {
+      toolbar.insertItem(withItemIdentifier: NSToolbarItem.Identifier.gaps[5], at: peaks + 1)
+      toolbar.insertItem(withItemIdentifier: .clearPeaks, at: peaks + 2)
+    } else if !shown, showing {
+      for id in [NSToolbarItem.Identifier.clearPeaks, NSToolbarItem.Identifier.gaps[5]] {
+        if let index = toolbar.items.firstIndex(where: { $0.itemIdentifier == id }) { toolbar.removeItem(at: index) }
+      }
     }
   }
 
@@ -481,8 +519,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
   // MARK: Menu actions
 
+  /// What a screenshot saves or copies: the analyzer's screen, with the peak hold over it as the window shows it while
+  /// it's on (at twice the screen's size then, so its words can be read), unless Settings leaves it out.
+  private func screenshot() -> CGImage? {
+    guard let image else { return nil }
+    guard Preferences.screenshotPeaks, Preferences.peakHold, status.instrument != .nanoVNA,
+      let state = peakHold.state, let screen = Snapshot(image)
+    else { return image }
+    let options = GIFOptions(scale: 2, showsDate: false, showsTime: false, peaks: Preferences.peakLook)
+    return GIF.still(screen, caption: Caption(clock: Date()), options: options, peaks: state).image() ?? image
+  }
+
   @objc func saveScreenshot(_ sender: Any?) {
-    guard let image else { return }
+    guard let image = screenshot() else { return }
     do {
       // Named after when its picture came (not now: the picture may have stopped coming), never over another file.
       let start = session.recorder.latestSnapshot()?.time ?? Date()
@@ -501,7 +550,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
   }
 
   @objc func copy(_ sender: Any?) {
-    guard let image else { return }
+    guard let image = screenshot() else { return }
     let pasteboard = NSPasteboard.general
     pasteboard.clearContents()
     pasteboard.writeObjects([NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))])
@@ -629,7 +678,10 @@ extension NSToolbarItem.Identifier {
   static let record = NSToolbarItem.Identifier("record")
   static let lastGIF = NSToolbarItem.Identifier("lastGIF")
   /// The room between the buttons, and before the link to the last GIF.
-  static let gaps = (1...4).map { NSToolbarItem.Identifier("gap\($0)") }
+  /// Clear Peaks, beside Peaks while the hold is on.
+  static let clearPeaks = NSToolbarItem.Identifier("clearPeaks")
+  /// The room between the buttons: before the link to the last GIF the fifth, before Clear Peaks the sixth.
+  static let gaps = (1...6).map { NSToolbarItem.Identifier("gap\($0)") }
 }
 
 /// The link to the last GIF in the toolbar, with a glow behind it that pulses for a few seconds when a GIF is saved,
@@ -704,7 +756,7 @@ final class LinkButton: NSButton {
   func setLink(_ title: String) {
     attributedTitle = NSAttributedString(
       string: title,
-      attributes: [.foregroundColor: NSColor.linkColor, .font: NSFont.systemFont(ofSize: NSFont.systemFontSize)])
+      attributes: [.foregroundColor: NSColor.linkColor, .font: NSFont.systemFont(ofSize: ToolbarLook.textSize)])
   }
 
   override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }

@@ -31,6 +31,17 @@ public struct RecordedFrame: Sendable {
   public var size: Int { packed.count }
 }
 
+/// The peak hold from a moment on, until the next: nil while it was off.
+public struct PeakMoment: Sendable {
+  public let time: Date
+  public let state: PeakHold.State?
+
+  public init(time: Date, state: PeakHold.State?) {
+    self.time = time
+    self.state = state
+  }
+}
+
 /// A stretch of the screen, recorded: its frames in order, the first being the screen as it was at `start`.
 public struct Clip: Sendable {
   public let frames: [RecordedFrame]
@@ -39,13 +50,17 @@ public struct Clip: Sendable {
   /// When pictures came, in order, a frame's or one the same as the frame before (which isn't kept twice): the
   /// seconds none came show in a GIF. From a little before the start, so its first second has the picture before.
   public let arrivals: [Date]
+  /// The peak hold over it: as it was at the start, then each change.
+  public let peaks: [PeakMoment]
 
   /// How long before the start the arrivals go back: further than a GIF's moments look back.
   static let arrivalsBefore: TimeInterval = 30
 
   /// The frames from the screen as it was at `start` to `end`; `start` moves up to the first frame when there is none
   /// before it. Nil without a frame. Without `arrivals`, pictures came with the frames only.
-  public init?(frames all: [RecordedFrame], from start: Date, to end: Date, arrivals: [Date]? = nil) {
+  public init?(
+    frames all: [RecordedFrame], from start: Date, to end: Date, arrivals: [Date]? = nil, peaks: [PeakMoment] = []
+  ) {
     let from = all.lastIndex { $0.time <= start } ?? all.firstIndex { $0.time > start } ?? all.endIndex
     let frames = all[from...].prefix { $0.time <= end }
     guard let first = frames.first else { return nil }
@@ -55,14 +70,33 @@ public struct Clip: Sendable {
     let earliest = self.start.addingTimeInterval(-Self.arrivalsBefore)
     let latest = self.end
     self.arrivals = (arrivals ?? all.map(\.time)).filter { $0 >= earliest && $0 <= latest }
+    let clipStart = self.start
+    let held = peaks.lastIndex { $0.time <= clipStart } ?? peaks.startIndex
+    self.peaks = Array(peaks[held...].prefix { $0.time <= latest })
   }
 
   public var duration: TimeInterval { end.timeIntervalSince(start) }
 
   /// Its last `seconds`.
   public func last(_ seconds: TimeInterval) -> Clip {
-    Clip(frames: frames, from: max(start, end.addingTimeInterval(-seconds)), to: end, arrivals: arrivals) ?? self
+    Clip(
+      frames: frames, from: max(start, end.addingTimeInterval(-seconds)), to: end, arrivals: arrivals, peaks: peaks)
+      ?? self
   }
+
+  /// The peak hold at a moment of it: nil while it was off.
+  public func peaks(at moment: Date) -> PeakHold.State? {
+    var low = 0
+    var high = peaks.count
+    while low < high {
+      let middle = (low + high) / 2
+      if peaks[middle].time <= moment { low = middle + 1 } else { high = middle }
+    }
+    return low == 0 ? nil : peaks[low - 1].state
+  }
+
+  /// The peak hold was on at some time of it, for a GIF to draw.
+  public var hasPeaks: Bool { peaks.contains { $0.state != nil } }
 
   /// The frame on the screen at a moment of it.
   public func frame(at moment: Date) -> RecordedFrame? {
@@ -90,6 +124,8 @@ public final class FrameRecorder: @unchecked Sendable {
   /// When pictures came, the same as the one before or not, while frames are kept: for a GIF to show the seconds
   /// none came in.
   private var arrivals: [Date] = []
+  /// The peak hold's changes while frames are kept, and always the latest, so a recording knows it from its start.
+  private var peakMoments: [PeakMoment] = []
   private var keepSeconds: TimeInterval = 0
   private struct Recording {
     /// Where its clip starts: when it began, or before, as far back as the seconds kept then went.
@@ -126,6 +162,15 @@ public final class FrameRecorder: @unchecked Sendable {
       }
       latest = (snapshot, time, false)
       if keepSeconds > 0 || !recordings.isEmpty { storeLatest() }
+      prune(now: time)
+    }
+  }
+
+  /// The peak hold as it is from `time` on (nil: off), for GIFs to draw it as the window does.
+  public func notePeaks(_ state: PeakHold.State?, at time: Date) {
+    lock.locked {
+      if let last = peakMoments.last, last.state == state { return }
+      peakMoments.append(PeakMoment(time: max(time, peakMoments.last?.time ?? time), state: state))
       prune(now: time)
     }
   }
@@ -175,7 +220,7 @@ public final class FrameRecorder: @unchecked Sendable {
     lock.locked {
       guard let recording = recordings.removeValue(forKey: id) else { return nil }
       let end = min(time, recording.began.addingTimeInterval(recording.longest))
-      let clip = Clip(frames: frames, from: recording.from, to: end, arrivals: arrivals)
+      let clip = Clip(frames: frames, from: recording.from, to: end, arrivals: arrivals, peaks: peakMoments)
       prune(now: time)
       return clip
     }
@@ -186,7 +231,8 @@ public final class FrameRecorder: @unchecked Sendable {
     lock.locked {
       guard keepSeconds > 0 else { return nil }
       let span = min(seconds ?? keepSeconds, keepSeconds)
-      return Clip(frames: frames, from: time.addingTimeInterval(-span), to: time, arrivals: arrivals)
+      return Clip(
+        frames: frames, from: time.addingTimeInterval(-span), to: time, arrivals: arrivals, peaks: peakMoments)
     }
   }
 
@@ -225,11 +271,13 @@ public final class FrameRecorder: @unchecked Sendable {
     guard let from else {
       frames.removeAll()
       arrivals.removeAll()
+      if peakMoments.count > 1 { peakMoments.removeFirst(peakMoments.count - 1) }
       latest?.stored = false
       return
     }
     if let i = frames.lastIndex(where: { $0.time <= from }), i > 0 { frames.removeFirst(i) }
     let earliest = from.addingTimeInterval(-Clip.arrivalsBefore)
     if let i = arrivals.firstIndex(where: { $0 >= earliest }), i > 0 { arrivals.removeFirst(i) }
+    if let i = peakMoments.lastIndex(where: { $0.time <= from }), i > 0 { peakMoments.removeFirst(i) }
   }
 }

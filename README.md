@@ -60,7 +60,8 @@ show much. tinySA Screen puts its screen in a Mac window, pixel for pixel, as it
 - **For presenting**: a red pointer everyone in the call sees, a pen whose strokes fade by themselves, and Float on
   Top ([Presenting](#presenting)).
 - **Peak hold on the Mac**: the highest level at each frequency held as a line over the picture, the highest peaks
-  numbered with their frequency and level, without changing anything on the analyzer ([Peak hold](#peak-hold)).
+  with their frequency, level and the time they came in, without changing anything on the analyzer; in screenshots
+  and GIFs too ([Peak hold](#peak-hold)).
 - **Screenshots**: ⌘S saves the screen (to the Desktop, or a folder you choose), ⌘C copies it.
 - **Animated GIFs**: record the screen as a GIF (⌘R), starting before you press Record (the app always keeps the last
   minute), and trim it in an editor, or play it up to 20 times faster. Every pixel exact, the date, time and seconds
@@ -114,7 +115,7 @@ antenna.
 
 | Menu | Keys | What it does |
 | --- | --- | --- |
-| File › Save Screenshot | ⌘S | The analyzer's screen at its own size, as a PNG named `tinySA <date> at <time>.png`, on the Desktop or in the folder the GIF editor last saved to |
+| File › Save Screenshot | ⌘S | The analyzer's screen at its own size (twice that with the peak hold over it), as a PNG named `tinySA <date> at <time>.png`, on the Desktop or in the folder the GIF editor last saved to |
 | File › Record GIF | ⌘R | Records the screen, starting 5 seconds before you press it, until you stop it (⌘R again); Stop opens the editor to trim the GIF, then saves it there too ([below](#recording-gifs)) |
 | File › Stop and Save Recording | ⌥⌘R | Stops and saves the GIF as it is, without the editor |
 | Edit › Copy Screenshot | ⌘C | The screenshot, to paste anywhere |
@@ -124,7 +125,7 @@ antenna.
 | View › Pointer | ⌘L | A red dot follows the mouse over the picture; Esc ends it ([Presenting](#presenting)) |
 | View › Pen | ⌘D | Draw on the picture; strokes fade after a few seconds; Esc ends it |
 | View › Peak Hold | ⌥⌘P | The peak hold over the picture ([below](#peak-hold)) |
-| View › Clear Peak Hold | ⌥⌘⌫ | Starts the peak hold over |
+| View › Clear Peak Hold | ⌥⌘⌫ | Starts the peak hold over (Clear Peaks, beside Peaks in the title bar) |
 | View › Hold Peaks For | | How long the peak hold keeps each level: 10 or 30 seconds, a minute (the default), 5 minutes, or until cleared |
 | View › Enter Full Screen | ⌃⌘F | The picture as large as the screen allows |
 | Band › (a band) | | Sets the analyzer to sweep that band ([below](#bands)) |
@@ -164,14 +165,19 @@ window above other apps' windows while you work in another one (a call's, say), 
 ## Peak hold
 
 **Peaks** (⌥⌘P) holds the highest level the analyzer's live trace (the yellow one) reaches at each frequency over the
-last minute, as a cyan line over the picture, and numbers its highest peaks with their frequency and level in a small
-box, which finds itself an empty spot of the graph:
+last minute, as a cyan line over the picture, and numbers its highest peaks, listing each in a small box, which finds
+itself an empty spot of the graph: its number, when its level came in, its frequency and its level, in the order they
+came in.
 
 ```
-Peak hold, last 1:00
-1  906.17 MHz  −23 dBm
-2  911.27 MHz  −55 dBm
+3  11:08:52 PM  906.17 MHz  −23 dBm
+1  11:09:21 PM  911.27 MHz  −55 dBm
 ```
+
+With **Settings › Peak hold › List the peaks in a box** off, each peak has its own label beside it instead: when, the
+megahertz to the nearest and the level ("11:09:21 PM / 911 MHz / −58 dBm"). Where peaks crowd together, the older
+peak's label stays beside it and a newer one's moves to the nearest clear spot, above first, with an arrow to its
+peak. **Clear Peaks**, beside Peaks while the hold is on (⌥⌘⌫), starts it over.
 
 It's done on the Mac, from the analyzer's screen after each sweep: the analyzer's own traces, markers and settings
 stay as they are, and it works on a feeding program's pictures too. The frequencies and levels come from the screen's
@@ -182,7 +188,8 @@ On a sweep that caught a reader's burst, the peak hold read 902.23 MHz and −23
 
 A peak is a top standing at least 6 dB above the valleys around it and above the trace's noise. Each keeps its number
 while it's held, as an analyzer's markers stay on their peaks: a higher one coming doesn't renumber the others, and a
-new peak takes the lowest number free. The box lists them by number.
+new peak takes the lowest number free. The analyzer's menu and keypads aren't the trace: nothing is held from under
+a menu, or from the screen while a keypad is open.
 
 - **How long**: each level stays a minute after it was last reached, then goes, as a monitoring hold keeps the last
   minute at full strength. **View › Hold Peaks For** (or Settings) makes that 10 or 30 seconds, 5 minutes, or until
@@ -193,8 +200,10 @@ new peak takes the lowest number free. The box lists them by number.
   on them: until their labels are read, the line shows only what came since, never the old span's levels. A menu
   opened over the labels for a while doesn't lose what was held.
 
-Settings also chooses how many peaks to label (up to 9). Like the pointer and the pen, the peak hold isn't in
-screenshots or GIFs. `tinysa-screen peaks` gives the same for scripts ([The command line](#the-command-line)).
+Settings also chooses how many peaks to label (up to 9). Screenshots show the peak hold while it's on (at twice the
+screen's size, so it can be read; Settings › Peak hold › In screenshots too), and GIFs show it where it was on, as the
+window did, unless the editor's **Peaks** is off. `tinysa-screen peaks` gives the same for scripts
+([The command line](#the-command-line)).
 
 ## Bands
 
@@ -222,12 +231,14 @@ yellow ends:
 
 - **Drag the ends** to trim the GIF, or drag the start back into the dimmed part, the seconds kept from before you
   pressed Record (marked above the filmstrip). The picture shows the frame at an end while you drag it, as the GIF will
-  show it, date and time included. Hold ⌥ for finer steps.
+  show it, date and time included. Hold ⌥ for finer steps. Double-click an end to take it all the way: the start to the
+  recording's very start, the end to its very end.
 - **Play** (Space, or a click on the picture) plays the GIF in a loop, as it will play. A drag anywhere else on the
   filmstrip moves the playhead.
 - **The keys are QuickTime Player's**: ← and → step a frame (⇧ a second), ⌥← and ⌥→ go to the GIF's start and end,
   and I and O set its start or end at the playhead. ⌘Z undoes.
-- **Beside the picture**: what goes under the screen (the date, the time, the time into the GIF of its length,
+- **Beside the picture**: the peak hold over the screen (**Peaks**, where it was on while recording), what goes under
+  the screen (the date, the time, the time into the GIF of its length,
   "0:10 / 2:30", and a progress bar it sits in), whether it loops, how long it pauses at the end (3
   seconds unless you say), its resolution, and its **speed**, 1× to 20×: a minute at 10× plays in 6 seconds. Faster
   than 1×, **Frames a second** is Full, every frame of the recording, unless you bring it down to 10 or fewer for a

@@ -209,7 +209,11 @@
       }
       let steps: [(TimeInterval, () -> Void)] = [
         (1.2, { save("window-behind") }),
-        (0.1, { drawInFront(window) }),
+        (0.1, {
+          drawInFront(window)
+          ToolbarLook.drawnInFront = true
+          ToolbarLook.redraw(window.toolbar)
+        }),
         (0.8, { save("window-in-front") }),
         (0.1, { made(out.appendingPathComponent("tinySA 2026-11-27 at 22.15.00.gif")) }),
         (0.45, { save("link-pulse-a") }),
@@ -404,6 +408,37 @@
         model.undoManager?.undo()
       }))
       steps.append((1, { picture("5-undone") }))
+      // Double clicks: the end handle to the recording's very end, the start handle to its very start; ⌘Z back.
+      func handle(start: Bool) -> NSPoint {
+        guard let strip = EditorDemo.strip else { return .zero }
+        let inner = strip.width - 2 * TrimStrip.handle
+        let moment = start ? model.trim.start : model.trim.end
+        let fraction = moment.timeIntervalSince(model.clip.start) / model.total
+        let x = strip.minX + TrimStrip.handle + inner * CGFloat(fraction) + (start ? -1 : 1) * TrimStrip.handle / 2
+        return NSPoint(x: x, y: sheet.frame.height - strip.midY)
+      }
+      func trimmed() -> String {
+        String(
+          format: "start %.1f, end %.1f of %.1f", model.trim.start.timeIntervalSince(model.clip.start),
+          model.trim.end.timeIntervalSince(model.clip.start), model.total)
+      }
+      for (name, start) in [("end", false), ("start", true)] {
+        var point = NSPoint.zero
+        steps.append((0.3, {
+          point = handle(start: start)
+          print("Before double-clicking the \(name) handle: \(trimmed())")
+          mouse(.leftMouseDown, point)
+        }))
+        steps.append((0.05, { mouse(.leftMouseUp, point) }))
+        steps.append((0.1, { mouse(.leftMouseDown, point) }))
+        steps.append((0.05, { mouse(.leftMouseUp, point) }))
+        steps.append((0.5, { print("After double-clicking the \(name) handle: \(trimmed())") }))
+      }
+      steps.append((0.6, { picture("5b-double-clicked") }))
+      steps.append((0.1, {
+        model.undoManager?.undo()
+        print("After ⌘Z: \(trimmed())")
+      }))
       steps.append((0.1, { key("\u{1b}", 53) }))
       steps.append((1.2, {
         for window in NSApp.windows where window.isVisible {

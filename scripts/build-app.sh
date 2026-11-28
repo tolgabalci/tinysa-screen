@@ -10,26 +10,26 @@ VERSION=$(cat VERSION)
 BUILD=$(git rev-list --count HEAD 2>/dev/null || echo 1)
 APP="build/tinySA Screen.app"
 
-# The link is given the SDK as -isysroot. SwiftPM's build engine runs the compiler without xcrun's SDKROOT and hands
-# clang only --sysroot, so the app said it was built with the deployment target's SDK (13.0), and macOS 26 and later
-# showed it in their old look: no Liquid Glass, a toolbar of gray, cramped buttons that stayed gray in front.
-SDK=$(xcrun --sdk macosx --show-sdk-path)
-SWIFT_BUILD=(swift build -c release --arch arm64 --arch x86_64
-  -Xswiftc -Xclang-linker -Xswiftc -isysroot -Xswiftc -Xclang-linker -Xswiftc "$SDK")
-"${SWIFT_BUILD[@]}"
-BINARY=$("${SWIFT_BUILD[@]}" --show-bin-path)/tinysa-screen
-SDK_VERSION=$(xcrun --sdk macosx --show-sdk-version)
-for arch in $(lipo -archs "$BINARY"); do
-  BUILT_WITH=$(vtool -arch "$arch" -show-build "$BINARY" | awk '$1 == "sdk" { print $2 }')
-  [[ "$BUILT_WITH" == "$SDK_VERSION" ]] || {
-    echo "The $arch app says it was built with the macOS $BUILT_WITH SDK, not $SDK_VERSION" >&2
-    exit 1
-  }
-done
+swift build -c release --arch arm64 --arch x86_64
+BINARY=$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)/tinysa-screen
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BINARY" "$APP/Contents/MacOS/tinysa-screen"
+# The app keeps macOS 13's look on macOS 26 and later: bordered toolbar buttons, the editor's controls as they were.
+# macOS gives an app the look of the SDK it says it was built with: from 26's SDK on, Liquid Glass, and macOS 27 no
+# longer lets an app opt out (it ignores UIDesignRequiresCompatibility). So the app says macOS 13's SDK, the oldest
+# macOS it runs on. Its builds always said so until 1.4.0, by accident: SwiftPM's build engine linked without naming
+# the SDK, and clang wrote the deployment target as the SDK's version.
+MACOS_BINARY="$APP/Contents/MacOS/tinysa-screen"
+vtool -set-build-version macos 13.0 13.0 -replace -output "$MACOS_BINARY" "$MACOS_BINARY" 2>/dev/null
+for arch in $(lipo -archs "$MACOS_BINARY"); do
+  BUILT_WITH=$(vtool -arch "$arch" -show-build "$MACOS_BINARY" | awk '$1 == "sdk" { print $2 }')
+  [[ "$BUILT_WITH" == "13.0" ]] || {
+    echo "The $arch app says it was built with the macOS $BUILT_WITH SDK, not 13.0: it would get Liquid Glass" >&2
+    exit 1
+  }
+done
 sed -e "s/@VERSION@/$VERSION/" -e "s/@BUILD@/$BUILD/" Resources/Info.plist >"$APP/Contents/Info.plist"
 
 ICONS=$(mktemp -d)/AppIcon.iconset
