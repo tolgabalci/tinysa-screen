@@ -1009,11 +1009,14 @@ final class TrimModel: ObservableObject {
   private func registerUndo(from before: Trim) {
     guard before != trim, let undoManager else { return }
     undoManager.registerUndo(withTarget: self) { model in
-      let after = model.trim
-      model.pause()
-      model.trim = before
-      model.playhead = min(max(model.playhead, model.clip.start), model.clip.end)
-      model.registerUndo(from: after)  // and ⇧⌘Z puts it back
+      // On the main thread, as undo is (the handler counts as Sendable with some SDKs).
+      MainActor.assumeIsolated {
+        let after = model.trim
+        model.pause()
+        model.trim = before
+        model.playhead = min(max(model.playhead, model.clip.start), model.clip.end)
+        model.registerUndo(from: after)  // and ⇧⌘Z puts it back
+      }
     }
     undoManager.setActionName("Trim")
   }

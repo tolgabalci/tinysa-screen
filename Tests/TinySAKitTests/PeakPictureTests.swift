@@ -445,8 +445,13 @@ final class PeakPictureTests: XCTestCase {
   /// A replay is quick: under a millisecond a frame built for the app (four minutes of sweeps, two a second, in 0.3 s),
   /// some 70 here in a debug build.
   func testANewPeakCaptureIsQuick() throws {
-    let screens = (0..<60).map { k in
-      Moment.frame(screen(peaks: [(100 + (k * 7) % 300, 100 + (k * 13) % 80), (380, 140)]), Double(k) * 0.5)
+    // In steps: an older compiler can't type-check it all at once in reasonable time.
+    var screens: [Moment] = []
+    for k in 0..<60 {
+      let column: Int = 100 + (k * 7) % 300
+      let row: Int = 100 + (k * 13) % 80
+      let peaks: [(column: Int, row: Int)] = [(column, row), (380, 140)]
+      screens.append(.frame(screen(peaks: peaks), Double(k) * 0.5))
     }
     let clip = try recorded(screens, end: 30)
     let began = Date()
