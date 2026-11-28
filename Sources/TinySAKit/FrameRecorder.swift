@@ -98,6 +98,43 @@ public struct Clip: Sendable {
   /// The peak hold was on at some time of it, for a GIF to draw.
   public var hasPeaks: Bool { peaks.contains { $0.state != nil } }
 
+  /// The clip with its peak hold captured afresh from `start` (its own start unless given), as if Clear Peaks had been
+  /// pressed there: none before it, then the frames from the one on the screen there added to a new hold as they came
+  /// (holding each level as long as the recording's hold did, its `count` highest peaks), until the recording's own
+  /// hold starts over (Clear Peaks, turned off, another period), from where it's the recording's own again. Their
+  /// frequencies and levels come from the labels the recording's hold read, each span's by its labels (not read again,
+  /// and known from its first frame even where the recording read them later); a span it never read shows none, as it
+  /// didn't. Where the hold was off at `start`, or had just been cleared, it's the clip as it is.
+  public func peaksCapturedAfresh(from start: Date? = nil, count: Int) -> Clip {
+    let from = max(start ?? self.start, self.start)
+    guard let then = peaks(at: from) else { return self }
+    let restart = peaks.firstIndex { $0.time > from && $0.state == nil } ?? peaks.endIndex
+    let until = restart < peaks.endIndex ? peaks[restart].time : .distantFuture
+    let hold = PeakHold(readsLabels: false)
+    hold.window = then.window
+    hold.peakCount = count
+    // Each span read, with the labels on the screen when it was.
+    var told: GraphScale?
+    for moment in peaks where moment.time < until {
+      guard let scale = moment.state?.scale, scale != told, let screen = frame(at: moment.time)?.snapshot() else {
+        continue
+      }
+      hold.know(scale, for: screen)
+      told = scale
+    }
+    var moments = [PeakMoment(time: self.start, state: nil)]
+    let first = frames.lastIndex { $0.time <= from } ?? frames.startIndex
+    for frame in frames[first...] where frame.time < until {
+      guard let screen = frame.snapshot() else { continue }
+      let time = max(frame.time, from)
+      hold.add(screen, at: time)
+      let state = hold.state
+      if moments.last?.state != state { moments.append(PeakMoment(time: time, state: state)) }
+    }
+    moments += peaks[restart...]
+    return Clip(frames: frames, from: self.start, to: end, arrivals: arrivals, peaks: moments) ?? self
+  }
+
   /// The frame on the screen at a moment of it.
   public func frame(at moment: Date) -> RecordedFrame? {
     frames.last { $0.time <= moment } ?? frames.first

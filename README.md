@@ -212,9 +212,11 @@ a menu, or from the screen while a keypad is open.
   opened over the labels for a while doesn't lose what was held.
 
 Settings also chooses how many peaks to label (up to 9). Screenshots show the peak hold while it's on (at twice the
-screen's size, so it can be read; Settings › Peak hold › In screenshots too), and GIFs show it where it was on, as the
-window did, unless the editor's **Peaks** is off. `tinysa-screen peaks` gives the same for scripts
-([The command line](#the-command-line)).
+screen's size, so it can be read; Settings › Peak hold › In screenshots too), and GIFs show it where it was on, unless
+the editor's **Peaks** is None. The editor's **New peak capture at the start**, on unless you uncheck it, starts a
+GIF's hold over at the GIF's start, as Clear Peaks would have then, so the GIF shows only the peaks that come in while
+it plays; unchecked, it shows the hold as the window did, peaks from before its start included. `tinysa-screen peaks`
+gives the same for scripts ([The command line](#the-command-line)).
 
 ## Bands
 
@@ -249,7 +251,8 @@ yellow ends:
 - **The keys are QuickTime Player's**: ← and → step a frame (⇧ a second), ⌥← and ⌥→ go to the GIF's start and end,
   and I and O set its start or end at the playhead. ⌘Z undoes.
 - **Beside the picture**: the peak hold over the screen where it was on while recording (**Peaks**: None, Labels or
-  Box), what goes under the screen (the date, the time, the time into the GIF of its length,
+  Box, and **New peak capture at the start**, on at first, to start it over at the GIF's start), what goes under the
+  screen (the date, the time, the time into the GIF of its length,
   "0:10 / 2:30", and a progress bar it sits in), whether it loops, how long it pauses at the end (3
   seconds unless you say), its resolution, and its **speed**, 1× to 20×: a minute at 10× plays in 6 seconds. Faster
   than 1×, **Frames a second** is Full, every frame of the recording, unless you bring it down to 10 or fewer for a

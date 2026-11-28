@@ -111,7 +111,20 @@ public final class PeakHold: @unchecked Sendable {
     var number: Int
   }
 
-  public init() {}
+  /// Whether it reads the screen's labels itself, with the Mac's text recognition: a hold replayed from a recording
+  /// is told them (`know(_:for:)`) instead.
+  private let readsLabels: Bool
+
+  public init(readsLabels: Bool = true) {
+    self.readsLabels = readsLabels
+  }
+
+  /// The span and levels the labels of `screen` say, read before (by the recording's own hold): not read again.
+  public func know(_ scale: GraphScale, for screen: Snapshot) {
+    guard let graph = Graph.find(on: screen) else { return }
+    let print = graph.labelPrint(on: screen)
+    lock.locked { scales[print] = scale }
+  }
 
   /// How long a level is held: nil (the default) until the hold starts over, or the latest seconds.
   public var window: TimeInterval? {
@@ -296,6 +309,7 @@ public final class PeakHold: @unchecked Sendable {
   static func menuLeft(_ screen: Snapshot) -> Int { screen.width - screen.width / 6 - 6 }
 
   private func readLabelsIfNeeded() {
+    guard readsLabels else { return }
     guard let job = lock.locked({ takeJob(orLatest: false) }) else { return }
     readingQueue.async { [weak self] in
       let scale = GraphScale.read(job.graph, on: job.screen)

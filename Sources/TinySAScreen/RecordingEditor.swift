@@ -25,6 +25,7 @@ struct RecordingEditor: View {
   @AppStorage(Preferences.Key.gifLoops) private var loops = true
   @AppStorage(Preferences.Key.gifPauseAtEnd) private var pauseAtEnd = 3
   @AppStorage(Preferences.Key.gifPeaks) private var gifPeaks = GIFPeaks.labels.rawValue
+  @AppStorage(Preferences.Key.gifFreshPeaks) private var freshPeaks = true
   @StateObject private var stills = StillCache()
   @StateObject private var estimate = SizeEstimate()
   @FocusState private var typingFolder: Bool
@@ -80,8 +81,11 @@ struct RecordingEditor: View {
     .task(id: estimateKey) {
       var options = options
       options.scale = scale
-      estimate.update(model.clip.part(model.trim), options: options)
+      estimate.update(
+        model.clip.part(model.trim), options: options,
+        fresh: options.peaks == nil ? nil : Preferences.gifFreshPeakCount)
     }
+    .task(id: freshKey) { model.captureFreshPeaks(freshWanted) }
     .onDisappear {
       estimate.cancel()
       model.pause()
@@ -134,7 +138,7 @@ struct RecordingEditor: View {
         ended: model.pausing && options.pauseAtEnd > 1)
       let image = stills.image(
         of: model.clip.frame(at: moment), caption: caption, options: still,
-        peaks: still.peaks == nil ? nil : model.clip.peaks(at: moment))
+        peaks: still.peaks == nil ? nil : (freshWanted ? model.freshPeaks : model.clip)?.peaks(at: moment))
       let width = CGFloat(screen.width) * shown
       let height = CGFloat(rows) * shown
       // On whole display pixels, so a picture shown at its own pixels isn't blurred by half a pixel.
@@ -234,6 +238,11 @@ struct RecordingEditor: View {
         }
         .pickerStyle(.segmented)
         .disabled(!model.clip.hasPeaks)
+        Toggle("New peak capture at the start", isOn: $freshPeaks)
+          .disabled(!model.clip.hasPeaks || gifPeaks == GIFPeaks.none.rawValue)
+          .help(
+            "The peak hold starts over where the GIF starts: no peaks at first, then each as it's caught, so none from "
+              + "before the GIF shows. Off, the hold as the window had it.")
         .help(
           model.clip.hasPeaks
             ? "The peak hold over the screen where it was on while recording: each peak labeled beside it, or in a box"
@@ -440,8 +449,14 @@ struct RecordingEditor: View {
   private var estimateKey: String {
     let start = model.trim.start.timeIntervalSinceReferenceDate
     let end = model.trim.end.timeIntervalSinceReferenceDate
-    return "\(start) \(end) \(options.hashValue)"
+    return "\(start) \(end) \(options.hashValue) \(freshWanted)"
   }
+
+  /// New peak capture asked for, where there's a peak hold to capture.
+  private var freshWanted: Bool { freshPeaks && options.peaks != nil }
+
+  /// The picture's hold captured afresh again when the GIF's start or the choice changes.
+  private var freshKey: String { "\(model.trim.start.timeIntervalSinceReferenceDate) \(freshWanted)" }
 
   private func size(_ scale: Int) -> String {
     let name = scale == 1 ? "Small" : "Sharp"
@@ -756,8 +771,10 @@ struct TrimStrip: View {
       drag = Drag(part: part, x: part == .start ? start : part == .end ? end : down, mouse: down)
       model.takeKeys()
       model.beginDrag()
-      // A double click on a handle: the GIF from the very start of the recording, or to its very end.
-      let now = Date()
+      // A double click on a handle: the GIF from the very start of the recording, or to its very end. Timed by the
+      // presses themselves, not when they're handled, so one comes through while the Mac is busy (drawing the frame
+      // the first press shows, say).
+      let now = value.time
       let double = part != .playhead && lastPress.map {
         $0.part == part && now.timeIntervalSince($0.at) <= NSEvent.doubleClickInterval
       } == true
@@ -838,6 +855,40 @@ final class TrimModel: ObservableObject {
   /// the window opens without the room neither takes.
   var pictureArea = (CGSize.zero, CGSize.zero)
   var sideHeight: CGFloat = 0
+  /// The recording with its peak hold captured afresh from the GIF's start (New peak capture), for the picture: made
+  /// in the background a moment after the start stops moving; nil until then, or without it.
+  @Published private(set) var freshPeaks: Clip?
+  private var freshFor: (start: Date, count: Int)?
+  private var freshWork: DispatchWorkItem?
+
+  func captureFreshPeaks(_ wanted: Bool) {
+    guard wanted, clip.hasPeaks, let count = Preferences.gifFreshPeakCount else {
+      freshWork?.cancel()
+      freshPeaks = nil
+      freshFor = nil
+      return
+    }
+    let key = (start: trim.start, count: count)
+    if let freshFor, freshFor == key { return }
+    // None shown meanwhile: one captured from another start would show peaks from before this one.
+    freshWork?.cancel()
+    freshPeaks = nil
+    freshFor = nil
+    let clip = clip
+    let work = DispatchWorkItem { [weak self] in
+      let made = clip.peaksCapturedAfresh(from: key.start, count: key.count)
+      DispatchQueue.main.async {
+        MainActor.assumeIsolated {
+          guard let self, self.trim.start == key.start else { return }
+          self.freshPeaks = made
+          self.freshFor = key
+        }
+      }
+    }
+    freshWork = work
+    DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 0.2, execute: work)
+  }
+
   /// How fast the GIF plays (1 to 20 times), and its frames a second at most when faster (1 to 10; nil, every frame):
   /// this GIF's own.
   @Published var speed: Double = 1
@@ -1254,13 +1305,15 @@ final class SizeEstimate: ObservableObject {
     }
   }
 
-  func update(_ clip: Clip, options: GIFOptions) {
+  /// With `fresh`, the hold captured afresh from the clip's start (New peak capture), as the GIF will be.
+  func update(_ clip: Clip, options: GIFOptions, fresh: Int? = nil) {
     current?.stop()
     let ticket = Ticket()
     current = ticket
     bytes = nil
     Self.queue.asyncAfter(deadline: .now() + 0.25) { [weak self] in
       guard !ticket.isStopped else { return }
+      let clip = fresh.map { clip.peaksCapturedAfresh(count: $0) } ?? clip
       let bytes = GIF.make(clip, options: options, stop: { ticket.isStopped })?.data.count
       DispatchQueue.main.async {
         MainActor.assumeIsolated {

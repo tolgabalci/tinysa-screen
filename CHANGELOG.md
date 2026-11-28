@@ -66,6 +66,11 @@ All notable changes are listed here, newest first. Versions follow [Semantic Ver
 - The peak hold is in screenshots while it's on (at twice the screen's size, so its words can be read; Settings can
   leave it out), and in GIFs where it was on while recording, at each moment as it was then: the editor's Peaks
   chooses labels (the first choice), a box, or none. The recorder keeps the hold's changes with the frames.
+- New peak capture at the start, in the editor and on unless unchecked: the GIF's peak hold starts over at the GIF's
+  start, as if Clear Peaks had been pressed then, and holds what comes in as it plays, so someone watching sees the
+  peaks of those seconds and none from before them; Clear Peaks pressed while recording still clears it where it was.
+  Moving the start captures them again from there. Unchecked, the GIF shows the hold as the window did, peaks from
+  before its start included.
 - Each peak has the time its level came in, and the Peaks button, a menu now like Band (or Settings › Peak hold ›
   Show peaks as), chooses how they show, or none:
   - Labels beside the peaks (11:09:21 / 911 MHz / −58 dBm), the first choice. Where peaks crowd together, a newer

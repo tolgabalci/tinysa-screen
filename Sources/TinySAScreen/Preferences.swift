@@ -31,6 +31,7 @@ enum Preferences {
     /// 1.4.0's first builds' Peaks on or off in GIFs, taken over by `gifPeaks`.
     static let gifShowsPeaks = "gifShowsPeaks"
     static let gifPeaks = "gifPeaks"
+    static let gifFreshPeaks = "gifFreshPeaks"
     static let saveFolderBookmark = "saveFolderBookmark"
     static let saveFolderPath = "saveFolderPath"
     static let editorWidth = "editorWidth"
@@ -70,6 +71,7 @@ enum Preferences {
       Key.peakArrowColor: PeakColor.orange.rawValue,
       Key.screenshotPeaks: true,
       Key.gifPeaks: GIFPeaks.labels.rawValue,
+      Key.gifFreshPeaks: true,
     ])
   }
 
@@ -110,6 +112,12 @@ enum Preferences {
       scale: gifScale, showsDate: gifShowsDate, showsTime: gifShowsTime, showsElapsed: gifShowsElapsed,
       showsProgress: gifShowsProgress, loops: gifLoops, pauseAtEnd: TimeInterval(gifPauseAtEnd),
       peaks: gifPeakLook(gifPeaks))
+  }
+
+  /// New peak capture, as the editor last left it: a GIF's peak hold starts over where the GIF starts (none from
+  /// before it), finding as many peaks as the hold does; nil when it's off.
+  static var gifFreshPeakCount: Int? {
+    defaults.bool(forKey: Key.gifFreshPeaks) ? peakCount : nil
   }
 
   /// How GIFs show the peak hold where it was on, as the editor last left it.

@@ -204,7 +204,10 @@ final class GIFController {
     var options = options
     options.comment = comment(clip)
     saving += 1
+    // New peak capture: the hold replayed from the GIF's start, on the queue (under a millisecond a frame).
+    let fresh = options.peaks == nil ? nil : Preferences.gifFreshPeakCount
     Self.queue.async {
+      let clip = fresh.map { clip.peaksCapturedAfresh(count: $0) } ?? clip
       let result = GIF.make(clip, options: options)
       DispatchQueue.main.async {
         MainActor.assumeIsolated {

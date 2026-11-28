@@ -318,15 +318,29 @@
       recorder.keepRecent = 300
       let zero = Date().addingTimeInterval(-70)
       var id: UUID?
+      // A peak hold on, as live: a burst every 8 seconds somewhere else, the labels as if read.
+      let hold = PeakHold(readsLabels: false)
+      hold.window = 60
+      let scale = GraphScale(level0: 10, perRow: -10.0 / 24, start: 902_000_000, stop: 928_000_000)
+      let yellow = UInt32(0xFF00_FFFF).littleEndian
       for k in 0...140 {
         if (124..<130).contains(k), id != nil { continue }  // 62 to 65 s: no picture, as when the analyzer stalls
         let time = zero.addingTimeInterval(Double(k) / 2)
         var screen = sized[(k / 12) % sized.count]
         let x = (k * 3) % max(screen.width - 12, 1)
         for row in 2..<8 {
-          for column in x..<(x + 12) { screen.pixels[row * screen.width + column] = UInt32(0xFF00_FFFF).littleEndian }
+          for column in x..<(x + 12) { screen.pixels[row * screen.width + column] = yellow }
+        }
+        let (center, top) = (60 + ((k / 16) * 53) % 360, 70 + (k / 16 % 3) * 15)
+        for column in (center - 8)...(center + 8) where column > 31 && column < screen.width {
+          let fraction = Double(column - center) / 8
+          let row = top + Int(fraction * fraction * Double(200 - top))
+          screen.pixels[row * screen.width + column] = yellow
         }
         recorder.add(screen, at: time)
+        hold.know(scale, for: screen)
+        hold.add(screen, at: time)
+        recorder.notePeaks(hold.state, at: time)
         if k == 120 { id = recorder.begin(at: time, before: 300, longest: 300) }
       }
       guard let id, let began = recorder.started(id), let clip = recorder.end(id, at: zero.addingTimeInterval(70))
@@ -367,10 +381,12 @@
       /// Straight to the view under the mouse: the window would take a first click in an app that isn't in front
       /// to bring it there, and the demo leaves you where you are.
       var pressed: NSView?
-      func mouse(_ type: NSEvent.EventType, _ point: NSPoint) {
+      // An event at a moment of its own (seconds since startup): a person's clicks keep their times while the Mac is
+      // busy handling the first.
+      func mouse(_ type: NSEvent.EventType, _ point: NSPoint, at moment: TimeInterval? = nil) {
         guard
           let event = NSEvent.mouseEvent(
-            with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+            with: type, location: point, modifierFlags: [], timestamp: moment ?? ProcessInfo.processInfo.systemUptime,
             windowNumber: sheet.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1),
           let content = sheet.contentView
         else { return }
@@ -445,6 +461,11 @@
       }
       steps.append((0.05, { mouse(.leftMouseUp, NSPoint(x: from.x - 250, y: from.y)) }))
       steps.append((1, { picture("3-start-dragged") }))
+      // The peak hold captured afresh from there: a debug build's replay takes a few seconds.
+      steps.append((8, {
+        print("Fresh capture \(model.freshPeaks == nil ? "not made yet" : "made")")
+        picture("3b-captured-afresh")
+      }))
       // To the GIF's end, back three frames, and the end set there.
       steps.append((0.1, { key(right, 124, [.option, .function]) }))
       for _ in 0..<3 { steps.append((0.1, { key(left, 123, [.function]) })) }
@@ -471,14 +492,16 @@
       }
       for (name, start) in [("end", false), ("start", true)] {
         var point = NSPoint.zero
+        var pressed: TimeInterval = 0
         steps.append((0.3, {
           point = handle(start: start)
           print("Before double-clicking the \(name) handle: \(trimmed())")
-          mouse(.leftMouseDown, point)
+          pressed = ProcessInfo.processInfo.systemUptime
+          mouse(.leftMouseDown, point, at: pressed)
         }))
-        steps.append((0.05, { mouse(.leftMouseUp, point) }))
-        steps.append((0.1, { mouse(.leftMouseDown, point) }))
-        steps.append((0.05, { mouse(.leftMouseUp, point) }))
+        steps.append((0.05, { mouse(.leftMouseUp, point, at: pressed + 0.05) }))
+        steps.append((0.1, { mouse(.leftMouseDown, point, at: pressed + 0.15) }))
+        steps.append((0.05, { mouse(.leftMouseUp, point, at: pressed + 0.2) }))
         steps.append((0.5, { print("After double-clicking the \(name) handle: \(trimmed())") }))
       }
       steps.append((0.6, { picture("5b-double-clicked") }))

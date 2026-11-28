@@ -322,6 +322,122 @@ final class PeakPictureTests: XCTestCase {
     XCTAssertEqual(try cyan(GIFOptions(showsDate: false, showsTime: false)).max(), 0, "not asked for")
   }
 
+  static let span900 = GraphScale(level0: 10, perRow: -10.0 / 24, start: 900_000_000, stop: 930_000_000)
+
+  /// A moment of a recording: a screen at its seconds from `start`, its labels read by then (nil: not yet), or Clear
+  /// Peaks pressed.
+  enum Moment {
+    case frame(Snapshot, TimeInterval, read: GraphScale? = PeakPictureTests.span900)
+    case cleared(TimeInterval)
+  }
+
+  /// A recording's hold, as the live hold made it: each screen into a hold told the labels as read by then, its
+  /// changes kept with the frames.
+  func recorded(_ moments: [Moment], end: TimeInterval) throws -> Clip {
+    let hold = PeakHold(readsLabels: false)
+    var peaks: [PeakMoment] = []
+    var frames: [RecordedFrame] = []
+    for moment in moments {
+      switch moment {
+      case .frame(let screen, let seconds, let read):
+        let time = start.addingTimeInterval(seconds)
+        if let read { hold.know(read, for: screen) }
+        hold.add(screen, at: time)
+        peaks.append(PeakMoment(time: time, state: hold.state))
+        frames.append(RecordedFrame(screen, at: time))
+      case .cleared(let seconds):
+        hold.reset()
+        peaks.append(PeakMoment(time: start.addingTimeInterval(seconds), state: nil))
+      }
+    }
+    return try XCTUnwrap(Clip(frames: frames, from: start, to: start.addingTimeInterval(end), peaks: peaks))
+  }
+
+  func at(_ seconds: TimeInterval) -> Date { start.addingTimeInterval(seconds) }
+
+  func columns(_ state: PeakHold.State?) -> Set<Int> { Set((state?.peaks ?? []).map(\.column)) }
+
+  /// The span's labels under the graph changed: another span (the screen's own pixels stand for its labels).
+  func otherSpan(_ screen: Snapshot) -> Snapshot {
+    var screen = screen
+    for x in 50..<60 { screen.pixels[315 * 480 + x] = Snapshot.pixel(r: 255, g: 255, b: 255) }
+    return screen
+  }
+
+  /// New peak capture: from the GIF's start the hold begins empty and catches what comes after, the peaks from before
+  /// it gone; their frequencies and levels from the labels the recording's hold read.
+  func testANewPeakCaptureStartsEmptyAtTheGIFsStart() throws {
+    let clip = try recorded(
+      [
+        .frame(screen(peaks: [(100, 120), (300, 150)]), 0), .frame(screen(peaks: [(200, 100)]), 5),
+        .frame(screen(peaks: [(200, 100), (400, 130)]), 10),
+      ], end: 15)
+    XCTAssertEqual(columns(clip.peaks(at: at(6))), [100, 200, 300], "as recorded: from before")
+    let fresh = clip.peaksCapturedAfresh(from: at(5), count: 5)
+    XCTAssertNil(fresh.peaks(at: at(4)), "none before the GIF's start")
+    XCTAssertEqual(columns(fresh.peaks(at: at(6))), [200])
+    let later = try XCTUnwrap(fresh.peaks(at: at(11)))
+    XCTAssertEqual(columns(later), [200, 400])
+    XCTAssertTrue(later.peaks.allSatisfy { $0.frequency != nil && $0.level != nil }, "the labels as read")
+    XCTAssertTrue(later.peaks.allSatisfy { ($0.time ?? .distantPast) >= at(5) })
+  }
+
+  /// Clear Peaks pressed during the GIF (or the hold turned off, or another period chosen): from there it's the
+  /// recording's own hold again, as the window showed it. A GIF starting where the hold was off, or just cleared, has
+  /// the hold as recorded.
+  func testANewPeakCaptureGivesWayWhereTheHoldStartedOver() throws {
+    let clip = try recorded(
+      [
+        .frame(screen(peaks: [(100, 120)]), 0), .frame(screen(peaks: [(200, 100)]), 5), .cleared(8),
+        .frame(screen(peaks: [(300, 110)]), 10), .frame(screen(peaks: [(400, 130)]), 15),
+      ], end: 20)
+    let fresh = clip.peaksCapturedAfresh(from: at(5), count: 5)
+    XCTAssertEqual(columns(clip.peaks(at: at(6))), [100, 200])
+    XCTAssertEqual(columns(fresh.peaks(at: at(6))), [200], "afresh from the GIF's start")
+    XCTAssertNil(fresh.peaks(at: at(9)), "cleared")
+    XCTAssertEqual(fresh.peaks(at: at(11)), clip.peaks(at: at(11)))
+    XCTAssertEqual(fresh.peaks(at: at(16)), clip.peaks(at: at(16)))
+    XCTAssertEqual(columns(fresh.peaks(at: at(16))), [300, 400])
+    let off = clip.peaksCapturedAfresh(from: at(9), count: 5)
+    XCTAssertEqual(off.peaks.map(\.state), clip.peaks.map(\.state))
+  }
+
+  /// Another span chosen during the GIF: the hold starts over on it with its own frequencies, known from its first
+  /// frame though the recording read its labels a moment later, never the other span's, nor its levels held.
+  func testANewPeakCaptureFollowsAnotherSpan() throws {
+    let band = GraphScale(level0: 10, perRow: -10.0 / 24, start: 2_400_000_000, stop: 2_483_500_000)
+    let clip = try recorded(
+      [
+        .frame(screen(peaks: [(100, 120)]), 0), .frame(screen(peaks: [(200, 100)]), 5),
+        .frame(otherSpan(screen(peaks: [(300, 110)])), 10, read: nil),
+        .frame(otherSpan(screen(peaks: [(300, 110)])), 12, read: band),
+        .frame(otherSpan(screen(peaks: [(400, 130)])), 15, read: band),
+      ], end: 20)
+    XCTAssertNil(clip.peaks(at: at(11))?.scale, "the recording hadn't read the new labels yet")
+    let fresh = clip.peaksCapturedAfresh(from: at(5), count: 5)
+    let first = try XCTUnwrap(fresh.peaks(at: at(11)))
+    XCTAssertEqual(columns(first), [300], "nothing held from the other span")
+    XCTAssertEqual(first.scale, band)
+    let later = try XCTUnwrap(fresh.peaks(at: at(16)))
+    XCTAssertEqual(columns(later), [300, 400])
+    XCTAssertTrue(later.peaks.allSatisfy { ($0.frequency ?? 0) > 2_400_000_000 }, "the new span's frequencies")
+  }
+
+  /// A replay is quick: under a millisecond a frame built for the app (four minutes of sweeps, two a second, in 0.3 s),
+  /// some 70 here in a debug build.
+  func testANewPeakCaptureIsQuick() throws {
+    let screens = (0..<60).map { k in
+      Moment.frame(screen(peaks: [(100 + (k * 7) % 300, 100 + (k * 13) % 80), (380, 140)]), Double(k) * 0.5)
+    }
+    let clip = try recorded(screens, end: 30)
+    let began = Date()
+    let fresh = clip.peaksCapturedAfresh(from: at(5), count: 5)
+    let took = Date().timeIntervalSince(began) / 50
+    print(String(format: "New peak capture: %.1f ms a frame", took * 1000))
+    XCTAssertTrue(fresh.hasPeaks)
+    XCTAssertLessThan(took, 0.25)
+  }
+
   /// The recorder keeps the hold as it was when nothing recorded, so a recording knows it from its start.
   func testARecordingKnowsTheHoldFromItsStart() throws {
     let state = try held([(screen(peaks: [(100, 120)]), 0)])
