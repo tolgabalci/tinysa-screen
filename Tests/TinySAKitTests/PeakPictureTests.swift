@@ -61,22 +61,22 @@ final class PeakPictureTests: XCTestCase {
     XCTAssertEqual(times[300], start.addingTimeInterval(2))
   }
 
-  /// The box lists a peak a line in the order they came in, not by number: its number, the time to the second, the
-  /// frequency as finely as a column resolves and the level; no "since" title.
+  /// The box says the hold's period, then lists a peak a line in the order they came in, not by number: its number,
+  /// the time to the second, the frequency as finely as a column resolves and the level.
   func testTheBoxListsThePeaksInTheOrderTheyCameIn() throws {
     var state = try held([(screen(peaks: [(100, 120), (300, 150)]), 0)])
     XCTAssertEqual(state.peaks.count, 2)
     state.peaks[0].time = start.addingTimeInterval(9)  // number 1 came in last
     state.peaks[1].time = start.addingTimeInterval(5)
     let lines = state.readouts(locale: us, timeZone: utc).map(plain)
-    XCTAssertEqual(lines.count, 2)
-    XCTAssertTrue(lines[0].hasPrefix("2  12:16:45 AM  9"), lines[0])
-    XCTAssertTrue(lines[1].hasPrefix("1  12:16:49 AM  9"), lines[1])
-    XCTAssertTrue(lines[0].hasSuffix(" dBm"), lines[0])
-    XCTAssertEqual(lines[0].split(separator: ".").last?.prefix(2).allSatisfy(\.isNumber), true, "decimals")
-    XCTAssertEqual(state.title, "Peak hold")
+    XCTAssertEqual(lines.count, 3)
+    XCTAssertEqual(lines[0], "Peak hold, until cleared")
+    XCTAssertTrue(lines[1].hasPrefix("2  12:16:45 AM  9"), lines[1])
+    XCTAssertTrue(lines[2].hasPrefix("1  12:16:49 AM  9"), lines[2])
+    XCTAssertTrue(lines[1].hasSuffix(" dBm"), lines[1])
+    XCTAssertEqual(lines[1].split(separator: ".").last?.prefix(2).allSatisfy(\.isNumber), true, "decimals")
     state.window = 60
-    XCTAssertEqual(state.title, "Peak hold, last 1:00")
+    XCTAssertEqual(state.readouts(locale: us, timeZone: utc).first, "Peak hold, last 1:00")
   }
 
   /// Without the box, a peak's label is when it came in, its megahertz to the nearest and its level to the decibel.
@@ -131,7 +131,7 @@ final class PeakPictureTests: XCTestCase {
     for i in state.peaks.indices { state.peaks[i].time = start.addingTimeInterval(Double(i)) }
     for listed in [true, false] {
       let picture = PeakPicture(
-        width: 960, height: 640, scale: 2, look: PeakLook(listed: listed), locale: us, timeZone: utc)
+        width: 960, height: 640, scale: 2, look: PeakLook(readouts: listed ? .box : .labels), locale: us, timeZone: utc)
       let pixels = picture.pixels(for: state)
       let colours = Set(pixels.filter { $0 != 0 })
       XCTAssertTrue(colours.contains(Self.cyan))
@@ -146,7 +146,8 @@ final class PeakPictureTests: XCTestCase {
       if let folder = ProcessInfo.processInfo.environment["TINYSA_SCREEN_TEST_PICTURES"] {
         var still = GIF.still(
           screen(peaks: [(100, 120), (300, 150), (420, 100)]), caption: Caption(clock: start),
-          options: GIFOptions(scale: 2, showsDate: false, showsTime: false, peaks: PeakLook(listed: listed)),
+          options: GIFOptions(
+            scale: 2, showsDate: false, showsTime: false, peaks: PeakLook(readouts: listed ? .box : .labels)),
           peaks: state)
         still = Snapshot(width: still.width, height: still.height, pixels: still.pixels)
         let url = URL(fileURLWithPath: folder).appendingPathComponent("peaks-\(listed ? "listed" : "labels").png")
@@ -189,7 +190,8 @@ final class PeakPictureTests: XCTestCase {
     XCTAssertGreaterThan(moved, 50, "crowds enough to move labels")
   }
 
-  /// A low peak by the graph's left edge, tall ones around it: its label moves clear, its arrow passing no label.
+  /// A low peak by the graph's left edge, tall ones around it: its label right by it (over the tall ones' lines), not
+  /// across the graph.
   func testALowPeakByTheEdgeAmongTallOnes() throws {
     let scene = screen(peaks: [(40, 150), (60, 40), (90, 46), (130, 43), (200, 40)])
     var state = try held([(scene, 0)])
@@ -198,12 +200,20 @@ final class PeakPictureTests: XCTestCase {
     for i in state.peaks.indices {
       state.peaks[i].time = start.addingTimeInterval(state.peaks[i].column == 40 ? 10 : Double(i))
     }
-    let still = GIF.still(
-      scene, caption: Caption(clock: start),
-      options: GIFOptions(scale: 2, showsDate: false, showsTime: false, peaks: PeakLook(listed: false)), peaks: state)
-    let orange = still.pixels.filter { $0 == PeakLook.Color.orange.pixel }.count
-    XCTAssertGreaterThan(orange, 0, "an arrow, in its own colour")
+    let size = CGSize(width: 76, height: 44)
+    let tops = state.peaks.map { CGPoint(x: CGFloat($0.column * 2 + 1), y: CGFloat($0.row * 2 + 1)) }
+    let places = PeakLabels.place(
+      Array(repeating: size, count: tops.count), at: tops,
+      order: state.peaks.indices.sorted { state.peaks[$0].time! < state.peaks[$1].time! },
+      within: CGRect(x: 60, y: 0, width: 900, height: 480), gap: 8)
+    let low = try XCTUnwrap(state.peaks.firstIndex { $0.column == 40 })
+    let (from, to) = PeakLabels.arrow(from: places[low].rect, to: tops[low])
+    XCTAssertLessThan(hypot(to.x - from.x, to.y - from.y), 2 * size.height, "by its peak")
     if let folder = ProcessInfo.processInfo.environment["TINYSA_SCREEN_TEST_PICTURES"] {
+      let still = GIF.still(
+        scene, caption: Caption(clock: start),
+        options: GIFOptions(scale: 2, showsDate: false, showsTime: false, peaks: PeakLook(readouts: .labels)),
+        peaks: state)
       let url = URL(fileURLWithPath: folder).appendingPathComponent("peaks-edge.png")
       let destination = try XCTUnwrap(
         CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil))
@@ -212,18 +222,77 @@ final class PeakPictureTests: XCTestCase {
     }
   }
 
-  /// Three peaks a few columns apart, labeled beside them: the newer ones' labels moved clear with arrows.
+  /// Three peaks a few columns apart, labeled beside them: the newer ones' labels close by, clear of each other.
   func testCrowdedPeaksLabelsInAPicture() throws {
     let crowd = screen(peaks: [(200, 110), (206, 120), (212, 105), (360, 140)])
     var state = try held([(crowd, 0)])
     for i in state.peaks.indices { state.peaks[i].time = start.addingTimeInterval(Double(i)) }
     let still = GIF.still(
       crowd, caption: Caption(clock: start),
-      options: GIFOptions(scale: 2, showsDate: false, showsTime: false, peaks: PeakLook(listed: false)), peaks: state)
+      options: GIFOptions(scale: 2, showsDate: false, showsTime: false, peaks: PeakLook(readouts: .labels)),
+      peaks: state)
     let cyan = still.pixels.filter { $0 == Self.cyan }.count
     XCTAssertGreaterThan(cyan, 200)
     if let folder = ProcessInfo.processInfo.environment["TINYSA_SCREEN_TEST_PICTURES"] {
       let url = URL(fileURLWithPath: folder).appendingPathComponent("peaks-crowded.png")
+      let destination = try XCTUnwrap(
+        CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil))
+      CGImageDestinationAddImage(destination, try XCTUnwrap(still.image()), nil)
+      CGImageDestinationFinalize(destination)
+    }
+  }
+
+  /// A screen whose trace is wide humps, as a reader's bursts make: each hump's top, half its width, from the floor.
+  func humps(_ humps: [(column: Int, row: Int, half: Int)], floor: Int = 200) -> Snapshot {
+    var screen = screen(peaks: [])
+    let yellow = Snapshot.pixel(r: 255, g: 255, b: 0)
+    for x in 31..<480 {
+      var row = floor
+      for hump in humps where abs(x - hump.column) <= hump.half {
+        let fraction = Double(x - hump.column) / Double(hump.half)
+        row = min(row, hump.row + Int(fraction * fraction * Double(floor - hump.row)))
+      }
+      screen.pixels[row * 480 + x] = yellow
+    }
+    return screen
+  }
+
+  /// Nine humps side by side, their tops near one level, as in a busy band: every label close to its peak (beside it,
+  /// or a short arrow away), none level and long.
+  func testLabelsStayCloseInABusyBand() throws {
+    let scene = humps([
+      (50, 40, 14), (78, 38, 12), (108, 42, 13), (140, 39, 12), (172, 44, 14), (206, 40, 12), (236, 47, 13),
+      (268, 40, 12), (300, 43, 14),
+    ])
+    let hold = PeakHold()
+    hold.peakCount = 9
+    hold.add(scene, at: start)
+    var state = try XCTUnwrap(hold.state)
+    state.scale = GraphScale(level0: 10, perRow: -10.0 / 24, start: 900_000_000, stop: 930_000_000)
+    state.peaks = PeakHold.peaks(in: state, count: 9).enumerated().map { i, peak in
+      var peak = peak
+      peak.number = i + 1
+      peak.time = start.addingTimeInterval(Double((i * 7) % 9))
+      return peak
+    }
+    XCTAssertGreaterThanOrEqual(state.peaks.count, 8)
+    let size = CGSize(width: 76, height: 44)
+    let places = PeakLabels.place(
+      Array(repeating: size, count: state.peaks.count),
+      at: state.peaks.map { CGPoint(x: CGFloat($0.column * 2 + 1), y: CGFloat($0.row * 2 + 1)) },
+      order: state.peaks.indices.sorted { state.peaks[$0].time! < state.peaks[$1].time! },
+      within: CGRect(x: 60, y: 0, width: 900, height: 480), gap: 8)
+    for (place, peak) in zip(places, state.peaks) where place.away {
+      let top = CGPoint(x: CGFloat(peak.column * 2 + 1), y: CGFloat(peak.row * 2 + 1))
+      let (from, to) = PeakLabels.arrow(from: place.rect, to: top)
+      XCTAssertLessThan(hypot(to.x - from.x, to.y - from.y), 5 * size.height, "peak \(peak.number): close")
+    }
+    if let folder = ProcessInfo.processInfo.environment["TINYSA_SCREEN_TEST_PICTURES"] {
+      let still = GIF.still(
+        scene, caption: Caption(clock: start),
+        options: GIFOptions(scale: 2, showsDate: false, showsTime: false, peaks: PeakLook(readouts: .labels)),
+        peaks: state)
+      let url = URL(fileURLWithPath: folder).appendingPathComponent("peaks-busy.png")
       let destination = try XCTUnwrap(
         CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil))
       CGImageDestinationAddImage(destination, try XCTUnwrap(still.image()), nil)

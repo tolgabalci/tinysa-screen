@@ -247,6 +247,13 @@ public struct GraphScale: Equatable, Sendable {
   public var start: Int64
   public var stop: Int64
 
+  public init(level0: Double, perRow: Double, start: Int64, stop: Int64) {
+    self.level0 = level0
+    self.perRow = perRow
+    self.start = start
+    self.stop = stop
+  }
+
   public func level(atRow row: Double) -> Double { level0 + perRow * row }
 
   /// The frequency of a column of the graph: the sweep's points spread evenly from its left edge to its right.

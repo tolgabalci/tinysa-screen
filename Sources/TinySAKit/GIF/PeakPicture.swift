@@ -2,20 +2,28 @@ import CoreGraphics
 import CoreText
 import Foundation
 
-/// How the peak hold is drawn: its colour, and its peaks' readouts listed in a box, each by its number, or written
-/// beside each peak.
+/// How the peak hold is drawn: its colour, and its peaks' readouts: in a box, each peak numbered; beside each peak;
+/// or only the numbers (the window's list beside the screen has the rest).
 public struct PeakLook: Hashable, Sendable {
   public var color: Color
-  /// The readouts in a box, the peaks numbered; or beside each peak: when, the megahertz and the level.
-  public var listed: Bool
+  public var readouts: Readouts
   /// The colour of the arrows from labels moved away from their peaks: not the hold's, so an arrow isn't taken for
   /// part of its line.
   public var arrowColor: Color
 
-  public init(color: Color = .cyan, listed: Bool = true, arrowColor: Color = .orange) {
+  public init(color: Color = .cyan, readouts: Readouts = .box, arrowColor: Color = .orange) {
     self.color = color
-    self.listed = listed
+    self.readouts = readouts
     self.arrowColor = arrowColor
+  }
+
+  public enum Readouts: String, CaseIterable, Hashable, Sendable {
+    /// Numbered tags, and a box listing each peak: its number, when, the frequency and the level.
+    case box
+    /// Beside each peak, when, the megahertz and the level.
+    case labels
+    /// Numbered tags only.
+    case numbers
   }
 
   public struct Color: Hashable, Sendable {
@@ -37,22 +45,22 @@ public struct PeakLook: Hashable, Sendable {
 }
 
 extension PeakHold.State {
-  /// What the hold is, for VoiceOver: "Peak hold", or with how long it keeps levels, "Peak hold, last 1:00".
+  /// The hold's period, over its box and its list: "Peak hold, last 1:00", or "Peak hold, until cleared".
   public var title: String {
-    guard let window else { return "Peak hold" }
+    guard let window else { return "Peak hold, until cleared" }
     let seconds = Int(window)
     let held = seconds >= 60 ? "\(seconds / 60):\(String(format: "%02d", seconds % 60))" : "\(seconds) s"
     return "Peak hold, last " + held
   }
 
-  /// The box of readouts, a peak a line in the order their levels came in (a peak whose level came in again later
-  /// moves down): its number, when, the frequency and the level, as finely as the graph resolves,
-  /// "1  11:09:21 PM  915.200 MHz  −45 dBm". None before the screen's labels are read, or without a peak.
+  /// The box of readouts: the hold's period, then a peak a line in the order their levels came in (a peak whose
+  /// level came in again later moves down): its number, when, the frequency and the level, as finely as the graph
+  /// resolves, "1  11:09:21 PM  915.200 MHz  −45 dBm". None before the screen's labels are read, or without a peak.
   public func readouts(locale: Locale = .current, timeZone: TimeZone = .current) -> [String] {
     guard let scale, !peaks.isEmpty else { return [] }
     let perColumn = Double(scale.stop - scale.start) / Double(max(graph.right - graph.left - 1, 1))
     let inOrder = peaks.sorted { ($0.time ?? .distantPast, $0.number) < ($1.time ?? .distantPast, $1.number) }
-    return inOrder.compactMap { peak in
+    return [title] + inOrder.compactMap { peak in
       guard let frequency = peak.frequency, let level = peak.level else { return nil }
       let when = peak.time.map { PeakHold.clock($0, locale: locale, timeZone: timeZone) + "  " } ?? ""
       return "\(peak.number)  " + when + PeakHold.frequency(frequency, resolution: perColumn) + "  "
@@ -117,60 +125,52 @@ public enum PeakLabels {
   }
 
   /// Places for labels of `sizes` for peaks whose tops are at `tops`, inside `bounds`, top-down, taken in `order` (the
-  /// oldest peak's first, so a newer one gives way): beside its top, right or left, or above it, where that's clear of
-  /// the labels placed, their arrows, and every peak (its top, and its line down from there); else the nearest clear
-  /// spot around it (one to the side counting half as far again, one below three times: above is the graph's emptier
-  /// part), slid inside the graph at its edges, whose arrow to the peak passes no other label; else beside it all the
-  /// same.
+  /// oldest peak's first, so a newer one gives way). Beside its top, right or left, or just above it, where that's
+  /// clear of the labels placed, their arrows and every peak's top (the graph's lines may go under it); else the
+  /// spot nearby with the best arrow to the top: short, angled or upright (a level one, sideways, counts four times as
+  /// long, a shallow one half as long again), one below the top a little longer than one above, its way passing no
+  /// label; else beside it all the same. Close, over the graph, beats clear and far.
   public static func place(
     _ sizes: [CGSize], at tops: [CGPoint], order: [Int]? = nil, within bounds: CGRect, gap: CGFloat
   ) -> [Place] {
     var places = sizes.map { Place(rect: CGRect(origin: .zero, size: $0), away: false) }
     var taken: [CGRect] = []
     var arrows: [(from: CGPoint, to: CGPoint)] = []
-    // Each peak's line, from its top down.
-    let stems = tops.map { CGRect(x: $0.x - 1, y: $0.y, width: 2, height: max(bounds.maxY - $0.y, 0)) }
     for i in order ?? Array(sizes.indices) where i < sizes.count && i < tops.count {
       let (size, top) = (sizes[i], tops[i])
       func fits(_ rect: CGRect) -> Bool {
         bounds.contains(rect) && !taken.contains { $0.intersects(rect) }
-          && !tops.contains { rect.insetBy(dx: -2, dy: -2).contains($0) }
-          && !stems.contains { $0.intersects(rect) }
+          && !tops.contains { rect.insetBy(dx: -3, dy: -3).contains($0) }
           && !arrows.contains { crosses($0.from, $0.to, rect.insetBy(dx: -1, dy: -1)) }
-      }
-      /// Its arrow passes no other label.
-      func clearWay(_ rect: CGRect) -> Bool {
-        let (from, to) = arrow(from: rect, to: top)
-        return !taken.contains { crosses(from, to, $0.insetBy(dx: 0.5, dy: 0.5)) }
-      }
-      func at(_ center: CGPoint) -> CGRect {
-        CGRect(x: center.x - size.width / 2, y: center.y - size.height / 2, width: size.width, height: size.height)
       }
       let beside = [
         CGRect(x: top.x + gap, y: top.y - size.height / 2, width: size.width, height: size.height),
         CGRect(x: top.x - gap - size.width, y: top.y - size.height / 2, width: size.width, height: size.height),
-        at(CGPoint(x: top.x, y: top.y - gap - size.height / 2)),
+        CGRect(x: top.x - size.width / 2, y: top.y - gap - size.height, width: size.width, height: size.height),
       ]
       var place = beside.first(where: fits).map { Place(rect: $0, away: false) }
       if place == nil {
-        // Spots on rings around the top, nearest first: to the side counts half as far again, below three times.
-        let directions: [(x: CGFloat, y: CGFloat)] = [
-          (0, -1), (0.5, -1), (-0.5, -1), (1, -1), (-1, -1), (1, 0), (-1, 0), (1, 1), (-1, 1), (0, 1),
-        ]
-        let step = (x: size.width / 2 + gap, y: size.height + gap)
-        var spots: [(cost: CGFloat, rect: CGRect)] = []
-        for ring in 1...12 {
-          for direction in directions {
-            let offset = CGPoint(x: direction.x * CGFloat(ring) * step.x, y: direction.y * CGFloat(ring) * step.y)
-            let weight: CGFloat = direction.y > 0 ? 3 : direction.y == 0 ? 1.5 : 1
-            // Slid inside the graph at its edges, where a peak near one has its room.
-            let rect = inside(at(CGPoint(x: top.x + offset.x, y: top.y + offset.y)), bounds)
-            let center = CGPoint(x: rect.midX - top.x, y: rect.midY - top.y)
-            spots.append((hypot(center.x, center.y) * weight, rect))
+        var best: (cost: CGFloat, rect: CGRect)?
+        let (stepX, stepY) = (max(size.width / 6, 2), max(size.height / 4, 2))
+        for row in -24...24 {
+          for column in -24...24 {
+            let center = CGPoint(x: top.x + CGFloat(column) * stepX, y: top.y + CGFloat(row) * stepY)
+            let rect = inside(
+              CGRect(
+                x: center.x - size.width / 2, y: center.y - size.height / 2, width: size.width, height: size.height),
+              bounds)
+            let (from, to) = arrow(from: rect, to: top)
+            let length = hypot(to.x - from.x, to.y - from.y)
+            let steep = abs(to.y - from.y) / max(length, 1)  // 0 level, 1 upright
+            var cost = length * (steep < 0.42 ? 4 : steep < 0.7 ? 1.5 : 1) * (rect.minY > top.y ? 1.25 : 1)
+            cost += 0.001 * CGFloat(abs(row) + abs(column))  // equal costs: the nearer spot
+            guard cost < best?.cost ?? .infinity, fits(rect),
+              !taken.contains(where: { crosses(from, to, $0.insetBy(dx: 0.5, dy: 0.5)) })
+            else { continue }
+            best = (cost, rect)
           }
         }
-        place = spots.sorted { $0.cost < $1.cost }.first { fits($0.rect) && clearWay($0.rect) }
-          .map { Place(rect: $0.rect, away: true) }
+        place = best.map { Place(rect: $0.rect, away: true) }
       }
       let chosen = place ?? Place(rect: inside(beside[0], bounds), away: false)
       places[i] = chosen
@@ -252,7 +252,8 @@ struct PeakPicture {
   func pixels(for state: PeakHold.State) -> [UInt32] {
     var pixels = [UInt32](repeating: 0, count: width * height)
     drawLine(state, into: &pixels)
-    if look.listed {
+    switch look.readouts {
+    case .box, .numbers:
       for peak in state.peaks {
         let top = center(peak.column, peak.row)
         let number = "\(peak.number)"
@@ -262,8 +263,8 @@ struct PeakPicture {
         fill(box, color, into: &pixels)
         write(number, x: box.x + 2 * scale, y: box.y, ink: Self.black, over: color, into: &pixels)
       }
-      drawReadouts(state, into: &pixels)
-    } else {
+      if look.readouts == .box { drawReadouts(state, into: &pixels) }
+    case .labels:
       drawLabels(state, into: &pixels)
     }
     return pixels

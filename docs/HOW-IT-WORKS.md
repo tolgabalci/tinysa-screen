@@ -187,11 +187,16 @@ analyzer cut its sweep short, and a feeding program's pictures are all there is 
   black, crisp; the tags, boxes and labels opaque, their words in eight shades over them, so a GIF's colours stay
   exact. The recorder keeps the hold's changes with the frames (and always the latest, so a recording knows it from
   its start), and each moment of a GIF draws the hold as it was then. Labels beside peaks are placed oldest peak first:
-  beside its top, right, left or above, clear of the labels placed and of every peak's line; where none of those is
-  clear, the nearest clear spot around it (to the side counting half as far again, below three times), slid inside
-  the graph at its edges, whose arrow to its peak passes behind no label placed before it and which sits on no arrow
-  placed before it. The arrows are in a colour of their own, orange unless chosen otherwise, so none is taken for the
-  held line.
+  beside its top, right, left or just above, clear of the labels placed, their arrows and every peak's top (the
+  graph's lines may go under one); where none of those is clear, the spot nearby with the best arrow to the top:
+  short, and angled or upright (a level one counts four times as long, a shallow one half as long again; below the top
+  a quarter longer than above), its way passing behind no label, the spot slid inside the graph at its edges. Close
+  over the graph beats clear and far. The arrows are in a colour of their own, orange unless chosen otherwise, so none
+  is taken for the held line.
+- **The list beside the screen** (`PeakLog`): a row a peak, matched from one hold to the next by its number and place
+  (2 % of the graph's width, as the numbers are kept), its level and time brought up to date while it's held, kept
+  once it's gone; a peak that comes again after it went is a new row. Its CSV file is the rows as the list shows them,
+  the time with its date and a plain minus for the level, for a spreadsheet.
 
 ## The app's look
 

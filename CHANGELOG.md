@@ -66,11 +66,17 @@ All notable changes are listed here, newest first. Versions follow [Semantic Ver
 - The peak hold is in screenshots while it's on (at twice the screen's size, so its words can be read; Settings can
   leave it out), and in GIFs where it was on while recording, drawn as the window drew it at each moment (the
   editor's Peaks, on unless turned off). The recorder keeps the hold's changes with the frames.
-- Each peak has the time its level came in. The box lists the peaks in the order they came in, a line each: number,
-  time to the second, frequency, level ("Peak hold since" is gone). With Settings › Peak hold › List the peaks in a
-  box off, each peak has a label beside it instead (11:09:21 / 911 MHz / −58 dBm); where peaks crowd together, a
-  newer peak's label moves to the nearest clear spot, above first, with an arrow to its peak that passes behind no
-  other label, in a colour of its own (orange unless Settings › Peak hold › Arrows says otherwise).
+- Each peak has the time its level came in, and Settings › Peak hold › Show peaks as chooses how they show:
+  - Labels beside the peaks (11:09:21 / 911 MHz / −58 dBm), the first choice. Where peaks crowd together, a newer
+    peak's label goes close by, over the graph if need be, with a short arrow to its peak, angled or upright rather
+    than level, passing behind no other label, in a colour of its own (orange unless Settings › Peak hold › Arrows
+    says otherwise).
+  - A box over the graph, as before: the hold's period ("Peak hold, last 1:00"; "since" is gone), then the peaks in
+    the order they came in, a line each: number, time to the second, frequency, level.
+  - A list beside the screen, the window wider for it: every peak since the app started, a row each, never taken
+    out, the newest at the bottom (it follows them unless the pointer is over it); a peak no longer held greyed; the
+    pointer over a row rings its peak on the screen; Save writes the list as a CSV file. GIFs and screenshots show
+    the box then.
 - The analyzer's menu was read as the trace: its buttons down the screen's right side held as peaks at the top of the
   graph (+10 dBm), and opening it could start the hold over. Nothing is read from under a menu now, nor while a
   keypad is open, which started the hold over too.

@@ -191,7 +191,8 @@
     /// so: the app is never brought forward, nobody's typing is taken), with the link to a GIF just made as it pulses
     /// and after, and at its narrowest. Then the app quits.
     static func window(
-      _ window: NSWindow, screen: URL, show: (CGImage) -> Void, made: @escaping (URL) -> Void
+      _ window: NSWindow, screen: URL, show: (CGImage) -> Void, made: @escaping (URL) -> Void,
+      peaks: @escaping (PeakHold.State?) -> Void, ring: @escaping (Int?) -> Void
     ) {
       guard let folder = ProcessInfo.processInfo.environment["TINYSA_SCREEN_EDITOR_SNAPSHOTS"],
         let source = CGImageSourceCreateWithURL(screen as CFURL, nil),
@@ -220,7 +221,26 @@
         (0.3, { save("link-pulse-b") }),
         (0.75, { save("link-pulse-c") }),
         (4, { save("link-after") }),
-        (0.1, { window.setContentSize(NSSize(width: 480, height: 320)) }),
+        // The peak hold on, its peaks listed beside the screen: a hold read from the screen, its labels as if read.
+        (0.1, {
+          Preferences.defaults.set(PeakDisplay.list.rawValue, forKey: Preferences.Key.peakDisplay)
+          Preferences.defaults.set(true, forKey: Preferences.Key.peakHold)
+        }),
+        (0.5, { peaks(held(Snapshot(image)!, count: 4)) }),
+        (0.8, { save("list") }),
+        (0.1, { ring(2) }),
+        (0.6, { save("list-ring") }),
+        (0.1, {
+          ring(nil)
+          peaks(held(Snapshot(image)!, count: 6))
+        }),
+        (0.8, { save("list-more") }),
+        (0.1, { Preferences.defaults.set(PeakDisplay.labels.rawValue, forKey: Preferences.Key.peakDisplay) }),
+        (0.8, { save("labels") }),
+        (0.1, {
+          Preferences.defaults.set(false, forKey: Preferences.Key.peakHold)
+          window.setContentSize(NSSize(width: 480, height: 320))
+        }),
         (0.9, {
           save("window-narrowest")
           exit(0)
@@ -249,6 +269,33 @@
         unsafeBitCast(window.method(for: selector), to: Setter.self)(window, selector, true)
       }
       window.contentView?.superview?.needsDisplay = true  // the frame, the toolbar with it
+    }
+
+    /// The hold of `screen`, its labels as if read (902 to 928 MHz, +10 dBm at the top, 10 dB a division of 24
+    /// rows), its `count` highest peaks numbered, a few seconds apart.
+    private static func held(_ screen: Snapshot, count: Int) -> PeakHold.State? {
+      // Bursts in the live (yellow) trace: humps, a burst a few columns wide each, some side by side.
+      var screen = screen
+      let yellow = UInt32(0xFF00_FFFF).littleEndian
+      let humps = [(80, 60, 9), (100, 70, 8), (180, 50, 10), (205, 58, 9), (300, 64, 10), (390, 90, 8)]
+      for (center, top, half) in humps.prefix(count) {
+        for x in (center - half)...(center + half) {
+          let fraction = Double(x - center) / Double(half)
+          let row = top + Int(fraction * fraction * Double(200 - top))
+          for y in row...min(row + 1, screen.height - 1) { screen.pixels[y * screen.width + x] = yellow }
+        }
+      }
+      let hold = PeakHold()
+      hold.add(screen, at: Date())
+      guard var state = hold.state else { return nil }
+      state.scale = GraphScale(level0: 10, perRow: -10.0 / 24, start: 902_000_000, stop: 928_000_000)
+      state.peaks = PeakHold.peaks(in: state, count: count).enumerated().map { i, peak in
+        var peak = peak
+        peak.number = i + 1
+        peak.time = Date().addingTimeInterval(Double(i * 7 - 60))
+        return peak
+      }
+      return state
     }
 
     private static func pictures(in folder: URL) -> [Snapshot] {

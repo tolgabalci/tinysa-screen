@@ -14,8 +14,11 @@ final class PeakOverlay {
 
   /// The line's colour, its tags' and its boxes' edge.
   var color = PeakColor.cyan.color
-  /// The readouts listed in a box, the peaks numbered; or beside each peak.
-  var listed = true
+  /// The readouts in a box, the peaks numbered; beside each peak; or the numbers only (the list beside the screen has
+  /// the rest).
+  var readouts = PeakLook.Readouts.box
+  /// The peak whose row the pointer is over in the list: a ring around its top.
+  var highlighted: Int?
   /// The arrows' colour, from labels moved away from their peaks.
   var arrowColor = PeakColor.orange.color
 
@@ -62,7 +65,10 @@ final class PeakOverlay {
     line.lineWidth = max(1, scale * 0.75)
 
     let font = NSFont.monospacedDigitSystemFont(ofSize: max(8, 5.5 * scale), weight: .semibold)
-    guard listed else {
+    if let number = highlighted, let peak = state.peaks.first(where: { $0.number == number }) {
+      marks.addSublayer(ring(around: point(peak.column, peak.row), scale: scale))
+    }
+    guard readouts != .labels else {
       // Beside each peak: when, the megahertz and the level, placed as a GIF places them (top-down in the picture).
       let padding = 2 * scale
       let texts = state.peaks.map {
@@ -117,7 +123,7 @@ final class PeakOverlay {
 
     // The readouts, when the labels have been read.
     let lines = state.readouts()
-    guard !lines.isEmpty else { return }
+    guard readouts == .box, !lines.isEmpty else { return }
     let readout = text(lines.joined(separator: "\n"), font: font, color: .white, contentsScale: contentsScale)
     let size = readout.preferredFrameSize()
     let box = readoutBox(scale: scale)
@@ -132,6 +138,22 @@ final class PeakOverlay {
     readout.frame = CGRect(x: padding, y: padding, width: size.width, height: size.height)
     box.addSublayer(readout)
     marks.addSublayer(box)
+  }
+
+  /// A ring in the arrows' colour around a peak's top, for the list's row the pointer is over.
+  private func ring(around top: CGPoint, scale: CGFloat) -> CAShapeLayer {
+    let layer = CAShapeLayer()
+    let radius = 7 * scale
+    layer.path = CGPath(
+      ellipseIn: CGRect(x: top.x - radius, y: top.y - radius, width: 2 * radius, height: 2 * radius), transform: nil)
+    layer.fillColor = nil
+    layer.strokeColor = arrowColor.cgColor
+    layer.lineWidth = max(2, scale)
+    layer.shadowColor = NSColor.black.cgColor
+    layer.shadowOpacity = 0.9
+    layer.shadowRadius = 1.5
+    layer.shadowOffset = .zero
+    return layer
   }
 
   /// A line in the arrows' colour from a label to its peak's top, its head there.

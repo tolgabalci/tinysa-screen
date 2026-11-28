@@ -165,20 +165,29 @@ window above other apps' windows while you work in another one (a call's, say), 
 ## Peak hold
 
 **Peaks** (⌥⌘P) holds the highest level the analyzer's live trace (the yellow one) reaches at each frequency over the
-last minute, as a cyan line over the picture, and numbers its highest peaks, listing each in a small box, which finds
-itself an empty spot of the graph: its number, when its level came in, its frequency and its level, in the order they
-came in.
+last minute, as a cyan line over the picture, and shows its highest peaks, with when each one's level came in, as
+**Settings › Peak hold › Show peaks as** says:
 
-```
-3  11:08:52 PM  906.17 MHz  −23 dBm
-1  11:09:21 PM  911.27 MHz  −55 dBm
-```
+- **Labels beside the peaks**: each peak's time (without AM or PM, for room), megahertz to the nearest and level
+  beside it, "11:09:21 / 911 MHz / −58 dBm". Where peaks crowd together, the older peak's label stays beside it and a
+  newer one's goes close by with a short arrow to its peak, angled or upright rather than level, over the graph if
+  need be but never over another label, a peak's top or an arrow, and its arrow never behind another label. The
+  arrows are orange, so none is taken for the held line (Settings › Peak hold › Arrows).
+- **A box over the graph**, which finds itself an empty spot: the hold's period, then each peak by its number on the
+  screen, in the order they came in:
 
-With **Settings › Peak hold › List the peaks in a box** off, each peak has its own label beside it instead: when
-(without AM or PM, for room), the megahertz to the nearest and the level ("11:09:21 / 911 MHz / −58 dBm"). Where peaks
-crowd together, the older peak's label stays beside it and a newer one's moves to the nearest clear spot, above first,
-with an arrow to its peak that passes behind no other label (orange, so it isn't taken for the held line; Settings ›
-Peak hold › Arrows). **Clear Peaks**, beside Peaks while the hold is on (⌥⌘⌫), starts it over.
+  ```
+  Peak hold, last 1:00
+  3  11:08:52 PM  906.17 MHz  −23 dBm
+  1  11:09:21 PM  911.27 MHz  −55 dBm
+  ```
+- **A list beside the screen**: each peak numbered on the screen, and at the window's right (which widens for it)
+  every peak since the app started, a row each: its number, when, its frequency and its level, the hold's period
+  above them. The newest come at the bottom, the list following them unless the pointer is over it; a peak no longer
+  held stays, greyed; the pointer over a held peak's row rings it on the screen. **Save** writes the list as a CSV
+  file (number, date and time, MHz, dBm) to the folder GIFs go to.
+
+**Clear Peaks**, beside Peaks while the hold is on (⌥⌘⌫), starts it over.
 
 It's done on the Mac, from the analyzer's screen after each sweep: the analyzer's own traces, markers and settings
 stay as they are, and it works on a feeding program's pictures too. The frequencies and levels come from the screen's

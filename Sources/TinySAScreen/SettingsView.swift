@@ -21,7 +21,7 @@ struct SettingsView: View {
   @AppStorage(Preferences.Key.peakWindow) private var peakWindow = 60
   @AppStorage(Preferences.Key.peakColor) private var peakColor = PeakColor.cyan.rawValue
   @AppStorage(Preferences.Key.peakCount) private var peakCount = 5
-  @AppStorage(Preferences.Key.peakListed) private var peakListed = true
+  @AppStorage(Preferences.Key.peakDisplay) private var peakDisplay = PeakDisplay.labels.rawValue
   @AppStorage(Preferences.Key.peakArrowColor) private var peakArrowColor = PeakColor.orange.rawValue
   @AppStorage(Preferences.Key.screenshotPeaks) private var screenshotPeaks = true
   @AppStorage(Preferences.Key.savedBands) private var savedBandsData = Data()
@@ -83,10 +83,13 @@ struct SettingsView: View {
           }
         }
         .accessibilityValue("\(peakCount) peaks")
-        Toggle("List the peaks in a box", isOn: $peakListed)
-          .help(
-            "Each peak numbered, and in a box its time, frequency and level, in the order they came in. Off, each "
-              + "peak's time, megahertz and level beside it.")
+        Picker("Show peaks as", selection: $peakDisplay) {
+          ForEach(PeakDisplay.allCases) { display in Text(display.name).tag(display.rawValue) }
+        }
+        .help(
+          "Labels: each peak's time, megahertz and level beside it. Box: each peak numbered, a box with their times, "
+            + "frequencies and levels. List: each peak numbered, and beside the screen every peak since the app "
+            + "started, to save as a CSV file. GIFs and screenshots show the list's peaks as the box.")
         Picker("Arrows", selection: $peakArrowColor) {
           ForEach(PeakColor.allCases) { color in
             Label {
@@ -97,7 +100,7 @@ struct SettingsView: View {
             .tag(color.rawValue)
           }
         }
-        .disabled(peakListed)
+        .disabled(peakDisplay != PeakDisplay.labels.rawValue)
         .help("The color of an arrow from a peak's label moved away from it, where peaks crowd together")
         Toggle("In screenshots too", isOn: $screenshotPeaks)
           .help("Screenshots (⌘S, ⌘C) show the peak hold while it's on, at twice the screen's size so it can be read")

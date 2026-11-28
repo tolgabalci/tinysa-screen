@@ -1,5 +1,6 @@
 import AppKit
 import ImageIO
+import SwiftUI
 import TinySAKit
 import UniformTypeIdentifiers
 
@@ -43,6 +44,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
   private let clearPeaksButton = ToolbarButton()
   /// The peak hold, while it's on: fed each frame by the session.
   private let peakHold = PeakHold()
+  /// Every peak since the app started, listed beside the screen when Settings shows peaks so.
+  private let peakList = PeakList()
+  private lazy var listView: NSHostingView<PeakListView> = {
+    let host = NSHostingView(rootView: PeakListView(list: peakList))
+    if #available(macOS 13.0, *) { host.sizingOptions = [] }
+    return host
+  }()
+  /// The screen, and the list at its right while it's shown.
+  private let screenAndList = NSView()
+  private var listWidth: NSLayoutConstraint!
+  private var listShown = false
   private var peakFrames: UUID?
   private var peakSettings: (TimeInterval?, Int)?
   private var keptSeconds = -1
@@ -85,9 +97,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     view.onEscape = { [weak self] in self?.escape(nil) }
     window.title = TitleBar.title(Bundle.main.infoDictionary)
     updateSubtitle()
-    window.contentView = view
-    window.contentAspectRatio = NSSize(width: 480, height: 320)
-    window.contentMinSize = NSSize(width: 480, height: 320)
+    window.contentView = screenAndList
+    for part in [view, listView] as [NSView] {
+      part.translatesAutoresizingMaskIntoConstraints = false
+      screenAndList.addSubview(part)
+    }
+    listWidth = listView.widthAnchor.constraint(equalToConstant: 0)
+    NSLayoutConstraint.activate([
+      view.leadingAnchor.constraint(equalTo: screenAndList.leadingAnchor),
+      view.topAnchor.constraint(equalTo: screenAndList.topAnchor),
+      view.bottomAnchor.constraint(equalTo: screenAndList.bottomAnchor),
+      view.trailingAnchor.constraint(equalTo: listView.leadingAnchor),
+      listView.topAnchor.constraint(equalTo: screenAndList.topAnchor),
+      listView.bottomAnchor.constraint(equalTo: screenAndList.bottomAnchor),
+      listView.trailingAnchor.constraint(equalTo: screenAndList.trailingAnchor),
+      listWidth,
+    ])
+    listView.isHidden = true
+    peakList.onHover = { [weak self] number in self?.view.highlightedPeak = number }
+    peakList.onSave = { [weak self] in self?.savePeakList() }
+    updateWindowShape()
     window.collectionBehavior.insert(.fullScreenPrimary)
     window.isReleasedWhenClosed = false
     let toolbar = NSToolbar(identifier: "tinySA Screen")
@@ -123,7 +152,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
         EditorDemo.window(
           window, screen: URL(fileURLWithPath: screen),
           show: { [weak self] image in self.map { $0.session($0.session, show: image) } },
-          made: { [weak self] url in self?.showLastGIF(url) })
+          made: { [weak self] url in self?.showLastGIF(url) },
+          peaks: { [weak self] state in self?.peaksChanged(state) },
+          ring: { [weak self] number in self?.view.highlightedPeak = number })
         return
       }
     #endif
@@ -167,11 +198,72 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     let sizeChanged = self.image.map { $0.width != image.width || $0.height != image.height } ?? true
     self.image = image
     view.show(image)
-    if sizeChanged {
-      // The window keeps the picture's shape (the original tinySA's screen is 320 × 240), at least 480 points wide,
-      // whatever size a feeding program's pictures are.
-      window.contentAspectRatio = NSSize(width: image.width, height: image.height)
-      window.contentMinSize = NSSize(width: 480, height: 480 * CGFloat(image.height) / CGFloat(image.width))
+    if sizeChanged { updateWindowShape() }
+  }
+
+  /// The analyzer's picture's size, in its pixels.
+  private var pictureSize: CGSize {
+    image.map { CGSize(width: $0.width, height: $0.height) } ?? CGSize(width: 480, height: 320)
+  }
+
+  /// The width the list takes beside the screen: none while it's hidden.
+  private var listSpace: CGFloat { listShown ? PeakListView.width : 0 }
+
+  /// The window keeps the picture's shape (the original tinySA's screen is 320 × 240), at least 480 points wide,
+  /// whatever size a feeding program's pictures are, the list beside it while it's shown (`windowWillResize` keeps
+  /// the shape then: an aspect ratio can't leave the list's width out).
+  private func updateWindowShape() {
+    let picture = pictureSize
+    window.contentMinSize = NSSize(width: 480 + listSpace, height: 480 * picture.height / picture.width)
+    if listShown {
+      window.contentResizeIncrements = NSSize(width: 1, height: 1)
+    } else {
+      window.contentAspectRatio = NSSize(width: picture.width, height: picture.height)
+    }
+  }
+
+  func windowWillResize(_ sender: NSWindow, to frameSize: NSSize) -> NSSize {
+    guard sender === window, listShown else { return frameSize }
+    let content = window.contentRect(forFrameRect: NSRect(origin: .zero, size: frameSize)).size
+    let picture = pictureSize
+    let width = max(content.width - listSpace, 480)
+    let shaped = NSSize(width: width + listSpace, height: width * picture.height / picture.width)
+    return window.frameRect(forContentRect: NSRect(origin: .zero, size: shaped)).size
+  }
+
+  /// The list beside the screen, or not: the window grows or shrinks by it, the picture its height (smaller when the
+  /// screen hasn't the room), its top left corner where it was.
+  private func showList(_ shown: Bool) {
+    guard shown != listShown else { return }
+    listShown = shown
+    listView.isHidden = !shown
+    listWidth.constant = listSpace
+    updateWindowShape()
+    guard !window.styleMask.contains(.fullScreen) else { return }
+    let picture = pictureSize
+    var height = window.contentRect(forFrameRect: window.frame).height
+    if let visible = window.screen?.visibleFrame {
+      let chrome = window.frameRect(forContentRect: .zero).size
+      let room = visible.width - chrome.width - listSpace
+      height = min(height, room * picture.height / picture.width, visible.height - chrome.height)
+    }
+    let content = NSSize(width: height * picture.width / picture.height + listSpace, height: height)
+    var frame = window.frameRect(forContentRect: NSRect(origin: .zero, size: content))
+    frame.origin = CGPoint(x: window.frame.minX, y: window.frame.maxY - frame.height)
+    window.setFrame(window.constrainFrameRect(frame, to: window.screen), display: true)
+  }
+
+  /// The list as a CSV file, in the folder GIFs go to.
+  private func savePeakList() {
+    let csv = peakList.log.csv()
+    do {
+      let saved = try Preferences.saveFolder.save(for: Date(), extension: "csv") { url in
+        try Data(csv.utf8).write(to: url)
+      }
+      if let moved = saved.moved { Preferences.saveFolder = moved }
+      view.flash(saved.note())
+    } catch {
+      view.flash("The peak list couldn't be saved: \(error.localizedDescription)")
     }
   }
 
@@ -467,7 +559,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     peaksButton.state = on ? .on : .off
     showClearPeaks(on)
     view.peakColor = Preferences.peakColor.color
-    view.peaksListed = Preferences.peakListed
+    view.peakReadouts = Preferences.peakDisplay.window
+    showList(on && Preferences.peakDisplay == .list)
     view.peakArrowColor = Preferences.peakArrowColor.color
     let settings = (Preferences.peakWindow, Preferences.peakCount)
     if peakSettings.map({ $0.0 != settings.0 || $0.1 != settings.1 }) ?? true {
@@ -504,7 +597,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
 
   /// The hold drawn while it's on, over a spectrum (a NanoVNA's yellow trace is a measurement, not a level).
   private func peaksChanged(_ state: PeakHold.State?) {
-    view.showPeaks(Preferences.peakHold && status.instrument != .nanoVNA ? state : nil)
+    let shown = Preferences.peakHold && status.instrument != .nanoVNA ? state : nil
+    view.showPeaks(shown)
+    peakList.update(shown)
   }
 
   @objc func toggleFloatOnTop(_ sender: Any?) {
@@ -565,13 +660,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
   /// The window at a whole number of the analyzer's pixels to each of its points, as far as the screen allows.
   private func setScale(_ scale: CGFloat) {
     guard !window.styleMask.contains(.fullScreen) else { return }
-    let pixels = image.map { CGSize(width: $0.width, height: $0.height) } ?? CGSize(width: 480, height: 320)
-    var content = NSRect(origin: .zero, size: CGSize(width: pixels.width * scale, height: pixels.height * scale))
-    var frame = window.frameRect(forContentRect: content)
+    let pixels = pictureSize
+    var picture = CGSize(width: pixels.width * scale, height: pixels.height * scale)
+    var frame = window.frameRect(
+      forContentRect: NSRect(origin: .zero, size: CGSize(width: picture.width + listSpace, height: picture.height)))
     if let visible = window.screen?.visibleFrame, frame.width > visible.width || frame.height > visible.height {
-      let fit = min(visible.width / frame.width, visible.height / frame.height)
-      content.size = CGSize(width: content.width * fit, height: content.height * fit)
-      frame = window.frameRect(forContentRect: content)
+      let chrome = window.frameRect(forContentRect: .zero).size
+      let fit = min(
+        (visible.width - chrome.width - listSpace) / picture.width, (visible.height - chrome.height) / picture.height)
+      picture = CGSize(width: picture.width * fit, height: picture.height * fit)
+      frame = window.frameRect(
+        forContentRect: NSRect(origin: .zero, size: CGSize(width: picture.width + listSpace, height: picture.height)))
     }
     frame.origin = CGPoint(x: window.frame.midX - frame.width / 2, y: window.frame.maxY - frame.height)
     window.setFrame(window.constrainFrameRect(frame, to: window.screen), display: true, animate: true)

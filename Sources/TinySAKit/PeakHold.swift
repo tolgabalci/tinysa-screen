@@ -398,7 +398,7 @@ public final class PeakHold: @unchecked Sendable {
   /// The highest peaks of the held trace: each the highest point between the higher ground on either side, standing at
   /// least 6 dB above the lower of the two valleys around it and above the held noise (the trace's median), highest
   /// first. Before the labels are read, 6 dB is taken as six tenths of a grid division (10 dB a division, the usual).
-  static func peaks(in state: State, count: Int) -> [Peak] {
+  public static func peaks(in state: State, count: Int) -> [Peak] {
     let rows = state.rows
     guard count > 0, !rows.isEmpty else { return [] }
     let minimum: Int

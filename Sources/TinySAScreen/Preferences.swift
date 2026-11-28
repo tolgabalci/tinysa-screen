@@ -23,7 +23,9 @@ enum Preferences {
     static let peakWindow = "peakWindow"
     static let peakCount = "peakCount"
     static let peakColor = "peakColor"
+    /// 1.4.0's first builds' choice of a box or labels, taken over by `peakDisplay`.
     static let peakListed = "peakListed"
+    static let peakDisplay = "peakDisplay"
     static let peakArrowColor = "peakArrowColor"
     static let screenshotPeaks = "screenshotPeaks"
     static let gifShowsPeaks = "gifShowsPeaks"
@@ -36,6 +38,10 @@ enum Preferences {
   static let defaults = UserDefaults.standard
 
   static func register() {
+    let own = defaults.persistentDomain(forName: Bundle.main.bundleIdentifier ?? "tinysa-screen")
+    if own?[Key.peakDisplay] == nil, let listed = own?[Key.peakListed] as? Bool {
+      defaults.set((listed ? PeakDisplay.box : .labels).rawValue, forKey: Key.peakDisplay)
+    }
     defaults.register(defaults: [
       Key.controlEnabled: true,
       Key.keepRecent: true,
@@ -55,7 +61,7 @@ enum Preferences {
       Key.peakWindow: 60,  // the latest minute, as a monitor holds peaks; 0 keeps them until cleared
       Key.peakColor: PeakColor.cyan.rawValue,
       Key.peakCount: 5,
-      Key.peakListed: true,
+      Key.peakDisplay: PeakDisplay.labels.rawValue,
       Key.peakArrowColor: PeakColor.orange.rawValue,
       Key.screenshotPeaks: true,
       Key.gifShowsPeaks: true,
@@ -103,8 +109,7 @@ enum Preferences {
 
   /// The peak hold's look: its colour, its readouts in a box or beside each peak.
   static var peakLook: PeakLook {
-    PeakLook(
-      color: peakColor.gifColor, listed: defaults.bool(forKey: Key.peakListed), arrowColor: peakArrowColor.gifColor)
+    PeakLook(color: peakColor.gifColor, readouts: peakDisplay.picture, arrowColor: peakArrowColor.gifColor)
   }
 
   /// The arrows' colour, from peak labels moved away from their peaks.
@@ -112,8 +117,10 @@ enum Preferences {
     PeakColor(rawValue: defaults.string(forKey: Key.peakArrowColor) ?? "") ?? .orange
   }
 
-  /// The peak hold's readouts listed in a box, the peaks numbered; or beside each peak.
-  static var peakListed: Bool { defaults.bool(forKey: Key.peakListed) }
+  /// How the window shows the peak hold's readouts: beside each peak, in a box, or in a list beside the screen.
+  static var peakDisplay: PeakDisplay {
+    PeakDisplay(rawValue: defaults.string(forKey: Key.peakDisplay) ?? "") ?? .labels
+  }
 
   /// Screenshots show the peak hold while it's on.
   static var screenshotPeaks: Bool { defaults.bool(forKey: Key.screenshotPeaks) }
@@ -185,6 +192,27 @@ enum Preferences {
     }
     set { defaults.set(try? JSONEncoder().encode(newValue), forKey: Key.savedBands) }
   }
+}
+
+/// How the peak hold's readouts show: beside each peak (when, the megahertz and the level), in a box over the graph
+/// (each peak numbered), or in a list beside the screen of every peak since the app started (the peaks numbered on the
+/// screen).
+enum PeakDisplay: String, CaseIterable, Identifiable {
+  case labels, box, list
+
+  var id: String { rawValue }
+  var name: String {
+    switch self {
+    case .labels: return "Labels beside the peaks"
+    case .box: return "A box over the graph"
+    case .list: return "A list beside the screen"
+    }
+  }
+
+  /// In the window: with the list beside the screen, the peaks' numbers only.
+  var window: PeakLook.Readouts { self == .labels ? .labels : self == .box ? .box : .numbers }
+  /// In a GIF or a screenshot: the list isn't in the picture, so the box.
+  var picture: PeakLook.Readouts { self == .labels ? .labels : .box }
 }
 
 /// The peak hold's colours. The analyzer draws its own traces yellow, green, red and magenta (traces 1 to 4 on a

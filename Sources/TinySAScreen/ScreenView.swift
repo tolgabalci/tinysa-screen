@@ -152,12 +152,22 @@ final class ScreenView: NSView {
     }
   }
 
-  /// The peak hold's readouts listed in a box, the peaks numbered; or beside each peak.
-  var peaksListed: Bool {
-    get { peaks.listed }
+  /// The peak hold's readouts: in a box, the peaks numbered; beside each peak; or the numbers only.
+  var peakReadouts: PeakLook.Readouts {
+    get { peaks.readouts }
     set {
-      guard newValue != peaks.listed else { return }
-      peaks.listed = newValue
+      guard newValue != peaks.readouts else { return }
+      peaks.readouts = newValue
+      drawPeaks()
+    }
+  }
+
+  /// A peak ringed, by its number: the list's row the pointer is over.
+  var highlightedPeak: Int? {
+    get { peaks.highlighted }
+    set {
+      guard newValue != peaks.highlighted else { return }
+      peaks.highlighted = newValue
       drawPeaks()
     }
   }
@@ -248,7 +258,8 @@ final class ScreenView: NSView {
     }
     if let state = peakState, state.scale != nil {
       let readouts = state.readouts()
-      text += ". " + state.title + ": " + (readouts.isEmpty ? "no peaks" : readouts.joined(separator: "; "))
+      let peaks = readouts.count < 2 ? "no peaks" : readouts.dropFirst().joined(separator: "; ")
+      text += ". " + state.title + ": " + peaks
     }
     return text
   }
