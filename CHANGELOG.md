@@ -2,7 +2,7 @@
 
 All notable changes are listed here, newest first. Versions follow [Semantic Versioning](https://semver.org).
 
-## 1.4.0 (2026-11-27)
+## 1.4.0 (2026-11-28)
 
 - Record starts before it's pressed, and Stop opens an editor. The app keeps the last minute of the screen in memory
   (Settings › Recording: 15 seconds to 5 minutes, or nothing), and a recording's GIF starts 5 seconds before Record was
