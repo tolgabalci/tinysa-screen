@@ -208,6 +208,28 @@
         try? NSBitmapImageRep(cgImage: picture).representation(using: .png, properties: [:])?.write(to: url)
         print("Pictured \(name): \(Int(window.frame.width)) × \(Int(window.frame.height)) points")
       }
+      func settingsWindow() -> NSWindow? { NSApp.windows.first { $0.title == "tinySA Screen Settings" } }
+      // Settings scrolled `down` points from its top (its form scrolls).
+      func scrollSettings(_ down: CGFloat) {
+        func scroller(in view: NSView) -> NSScrollView? {
+          view as? NSScrollView ?? view.subviews.lazy.compactMap { scroller(in: $0) }.first
+        }
+        guard let content = settingsWindow()?.contentView, let scroll = scroller(in: content),
+          let document = scroll.documentView
+        else { return print("Settings doesn't scroll") }
+        let room = max(0, document.bounds.height - scroll.contentView.bounds.height)
+        let y = document.isFlipped ? min(down, room) : max(0, room - down)
+        scroll.contentView.scroll(to: NSPoint(x: 0, y: y))
+        scroll.reflectScrolledClipView(scroll.contentView)
+      }
+      func saveSettings(_ name: String) {
+        guard let settings = settingsWindow(), let picture = picture(of: settings) else {
+          return print("No picture of \(name)")
+        }
+        let url = out.appendingPathComponent("\(name).png")
+        try? NSBitmapImageRep(cgImage: picture).representation(using: .png, properties: [:])?.write(to: url)
+        print("Pictured \(name): \(Int(settings.frame.width)) × \(Int(settings.frame.height)) points")
+      }
       let steps: [(TimeInterval, () -> Void)] = [
         (1.2, { save("window-behind") }),
         (0.1, {
@@ -237,7 +259,18 @@
         (0.8, { save("list-more") }),
         (0.1, { Preferences.defaults.set(PeakDisplay.labels.rawValue, forKey: Preferences.Key.peakDisplay) }),
         (0.8, { save("labels") }),
+        // Settings, tall enough for all of it (past the screen's foot if need be): the labels' colour, then greyed
+        // with the peaks in a box.
         (0.1, {
+          SettingsWindow.shared.show()
+          settingsWindow()?.setContentSize(NSSize(width: 480, height: 1900))
+        }),
+        (1.0, { scrollSettings(640) }),
+        (0.6, { saveSettings("settings") }),
+        (0.1, { Preferences.defaults.set(PeakDisplay.box.rawValue, forKey: Preferences.Key.peakDisplay) }),
+        (0.8, { saveSettings("settings-box") }),
+        (0.1, {
+          settingsWindow()?.close()
           Preferences.defaults.set(false, forKey: Preferences.Key.peakHold)
           window.setContentSize(NSSize(width: 480, height: 320))
         }),

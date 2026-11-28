@@ -142,12 +142,12 @@ final class ScreenView: NSView {
     }
   }
 
-  /// The arrows' colour, from peak labels moved away from their peaks.
-  var peakArrowColor: NSColor {
-    get { peaks.arrowColor }
+  /// The peak labels' colour: their edges, and the arrows from labels moved away from their peaks.
+  var peakLabelColor: NSColor {
+    get { peaks.labelColor }
     set {
-      guard newValue != peaks.arrowColor else { return }
-      peaks.arrowColor = newValue
+      guard newValue != peaks.labelColor else { return }
+      peaks.labelColor = newValue
       drawPeaks()
     }
   }

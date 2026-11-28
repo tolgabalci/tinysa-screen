@@ -7,14 +7,14 @@ import Foundation
 public struct PeakLook: Hashable, Sendable {
   public var color: Color
   public var readouts: Readouts
-  /// The colour of the arrows from labels moved away from their peaks: not the hold's, so an arrow isn't taken for
-  /// part of its line.
-  public var arrowColor: Color
+  /// The colour of the labels' edges and of the arrows from labels moved away from their peaks: not the hold's, so
+  /// neither is taken for part of its line.
+  public var labelColor: Color
 
-  public init(color: Color = .cyan, readouts: Readouts = .box, arrowColor: Color = .orange) {
+  public init(color: Color = .cyan, readouts: Readouts = .box, labelColor: Color = .orange) {
     self.color = color
     self.readouts = readouts
-    self.arrowColor = arrowColor
+    self.labelColor = labelColor
   }
 
   public enum Readouts: String, CaseIterable, Hashable, Sendable {
@@ -329,7 +329,7 @@ struct PeakPicture {
     let right = state.graph.right * scale - 36 * scale
     let x = max(0, min(state.quietSpot.x * scale, right - box.width))
     let y = max(0, state.quietSpot.y * scale)
-    drawBox(lines, x: x, y: y, width: box.width, padding: padding, into: &pixels)
+    drawBox(lines, x: x, y: y, width: box.width, padding: padding, edge: color, into: &pixels)
   }
 
   /// Each peak's label beside it, inside the graph.
@@ -358,12 +358,12 @@ struct PeakPicture {
     for (lines, place) in zip(labels, places) {
       let rect = place.rect
       drawBox(
-        lines, x: Int(rect.minX), y: Int(rect.minY), width: Int(rect.width), padding: padding, centred: true,
-        into: &pixels)
+        lines, x: Int(rect.minX), y: Int(rect.minY), width: Int(rect.width), padding: padding,
+        edge: look.labelColor.pixel, centred: true, into: &pixels)
     }
   }
 
-  /// A line in the arrows' colour from a label to its peak's top, its head there.
+  /// A line in the labels' colour from a label to its peak's top, its head there.
   private func drawArrow(_ arrow: (from: CGPoint, to: CGPoint), into pixels: inout [UInt32]) {
     let (from, to) = arrow
     let length = hypot(to.x - from.x, to.y - from.y)
@@ -393,17 +393,18 @@ struct PeakPicture {
         if inside { mask[y * width + x] = true }
       }
     }
-    let ink = look.arrowColor.pixel
+    let ink = look.labelColor.pixel
     for i in pixels.indices where mask[i] { pixels[i] = ink }
   }
 
-  /// White words on black in a box edged in the hold's colour, each line `centred` (a label's) or from the left.
+  /// White words on black in a box edged in `edge` (the hold's colour for its box, the labels' for a label), each line
+  /// `centred` (a label's) or from the left.
   private func drawBox(
-    _ lines: [String], x: Int, y: Int, width boxWidth: Int, padding: Int, centred: Bool = false,
+    _ lines: [String], x: Int, y: Int, width boxWidth: Int, padding: Int, edge: UInt32, centred: Bool = false,
     into pixels: inout [UInt32]
   ) {
     let boxHeight = lines.count * lineHeight + 2 * padding
-    fill((x, y, boxWidth, boxHeight), color, into: &pixels)
+    fill((x, y, boxWidth, boxHeight), edge, into: &pixels)
     fill((x + 1, y + 1, boxWidth - 2, boxHeight - 2), Self.black, into: &pixels)
     for (i, line) in lines.enumerated() {
       let left = centred ? x + (boxWidth - measure(line)) / 2 : x + padding

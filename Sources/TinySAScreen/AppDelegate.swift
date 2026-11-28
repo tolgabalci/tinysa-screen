@@ -596,7 +596,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     view.peakColor = Preferences.peakColor.color
     view.peakReadouts = Preferences.peakDisplay.window
     showList(on && Preferences.peakDisplay == .list)
-    view.peakArrowColor = Preferences.peakArrowColor.color
+    view.peakLabelColor = Preferences.peakLabelColor.color
     let settings = (Preferences.peakWindow, Preferences.peakCount)
     if peakSettings.map({ $0.0 != settings.0 || $0.1 != settings.1 }) ?? true {
       peakSettings = settings

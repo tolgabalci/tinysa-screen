@@ -19,8 +19,8 @@ final class PeakOverlay {
   var readouts = PeakLook.Readouts.box
   /// The peak whose row the pointer is over in the list: a ring around its top.
   var highlighted: Int?
-  /// The arrows' colour, from labels moved away from their peaks.
-  var arrowColor = PeakColor.orange.color
+  /// The labels' colour: their edges, the arrows from labels moved away from their peaks, and the ring for the list.
+  var labelColor = PeakColor.orange.color
 
   init() {
     line.fillColor = nil
@@ -97,7 +97,7 @@ final class PeakOverlay {
         marks.addSublayer(arrow(from: layer(from), to: layer(to), scale: scale))
       }
       for (text, place) in zip(texts, places) {
-        let box = readoutBox(scale: scale)
+        let box = readoutBox(scale: scale, edge: labelColor)
         let r = place.rect
         box.frame = CGRect(x: rect.minX + r.minX, y: rect.maxY - r.maxY, width: r.width, height: r.height)
         text.frame = CGRect(x: padding, y: padding, width: r.width - 2 * padding, height: r.height - 2 * padding)
@@ -127,7 +127,7 @@ final class PeakOverlay {
     guard readouts == .box, !lines.isEmpty else { return }
     let readout = text(lines.joined(separator: "\n"), font: font, color: .white, contentsScale: contentsScale)
     let size = readout.preferredFrameSize()
-    let box = readoutBox(scale: scale)
+    let box = readoutBox(scale: scale, edge: color)
     let padding = 3 * scale
     // At the emptiest spot the hold found (its top left corner), kept inside the graph.
     let corner = point(state.quietSpot.x, state.quietSpot.y)
@@ -141,14 +141,14 @@ final class PeakOverlay {
     marks.addSublayer(box)
   }
 
-  /// A ring in the arrows' colour around a peak's top, for the list's row the pointer is over.
+  /// A ring in the labels' colour around a peak's top, for the list's row the pointer is over.
   private func ring(around top: CGPoint, scale: CGFloat) -> CAShapeLayer {
     let layer = CAShapeLayer()
     let radius = 7 * scale
     layer.path = CGPath(
       ellipseIn: CGRect(x: top.x - radius, y: top.y - radius, width: 2 * radius, height: 2 * radius), transform: nil)
     layer.fillColor = nil
-    layer.strokeColor = arrowColor.cgColor
+    layer.strokeColor = labelColor.cgColor
     layer.lineWidth = max(2, scale)
     layer.shadowColor = NSColor.black.cgColor
     layer.shadowOpacity = 0.9
@@ -157,7 +157,7 @@ final class PeakOverlay {
     return layer
   }
 
-  /// A line in the arrows' colour from a label to its peak's top, its head there.
+  /// A line in the labels' colour from a label to its peak's top, its head there.
   private func arrow(from: CGPoint, to: CGPoint, scale: CGFloat) -> CAShapeLayer {
     let layer = CAShapeLayer()
     let length = hypot(to.x - from.x, to.y - from.y)
@@ -176,11 +176,11 @@ final class PeakOverlay {
     tip.closeSubpath()
     let shaft = CAShapeLayer()
     shaft.path = line
-    shaft.strokeColor = arrowColor.cgColor
+    shaft.strokeColor = labelColor.cgColor
     shaft.lineWidth = max(1, scale)
     shaft.fillColor = nil
     layer.path = tip
-    layer.fillColor = arrowColor.cgColor
+    layer.fillColor = labelColor.cgColor
     layer.addSublayer(shaft)
     layer.shadowColor = NSColor.black.cgColor
     layer.shadowOpacity = 0.8
@@ -189,11 +189,12 @@ final class PeakOverlay {
     return layer
   }
 
-  /// A box for words over the graph: black, mostly opaque, edged in the hold's colour.
-  private func readoutBox(scale: CGFloat) -> CALayer {
+  /// A box for words over the graph: black, mostly opaque, edged in `edge` (the hold's colour for its box, the labels'
+  /// for a label).
+  private func readoutBox(scale: CGFloat, edge: NSColor) -> CALayer {
     let box = CALayer()
     box.backgroundColor = NSColor(white: 0, alpha: 0.72).cgColor
-    box.borderColor = color.withAlphaComponent(0.8).cgColor
+    box.borderColor = edge.withAlphaComponent(0.8).cgColor
     box.borderWidth = 1
     box.cornerRadius = 3 * scale
     return box

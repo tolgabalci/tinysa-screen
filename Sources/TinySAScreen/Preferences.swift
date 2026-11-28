@@ -26,7 +26,7 @@ enum Preferences {
     /// 1.4.0's first builds' choice of a box or labels, taken over by `peakDisplay`.
     static let peakListed = "peakListed"
     static let peakDisplay = "peakDisplay"
-    static let peakArrowColor = "peakArrowColor"
+    static let peakLabelColor = "peakLabelColor"
     static let screenshotPeaks = "screenshotPeaks"
     /// 1.4.0's first builds' Peaks on or off in GIFs, taken over by `gifPeaks`.
     static let gifShowsPeaks = "gifShowsPeaks"
@@ -68,7 +68,7 @@ enum Preferences {
       Key.peakColor: PeakColor.cyan.rawValue,
       Key.peakCount: 5,
       Key.peakDisplay: PeakDisplay.labels.rawValue,
-      Key.peakArrowColor: PeakColor.orange.rawValue,
+      Key.peakLabelColor: PeakColor.orange.rawValue,
       Key.screenshotPeaks: true,
       Key.gifPeaks: GIFPeaks.labels.rawValue,
       Key.gifFreshPeaks: true,
@@ -127,17 +127,17 @@ enum Preferences {
   static func gifPeakLook(_ peaks: GIFPeaks) -> PeakLook? {
     guard peaks != .none else { return nil }
     return PeakLook(
-      color: peakColor.gifColor, readouts: peaks == .box ? .box : .labels, arrowColor: peakArrowColor.gifColor)
+      color: peakColor.gifColor, readouts: peaks == .box ? .box : .labels, labelColor: peakLabelColor.gifColor)
   }
 
   /// The peak hold's look: its colour, its readouts in a box or beside each peak.
   static var peakLook: PeakLook {
-    PeakLook(color: peakColor.gifColor, readouts: peakDisplay.picture, arrowColor: peakArrowColor.gifColor)
+    PeakLook(color: peakColor.gifColor, readouts: peakDisplay.picture, labelColor: peakLabelColor.gifColor)
   }
 
-  /// The arrows' colour, from peak labels moved away from their peaks.
-  static var peakArrowColor: PeakColor {
-    PeakColor(rawValue: defaults.string(forKey: Key.peakArrowColor) ?? "") ?? .orange
+  /// The peak labels' colour: their edges, and the arrows from labels moved away from their peaks.
+  static var peakLabelColor: PeakColor {
+    PeakColor(rawValue: defaults.string(forKey: Key.peakLabelColor) ?? "") ?? .orange
   }
 
   /// How the window shows the peak hold's readouts: beside each peak, in a box, or in a list beside the screen.

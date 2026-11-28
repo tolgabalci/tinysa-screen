@@ -193,8 +193,8 @@ analyzer cut its sweep short, and a feeding program's pictures are all there is 
   other's), with no arrow; or far enough for an arrow to show its line as well as its head (5 times that gap), the arrow
   short and angled or upright (a level one counts four times as long, a shallow one half as long again; below the top a
   quarter longer than above), passing behind no label. Nothing in between: an arrow too short is only its head. Close
-  over the graph beats clear and far. The arrows are in a colour of their own, orange unless chosen otherwise, so none
-  is taken for the held line.
+  over the graph beats clear and far. The labels' edges and the arrows are in a colour of their own, orange unless
+  chosen otherwise, so neither is taken for the held line.
 - **New peak capture** (`Clip.peaksCapturedAfresh`): the GIF's frames from its start replayed through a hold of their
   own, the frame showing at the start taken as coming in then, holding levels as long as the window's hold did. Each
   frame's labels say what the window's hold had read them to say just after it (they aren't read again), and a span

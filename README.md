@@ -168,12 +168,12 @@ window above other apps' windows while you work in another one (a call's, say), 
 minute, as a cyan line over the picture, and shows its highest peaks, with when each one's level came in. Its menu
 (the Peaks button, or Settings › Peak hold › Show peaks as) chooses how, or None; ⌥⌘P turns it on and off:
 
-- **Labels beside the peaks**: each peak's time (without AM or PM, for room), megahertz to the nearest and level
-  beside it, "11:09:21 / 911 MHz / −58 dBm". Where peaks crowd together, the older peak's label stays beside it and a
-  newer one's goes close by: touching its peak, with no arrow, where that's clearly its own; else far enough for an
-  arrow that shows (angled or upright rather than level), over the graph if need be but never over another label, a
-  peak's top or an arrow, and its arrow never behind another label. The arrows are orange, so none is taken for the
-  held line (Settings › Peak hold › Arrows).
+- **Labels beside the peaks**: each peak's time (without AM or PM, for room), megahertz to the nearest and level beside
+  it, "11:09:21 / 911 MHz / −58 dBm". Where peaks crowd together, the older peak's label stays beside it and a newer
+  one's goes close by: touching its peak, with no arrow, where that's clearly its own; else far enough for an arrow that
+  shows (angled or upright rather than level), over the graph if need be but never over another label, a peak's top or
+  an arrow, and its arrow never behind another label. Labels are edged in orange and their arrows are orange, so neither
+  is taken for the held line (Settings › Peak hold › Labels and arrows).
 - **A box over the graph**, which finds itself an empty spot: the hold's period, then each peak by its number on the
   screen, in the order they came in:
 
