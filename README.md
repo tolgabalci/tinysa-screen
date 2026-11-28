@@ -229,9 +229,9 @@ yellow ends:
   and I and O set its start or end at the playhead. ⌘Z undoes.
 - **Beside the picture**: what goes under the screen (the date, the time, and the time into the GIF of its length,
   "0:10 / 2:30"), whether it plays over and over, how long it pauses at the end (5 seconds unless you say), its
-  resolution, and its **speed**, 1× to 20×: a minute at 10× plays in 6 seconds. Faster than 1×, **Frames a second**
-  can go below 10 for a smaller file, each frame the screen as it was then. The **estimated GIF size** shows in large
-  type, green under 2 MB, orange to 10 MB, red past that.
+  resolution, and its **speed**, 1× to 20×: a minute at 10× plays in 6 seconds. Faster than 1×, **Frames a second** is
+  Full, every frame of the recording, unless you bring it down to 10 or fewer for a smaller file, each frame the screen
+  as it was then. The **estimated GIF size** shows in large type, green under 2 MB, orange to 10 MB, red past that.
 - **At the bottom**: **Copy** (⌘C, green) at the left, to paste the GIF into a chat or an email; at the right, **Save
   to** with the folder it's saved in ([below](#where-files-go)), **Choose…**, **Save** (Return), as
   `tinySA <date> at <time>.gif`, and **Cancel** (Esc), which asks before it deletes the recording.

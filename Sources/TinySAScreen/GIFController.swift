@@ -148,7 +148,7 @@ final class GIFController {
     onChange?()
     guard let action else { return }
     let part = model.clip.part(model.trim)
-    let options = options(speed: model.speed, framesPerSecond: model.framesPerSecond)
+    let options = options(speed: model.speed, framesPerSecond: model.effectiveFramesPerSecond)
     switch action {
     case .save: save(part, options: options, note: keepFolder(model))
     case .copy: copy(part, options: options)
@@ -180,7 +180,7 @@ final class GIFController {
 
   /// How GIFs look and play: Settings' (and the editor's last), at their own speed and every frame unless the editor
   /// says otherwise.
-  private func options(speed: Double = 1, framesPerSecond: Int = 10) -> GIFOptions {
+  private func options(speed: Double = 1, framesPerSecond: Int? = nil) -> GIFOptions {
     var options = Preferences.gifOptions
     options.speed = speed
     options.framesPerSecond = framesPerSecond

@@ -261,24 +261,32 @@ struct RecordingEditor: View {
       .help("How many times faster than it happened the GIF plays: a minute at 10× plays in 6 seconds")
       group("Frames a second") {
         HStack(spacing: 8) {
+          // 1 to 10, then Full: every frame.
           Slider(
             value: Binding(
-              get: { Double(model.framesPerSecond) }, set: { model.framesPerSecond = Int($0.rounded()) }),
-            in: 1...10
+              get: { Double(model.framesPerSecond ?? 11) },
+              set: { value in
+                let frames = Int(value.rounded())
+                model.framesPerSecond = frames > 10 ? nil : frames
+              }),
+            in: 1...11
           )
-          .accessibilityValue("\(model.framesPerSecond) a second")
-          Text("\(model.framesPerSecond)")
+          .accessibilityValue(model.framesPerSecond.map { "\($0) a second" } ?? "Every frame")
+          Text(model.framesPerSecond.map { "\($0)" } ?? "Full")
             .monospacedDigit()
-            .frame(width: 30, alignment: .trailing)
+            .frame(width: 34, alignment: .trailing)
         }
-        Text(model.speed > 1 ? "As it plays: fewer make it smaller" : "Faster than 1× to choose")
+        Text(
+          model.speed <= 1
+            ? "Faster than 1× to choose"
+            : model.framesPerSecond == nil ? "Every frame: as smooth as it was" : "As it plays: fewer make it smaller")
           .font(.callout)
           .foregroundStyle(.secondary)
       }
       .disabled(model.speed <= 1)
       .help(
-        "The most frames each second the GIF plays, each the screen as it was then: at 10×, 1 a second shows every "
-          + "tenth second of the recording")
+        "Full shows every frame of the recording. Fewer, each the screen as it was then, make a smaller file: at 10×, "
+          + "1 a second shows every tenth second of the recording")
       VStack(alignment: .leading, spacing: 2) {
         Text("Estimated GIF size")
           .foregroundStyle(.secondary)
@@ -793,14 +801,15 @@ final class TrimModel: ObservableObject {
   /// the window opens without the room neither takes.
   var pictureArea = (CGSize.zero, CGSize.zero)
   var sideHeight: CGFloat = 0
-  /// How fast the GIF plays (1 to 20 times), and its frames a second at most (1 to 10) when faster: this GIF's own.
+  /// How fast the GIF plays (1 to 20 times), and its frames a second at most when faster (1 to 10; nil, every frame):
+  /// this GIF's own.
   @Published var speed: Double = 1
-  @Published var framesPerSecond = 10
+  @Published var framesPerSecond: Int?
   /// Playing reached the GIF's end and holds there for its pause, as the GIF does.
   @Published private(set) var pausing = false
 
-  /// Frames a second: all of them at the GIF's own speed.
-  var effectiveFramesPerSecond: Int { speed > 1 ? framesPerSecond : 10 }
+  /// Frames a second: every frame at the GIF's own speed.
+  var effectiveFramesPerSecond: Int? { speed > 1 ? framesPerSecond : nil }
 
   /// The moment the picture shows: while playing, the GIF's own moment then (fewer when it plays faster with fewer
   /// frames a second); else the playhead.

@@ -296,7 +296,9 @@
         // Seconds no picture came in: the strip pink.
         (0.3, { model.seek(to: model.clip.start.addingTimeInterval(63.5)) }),
         (1, { picture("3a-no-pictures") }),
-        // Ten times faster, two frames a second: played to its end, then held there, saying so.
+        // Ten times faster, every frame; then two frames a second, played to its end, then held there, saying so.
+        (0.1, { model.speed = 10 }),
+        (1, { picture("3b0-fast-full") }),
         (0.1, {
           model.speed = 10
           model.framesPerSecond = 2

@@ -219,12 +219,13 @@ them. Nothing goes to the disk until a GIF is saved.
   with nothing transparent, come out right.
 - **Compression**: GIF's LZW, with codes from one bit more than the colours need up to 12 bits, and a fresh table when
   it fills. Each image's code size is just enough for the colours it uses.
-- **Timing**: the GIF's moments are a tenth of a second of playing apart (further with fewer frames a second), on whole
-  multiples of that on the clock, each the screen as it was then, so a frame shows up to a tenth of a second late. At
-  10× a moment is a second of the recording. Each image stays up until the next one that differs, in hundredths of a
-  second counted from the start so nothing drifts; none is shorter than a twentieth of a second (the first and last)
-  or else a tenth, which players treat alike, and the clock's seconds fall on moments. A pause at the end is one more
-  image, held.
+- **Timing**: the GIF's moments are a tenth of a second of the recording apart, or a fiftieth of a second of playing
+  when it plays more than five times faster, so every frame shows (Full); with fewer frames a second, a frame's share
+  of a second of playing (at 10× and 2 a second, every 5 seconds of the recording). They're on whole multiples of that
+  on the clock, each the screen as it was then, so a frame shows up to a moment late and the clock's seconds fall on
+  moments. Each image stays up until the next one that differs, in hundredths of a second counted from the start so
+  nothing drifts, and none is shorter than two hundredths, which players take as they are (one they take as ten). A
+  pause at the end is one more image, held.
 - **The strip**: the text drawn with the Mac's system font in eight shades, white on black like the analyzer's: the
   date and time at its right, the time into the GIF of its length at its left, counted on the clock's seconds so both
   tick together. Each tick adds an image of the strip's rows that changed, half a kilobyte at the screen's size and one

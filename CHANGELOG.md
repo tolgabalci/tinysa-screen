@@ -25,16 +25,17 @@ All notable changes are listed here, newest first. Versions follow [Semantic Ver
 - With ⌥ held, Stop is Stop & Save (⌥⌘R): the GIF is saved as it is, without the editor. Quitting saves a recording
   running, or the GIF in each editor, as it is.
 - GIFs keep real time in any player. They move on in tenths of a second on the clock, each moment the screen as it was
-  then, so the time under the screen ticks exactly a second apart and no image is shorter than a twentieth of a
-  second. Before, images came at the frames' own times, some a few hundredths of a second long, which players can
-  treat differently.
+  then, so the time under the screen ticks exactly a second apart and, at their own speed, no image is shorter than a
+  twentieth of a second. Before, images came at the frames' own times, some a few hundredths of a second long, which
+  players can treat differently.
 - Under the screen, at the left, the time into the GIF of its length ("0:10 / 2:30"), ticking with the clock at the
   right. Through a second no picture came from the analyzer, both tick on in pink, white again with the next picture.
 - A pause at the end, 5 seconds unless set otherwise (0 to 10), holding the last frame with "End of recording" in red
   under the screen when it's longer than a second; and looping can be turned off, to play once. Both in the editor and
   in Settings, with the new count. With all three of the date, the time and the count off, the GIF has no strip.
 - Speed in the editor, 1× to 20×: a minute at 10× plays in 6 seconds, and the editor plays it so. Faster, Frames a
-  second (1 to 10) trades smoothness for a smaller file, each frame the screen as it was then.
+  second is Full, every frame of the recording, unless brought down to 10 or fewer (1 at the least), trading
+  smoothness for a smaller file, each frame the screen as it was then.
 - The editor's column is the GIF's choices: what's under the screen, playing, Resolution (was Size), speed, frames,
   and the estimated GIF size in large type, green under 2 MB, orange to 10 MB, red past. At the bottom: Copy (green) at
   the left; Save to, its field taking the window's width, Choose…, Save and Cancel at the right.

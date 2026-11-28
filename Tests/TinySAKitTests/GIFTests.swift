@@ -192,7 +192,8 @@ final class GIFTests: XCTestCase {
     XCTAssertTrue(clip.caption(at: clip.end, ended: true).ended)
   }
 
-  /// Faster, it plays in a tenth of the time with up to ten frames a second; fewer frames a second make fewer images.
+  /// Faster, it plays in a tenth of the time, every frame of it, none shorter than two hundredths of a second; ten
+  /// frames a second or fewer make fewer images.
   func testPlaysFasterWithFewerFrames() throws {
     let moments = (0..<40).map { (Double($0) * 0.5, Self.screen(blockAt: 10 + 10 * $0)) }
     let clip = Self.clip(moments, end: 20)
@@ -204,8 +205,12 @@ final class GIFTests: XCTestCase {
     XCTAssertEqual(real.images.count, 40)
     let fast = try decoded(GIFOptions(showsDate: false, showsTime: false, speed: 10))
     XCTAssertEqual(fast.images.reduce(0) { $0 + $1.delay }, 200, "20 s at 10 times plays in 2")
-    XCTAssertEqual(fast.images.count, 20, "a tenth of a second of playing each: one frame of each two")
-    XCTAssertTrue(fast.images.allSatisfy { $0.delay >= 5 }, "none shorter than half a tenth of a second")
+    XCTAssertEqual(fast.images.count, 40, "every frame")
+    XCTAssertTrue(fast.images.allSatisfy { $0.delay >= 2 }, "none shorter than two hundredths of a second")
+    let ten = try decoded(GIFOptions(showsDate: false, showsTime: false, speed: 10, framesPerSecond: 10))
+    XCTAssertEqual(ten.images.reduce(0) { $0 + $1.delay }, 200)
+    XCTAssertEqual(ten.images.count, 20, "a tenth of a second of playing each: one frame of each two")
+    XCTAssertTrue(ten.images.allSatisfy { $0.delay >= 5 }, "none shorter than half a tenth of a second")
     let sparse = try decoded(GIFOptions(showsDate: false, showsTime: false, speed: 10, framesPerSecond: 2))
     XCTAssertEqual(sparse.images.reduce(0) { $0 + $1.delay }, 200)
     XCTAssertEqual(sparse.images.count, 4, "two frames a second of playing")

@@ -15,8 +15,9 @@ public struct GIFOptions: Hashable, Sendable {
   public var pauseAtEnd: TimeInterval
   /// Times faster than it happened it plays, 1 to 20: a minute at 10 plays in 6 seconds.
   public var speed: Double
-  /// Frames a second of its playing at most, 1 to 10: fewer make a smaller file when it plays faster.
-  public var framesPerSecond: Int
+  /// Frames a second of its playing at most, 1 to 10, for a smaller file when it plays faster; nil, every frame of the
+  /// recording (up to 50 a second of playing, as many as players show).
+  public var framesPerSecond: Int?
   /// The formats of the date and time: the Mac's own, by default.
   public var locale: Locale
   public var timeZone: TimeZone
@@ -25,7 +26,7 @@ public struct GIFOptions: Hashable, Sendable {
 
   public init(
     scale: Int = 1, showsDate: Bool = true, showsTime: Bool = true, showsElapsed: Bool = false, loops: Bool = true,
-    pauseAtEnd: TimeInterval = 0, speed: Double = 1, framesPerSecond: Int = 10, locale: Locale = .current,
+    pauseAtEnd: TimeInterval = 0, speed: Double = 1, framesPerSecond: Int? = nil, locale: Locale = .current,
     timeZone: TimeZone = .current, comment: String? = nil
   ) {
     self.scale = scale
@@ -44,9 +45,16 @@ public struct GIFOptions: Hashable, Sendable {
   /// The strip has something to say.
   public var hasCaption: Bool { showsDate || showsTime || showsElapsed }
 
-  /// Seconds of playing between two of its moments at most, and the recording's seconds between them.
-  public var step: TimeInterval { 1 / Double(min(max(framesPerSecond, 1), 10)) }
+  /// Seconds of playing between two of its moments, and the recording's seconds between them: for every frame, a tenth
+  /// of a second of the recording, or a fiftieth of a second of playing when it plays faster than five times; with
+  /// fewer frames a second, a frame's share of a second.
+  public var step: TimeInterval {
+    if let framesPerSecond { return 1 / Double(min(max(framesPerSecond, 1), 10)) }
+    return max(0.1 / playingSpeed, Self.shortest)
+  }
   public var stepOfRecording: TimeInterval { step * playingSpeed }
+  /// The shortest an image of the GIF is: players take two hundredths of a second as they are, one as ten.
+  static let shortest: TimeInterval = 0.02
   public var playingSpeed: Double { min(max(speed, 1), 20) }
 
   /// How long a clip plays as a GIF, the pause at the end included.
@@ -231,8 +239,8 @@ public enum GIF {
   }
 
   /// The moments to show: the start, then one each `step` of playing (`stepOfRecording` of the recording) on whole
-  /// multiples of that on the clock, none closer than half a step to the start or the end; each the frame on the
-  /// screen then. With a pause at the end, the end once more, held for it.
+  /// multiples of that on the clock, none closer than half a step (and the shortest image) to the start or the end;
+  /// each the frame on the screen then. With a pause at the end, the end once more, held for it.
   static func timeline(_ clip: Clip, frames: [RecordedFrame], options: GIFOptions) -> [Event] {
     guard !frames.isEmpty else { return [] }
     let speed = options.playingSpeed
@@ -242,8 +250,9 @@ public enum GIF {
     let end = clip.end.timeIntervalSinceReferenceDate
     var instants = [clip.start]
     var n = (start / real).rounded(.down) + 1
-    if n * real - start < real / 2 { n += 1 }
-    while n * real <= end - real / 2 {
+    let edge = max(real / 2, GIFOptions.shortest * speed)
+    if n * real - start < edge { n += 1 }
+    while n * real <= end - edge {
       instants.append(Date(timeIntervalSinceReferenceDate: n * real))
       n += 1
     }
