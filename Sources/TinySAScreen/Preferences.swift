@@ -23,13 +23,9 @@ enum Preferences {
     static let peakWindow = "peakWindow"
     static let peakCount = "peakCount"
     static let peakColor = "peakColor"
-    /// 1.4.0's first builds' choice of a box or labels, taken over by `peakDisplay`.
-    static let peakListed = "peakListed"
     static let peakDisplay = "peakDisplay"
     static let peakLabelColor = "peakLabelColor"
     static let screenshotPeaks = "screenshotPeaks"
-    /// 1.4.0's first builds' Peaks on or off in GIFs, taken over by `gifPeaks`.
-    static let gifShowsPeaks = "gifShowsPeaks"
     static let gifPeaks = "gifPeaks"
     static let gifFreshPeaks = "gifFreshPeaks"
     static let saveFolderBookmark = "saveFolderBookmark"
@@ -40,14 +36,9 @@ enum Preferences {
 
   static let defaults = UserDefaults.standard
 
+  /// The settings' defaults: a setting never changed has its default, peaks shown as labels in the window and in GIFs
+  /// among them, whatever an earlier version had.
   static func register() {
-    let own = defaults.persistentDomain(forName: Bundle.main.bundleIdentifier ?? "tinysa-screen")
-    if own?[Key.peakDisplay] == nil, let listed = own?[Key.peakListed] as? Bool {
-      defaults.set((listed ? PeakDisplay.box : .labels).rawValue, forKey: Key.peakDisplay)
-    }
-    if own?[Key.gifPeaks] == nil, own?[Key.gifShowsPeaks] as? Bool == false {
-      defaults.set(GIFPeaks.none.rawValue, forKey: Key.gifPeaks)
-    }
     defaults.register(defaults: [
       Key.controlEnabled: true,
       Key.keepRecent: true,
