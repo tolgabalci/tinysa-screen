@@ -197,12 +197,13 @@ analyzer cut its sweep short, and a feeding program's pictures are all there is 
   otherwise, so none is taken for the held line.
 - **New peak capture** (`Clip.peaksCapturedAfresh`): the GIF's frames from its start replayed through a hold of their
   own, the frame showing at the start taken as coming in then, holding levels as long as the window's hold did. Each
-  span's frequencies and levels are the ones the window's hold read, matched to the frames by their labels (which
-  aren't read again), so a span chosen during the GIF is known from its first frame and nothing of the span before
-  is held over. Where the window's hold started over (Clear Peaks, turned off, another period), the GIF has the
-  recorded hold from there on, as the window showed it; a GIF starting where the hold was off is as recorded. Under a
-  millisecond a frame in the app as built (420 frames in a third of a second): the editor replays a moment after its
-  start stops moving, showing no peaks meanwhile, and the size estimate and the GIF saved do the same.
+  frame's labels say what the window's hold had read them to say just after it (they aren't read again), and a span
+  it read only after a moment is known from its first frame: a span chosen during the GIF has its frequencies at once,
+  and nothing of the span before is held over. Where the window's hold started over (Clear Peaks, turned off, another
+  period), the GIF has the recorded hold from there on, as the window showed it; a GIF starting where the hold was off
+  is as recorded. Under a millisecond a frame in the app as built (420 frames in a third of a second): the editor
+  replays a moment after its start stops moving, showing no peaks meanwhile, and the size estimate and the GIF saved
+  do the same.
 - **The list beside the screen** (`PeakLog`): a row a peak, matched from one hold to the next by its number and place
   (2 % of the graph's width, as the numbers are kept), its level and time brought up to date while it's held, kept
   once it's gone; a peak that comes again after it went is a new row. Its CSV file is the rows as the list shows them,

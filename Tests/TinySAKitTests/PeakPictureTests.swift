@@ -357,8 +357,8 @@ final class PeakPictureTests: XCTestCase {
 
   func columns(_ state: PeakHold.State?) -> Set<Int> { Set((state?.peaks ?? []).map(\.column)) }
 
-  /// The span's labels under the graph changed: another span (the screen's own pixels stand for its labels).
-  func otherSpan(_ screen: Snapshot) -> Snapshot {
+  /// The labels under the graph changed (another span, or the same read anew): the screen's own pixels stand for them.
+  func relabeled(_ screen: Snapshot) -> Snapshot {
     var screen = screen
     for x in 50..<60 { screen.pixels[315 * 480 + x] = Snapshot.pixel(r: 255, g: 255, b: 255) }
     return screen
@@ -409,9 +409,9 @@ final class PeakPictureTests: XCTestCase {
     let clip = try recorded(
       [
         .frame(screen(peaks: [(100, 120)]), 0), .frame(screen(peaks: [(200, 100)]), 5),
-        .frame(otherSpan(screen(peaks: [(300, 110)])), 10, read: nil),
-        .frame(otherSpan(screen(peaks: [(300, 110)])), 12, read: band),
-        .frame(otherSpan(screen(peaks: [(400, 130)])), 15, read: band),
+        .frame(relabeled(screen(peaks: [(300, 110)])), 10, read: nil),
+        .frame(relabeled(screen(peaks: [(300, 110)])), 12, read: band),
+        .frame(relabeled(screen(peaks: [(400, 130)])), 15, read: band),
       ], end: 20)
     XCTAssertNil(clip.peaks(at: at(11))?.scale, "the recording hadn't read the new labels yet")
     let fresh = clip.peaksCapturedAfresh(from: at(5), count: 5)
@@ -421,6 +421,25 @@ final class PeakPictureTests: XCTestCase {
     let later = try XCTUnwrap(fresh.peaks(at: at(16)))
     XCTAssertEqual(columns(later), [300, 400])
     XCTAssertTrue(later.peaks.allSatisfy { ($0.frequency ?? 0) > 2_400_000_000 }, "the new span's frequencies")
+  }
+
+  /// Labels that changed with the span the same (read again by the recording's hold, and back): every frame keeps its
+  /// frequencies and levels, as the recording had them, the new labels' from their first frame.
+  func testANewPeakCaptureKeepsEachScreensLabels() throws {
+    let clip = try recorded(
+      [
+        .frame(screen(peaks: [(100, 120)]), 0), .frame(relabeled(screen(peaks: [(200, 100)])), 5, read: nil),
+        .frame(relabeled(screen(peaks: [(200, 100)])), 7), .frame(screen(peaks: [(300, 110)]), 9),
+        .frame(relabeled(screen(peaks: [(300, 110)])), 11),
+      ], end: 15)
+    XCTAssertNil(clip.peaks(at: at(6))?.scale, "the recording reading the new labels")
+    let fresh = clip.peaksCapturedAfresh(from: at(0), count: 5)
+    for seconds in [1.0, 6, 8, 10, 12] {
+      let state = try XCTUnwrap(fresh.peaks(at: at(seconds)), "at \(seconds) s")
+      XCTAssertEqual(state.scale, Self.span900, "at \(seconds) s")
+      XCTAssertFalse(state.peaks.isEmpty, "at \(seconds) s")
+      XCTAssertTrue(state.peaks.allSatisfy { $0.frequency != nil && $0.level != nil }, "at \(seconds) s")
+    }
   }
 
   /// A replay is quick: under a millisecond a frame built for the app (four minutes of sweeps, two a second, in 0.3 s),

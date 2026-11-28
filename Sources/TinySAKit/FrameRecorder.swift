@@ -101,10 +101,10 @@ public struct Clip: Sendable {
   /// The clip with its peak hold captured afresh from `start` (its own start unless given), as if Clear Peaks had been
   /// pressed there: none before it, then the frames from the one on the screen there added to a new hold as they came
   /// (holding each level as long as the recording's hold did, its `count` highest peaks), until the recording's own
-  /// hold starts over (Clear Peaks, turned off, another period), from where it's the recording's own again. Their
-  /// frequencies and levels come from the labels the recording's hold read, each span's by its labels (not read again,
-  /// and known from its first frame even where the recording read them later); a span it never read shows none, as it
-  /// didn't. Where the hold was off at `start`, or had just been cleared, it's the clip as it is.
+  /// hold starts over (Clear Peaks, turned off, another period), from where it's the recording's own again. Each
+  /// frame's frequencies and levels are its labels as the recording's hold had read them then (not read again); a span
+  /// it read only after a moment is known from its first frame. Where the hold was off at `start`, or had just been
+  /// cleared, it's the clip as it is.
   public func peaksCapturedAfresh(from start: Date? = nil, count: Int) -> Clip {
     let from = max(start ?? self.start, self.start)
     guard let then = peaks(at: from) else { return self }
@@ -113,21 +113,23 @@ public struct Clip: Sendable {
     let hold = PeakHold(readsLabels: false)
     hold.window = then.window
     hold.peakCount = count
-    // Each span read, with the labels on the screen when it was.
-    var told: GraphScale?
-    for moment in peaks where moment.time < until {
-      guard let scale = moment.state?.scale, scale != told, let screen = frame(at: moment.time)?.snapshot() else {
-        continue
-      }
+    // Each span as the recording's hold first had it read, with the labels on the screen then: known from the start.
+    var before: GraphScale?
+    for moment in peaks[..<restart] {
+      let scale = moment.state?.scale
+      defer { before = scale }
+      guard let scale, scale != before, let screen = frame(at: moment.time)?.snapshot() else { continue }
       hold.know(scale, for: screen)
-      told = scale
     }
     var moments = [PeakMoment(time: self.start, state: nil)]
     let first = frames.lastIndex { $0.time <= from } ?? frames.startIndex
-    for frame in frames[first...] where frame.time < until {
-      guard let screen = frame.snapshot() else { continue }
-      let time = max(frame.time, from)
-      hold.add(screen, at: time)
+    var after = peaks.startIndex  // past the recording's hold as it was just after the frame
+    for i in first..<frames.endIndex where frames[i].time < until {
+      guard let screen = frames[i].snapshot() else { continue }
+      let next = min(i + 1 < frames.endIndex ? frames[i + 1].time : .distantFuture, until)
+      while after < restart, peaks[after].time < next { after += 1 }
+      let time = max(frames[i].time, from)
+      hold.add(screen, at: time, labels: after > peaks.startIndex ? peaks[after - 1].state?.scale : nil)
       let state = hold.state
       if moments.last?.state != state { moments.append(PeakMoment(time: time, state: state)) }
     }

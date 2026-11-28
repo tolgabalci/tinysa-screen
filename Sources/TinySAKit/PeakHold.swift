@@ -243,8 +243,9 @@ public final class PeakHold: @unchecked Sendable {
   /// The screen after a sweep. What covers the graph isn't the trace: with a keypad over it nothing is read (the
   /// analyzer doesn't sweep while one is open), and with a menu down its right side nothing from under the menu (its
   /// buttons and their edges read as levels at the top of the graph, held there as peaks), the graph the one held
-  /// (found with the menu over it, it's narrower, and the hold would start over).
-  public func add(_ screen: Snapshot, at time: Date) {
+  /// (found with the menu over it, it's narrower, and the hold would start over). `labels`: what its labels say, as
+  /// read before (a hold replayed from a recording, as the recording's own hold had read them then), not read again.
+  public func add(_ screen: Snapshot, at time: Date, labels known: GraphScale? = nil) {
     let covered = ScreenState.of(screen)
     guard !covered.isKeypad else { return }
     let held = covered == .menu ? lock.locked { current?.graph } : nil
@@ -256,6 +257,7 @@ public final class PeakHold: @unchecked Sendable {
     }
     let print = graph.labelPrint(on: screen)
     let state = lock.locked { () -> State? in
+      if let known { scales[print] = known }
       if let current, current.graph != graph { startOver() }  // another layout (the waterfall's size changed)
       frames += 1
       let frame = Frame(screen: screen, graph: graph, print: print, number: frames)
