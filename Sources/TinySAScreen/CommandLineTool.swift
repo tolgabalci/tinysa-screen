@@ -13,7 +13,7 @@ enum CommandLineTool {
     Usage:
       tinysa-screen                     open the app
       tinysa-screen record --seconds N --output FILE.gif [options]
-                                        record the screen for N seconds (1 to 120) as an animated GIF
+                                        record the screen for N seconds (1 to 300) as an animated GIF
       tinysa-screen capture [--seconds N] --output FILE.gif [options]
                                         save the last N seconds the open app keeps (all of them without --seconds)
       tinysa-screen screenshot --output FILE.png [--sharp] [--json]
