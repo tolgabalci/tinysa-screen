@@ -114,7 +114,9 @@ final class FrameRecorderTests: XCTestCase {
     recorder.add(screen(1), at: at(1))
     recorder.add(screen(1), at: at(2))
     recorder.add(screen(2), at: at(3))
-    XCTAssertEqual(try XCTUnwrap(recorder.recent(at: at(4))).frames.map(\.time), [at(0), at(3)])
+    let clip = try XCTUnwrap(recorder.recent(at: at(4)))
+    XCTAssertEqual(clip.frames.map(\.time), [at(0), at(3)])
+    XCTAssertEqual(clip.arrivals, [at(0), at(1), at(2), at(3)], "but each time a picture came is")
   }
 
   /// A screen of another size (another analyzer) starts afresh: one GIF has one size.

@@ -148,9 +148,10 @@ final class GIFController {
     onChange?()
     guard let action else { return }
     let part = model.clip.part(model.trim)
+    let options = options(speed: model.speed, framesPerSecond: model.framesPerSecond)
     switch action {
-    case .save: save(part, options: options(), note: keepFolder(model))
-    case .copy: copy(part, options: options())
+    case .save: save(part, options: options, note: keepFolder(model))
+    case .copy: copy(part, options: options)
     }
   }
 
@@ -177,10 +178,13 @@ final class GIFController {
 
   // MARK: Making GIFs
 
-  private func options() -> GIFOptions {
-    GIFOptions(
-      scale: Preferences.gifScale, showsDate: Preferences.gifShowsDate, showsTime: Preferences.gifShowsTime,
-      comment: nil)
+  /// How GIFs look and play: Settings' (and the editor's last), at their own speed and every frame unless the editor
+  /// says otherwise.
+  private func options(speed: Double = 1, framesPerSecond: Int = 10) -> GIFOptions {
+    var options = Preferences.gifOptions
+    options.speed = speed
+    options.framesPerSecond = framesPerSecond
+    return options
   }
 
   /// The GIF's comment: where the picture came from, and when.

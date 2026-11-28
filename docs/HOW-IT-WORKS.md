@@ -219,12 +219,18 @@ them. Nothing goes to the disk until a GIF is saved.
   with nothing transparent, come out right.
 - **Compression**: GIF's LZW, with codes from one bit more than the colours need up to 12 bits, and a fresh table when
   it fills. Each image's code size is just enough for the colours it uses.
-- **Timing**: each image stays up until the next, in hundredths of a second, rounded from the real times so the GIF
-  lasts as long as the recording. Moments closer than 30 ms are shown as one, since browsers slow down images shorter
-  than 20 ms.
-- **The date and time**: a strip under the screen, the text drawn with the Mac's system font in eight greys, white on
-  black like the analyzer's. Each second the time ticks over adds an image of the strip's rows that changed, half a
-  kilobyte at the screen's size and one and a half at twice that, so the clock runs on while the screen keeps still.
+- **Timing**: the GIF's moments are a tenth of a second of playing apart (further with fewer frames a second), on whole
+  multiples of that on the clock, each the screen as it was then, so a frame shows up to a tenth of a second late. At
+  10× a moment is a second of the recording. Each image stays up until the next one that differs, in hundredths of a
+  second counted from the start so nothing drifts; none is shorter than a twentieth of a second (the first and last)
+  or else a tenth, which players treat alike, and the clock's seconds fall on moments. A pause at the end is one more
+  image, held.
+- **The strip**: the text drawn with the Mac's system font in eight shades, white on black like the analyzer's: the
+  date and time at its right, the time into the GIF of its length at its left, counted on the clock's seconds so both
+  tick together. Each tick adds an image of the strip's rows that changed, half a kilobyte at the screen's size and one
+  and a half at twice that, so the clock runs on while the screen keeps still. The app notes the time of every picture
+  that comes, the ones the same as the one before too, which aren't kept twice; a moment with none in the second before
+  it (or the recording's time between moments, when faster) is drawn in pink. "End of recording" is red.
 - **A comment** in the file says where the picture came from and when.
 
 Measured on 48 seconds of a tinySA Ultra watching the busy 915 MHz band with its big waterfall on, 63 frames, the date

@@ -11,6 +11,8 @@
   enum EditorDemo {
     /// Where the strip is in the editor's window, top-down as SwiftUI has it, for the script's drags.
     static var strip: CGRect?
+    /// Each picture of the frame at the playhead made: when, how long it took, and the second it shows.
+    static var renders: [(at: Date, took: TimeInterval, second: Double)] = []
 
     static func runIfAsked() -> Bool {
       let environment = ProcessInfo.processInfo.environment
@@ -205,6 +207,7 @@
       let zero = Date().addingTimeInterval(-70)
       var id: UUID?
       for k in 0...140 {
+        if (124..<130).contains(k), id != nil { continue }  // 62 to 65 s: no picture, as when the analyzer stalls
         let time = zero.addingTimeInterval(Double(k) / 2)
         var screen = sized[(k / 12) % sized.count]
         let x = (k * 3) % max(screen.width - 12, 1)
@@ -273,9 +276,38 @@
       let right = String(UnicodeScalar(NSRightArrowFunctionKey)!)
       var steps: [(TimeInterval, () -> Void)] = [
         (3, { picture("1-opened") }),
+        (0.1, {
+          renders.removeAll()
+          key(" ", 49)
+        }),
+        (12, {
+          picture("2-playing")
+          // The clock as the picture showed it while playing: each new second, when it came after the one before.
+          let seconds = renders.enumerated().filter {
+            $0.offset == 0 || $0.element.second != renders[$0.offset - 1].second
+          }
+          let gaps = zip(seconds, seconds.dropFirst()).map { $1.element.at.timeIntervalSince($0.element.at) }
+          let took = renders.map(\.took)
+          print(String(format: "Playing: %d pictures made, %.1f ms each at most, %.1f on average",
+            renders.count, (took.max() ?? 0) * 1000, took.reduce(0, +) / Double(max(took.count, 1)) * 1000))
+          print("New seconds came after: " + gaps.map { String(format: "%.2f", $0) }.joined(separator: " "))
+        }),
         (0.1, { key(" ", 49) }),
-        (1.5, { picture("2-playing") }),
-        (0.1, { key(" ", 49) }),
+        // Seconds no picture came in: the strip pink.
+        (0.3, { model.seek(to: model.clip.start.addingTimeInterval(63.5)) }),
+        (1, { picture("3a-no-pictures") }),
+        // Ten times faster, two frames a second: played to its end, then held there, saying so.
+        (0.1, {
+          model.speed = 10
+          model.framesPerSecond = 2
+          model.seek(to: model.trim.start)
+          model.play()
+        }),
+        (3, { picture("3b-fast-end-pause") }),
+        (0.1, {
+          model.pause()
+          model.speed = 1
+        }),
       ]
       // The start handle, dragged 250 points back, a few points at a time.
       var from = NSPoint.zero

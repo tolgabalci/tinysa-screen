@@ -48,6 +48,6 @@ extension Clip {
 
   /// Its part from `start` to `end`: the GIF a trim keeps.
   public func part(_ trim: Trim) -> Clip {
-    Clip(frames: frames, from: trim.start, to: trim.end) ?? self
+    Clip(frames: frames, from: trim.start, to: trim.end, arrivals: arrivals) ?? self
   }
 }

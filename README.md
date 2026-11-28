@@ -62,9 +62,9 @@ show much. tinySA Screen puts its screen in a Mac window, pixel for pixel, as it
 - **Peak hold on the Mac**: the highest level at each frequency held as a line over the picture, the highest peaks
   numbered with their frequency and level, without changing anything on the analyzer ([Peak hold](#peak-hold)).
 - **Screenshots**: ⌘S saves the screen (to the Desktop, or a folder you choose), ⌘C copies it.
-- **Animated GIFs**: record the screen as a GIF (⌘R), or, when something odd has just happened, save the last minute
-  that the app always keeps (⇧⌘R). Every pixel exact, the date and time ticking under the screen, and small: only
-  what changes is stored ([Recording GIFs](#recording-gifs)).
+- **Animated GIFs**: record the screen as a GIF (⌘R), starting before you press Record (the app always keeps the last
+  minute), and trim it in an editor, or play it up to 20 times faster. Every pixel exact, the date, time and seconds
+  ticking under the screen in real time, and small: only what changes is stored ([Recording GIFs](#recording-gifs)).
 - **A command line for scripts and AI agents**: `tinysa-screen record --seconds 30 --output band.gif`, with or
   without the app open ([The command line](#the-command-line)).
 - **Works alongside your own programs**: a script that needs the analyzer borrows it and gives it back, and a program
@@ -227,10 +227,14 @@ yellow ends:
   filmstrip moves the playhead.
 - **The keys are QuickTime Player's**: ← and → step a frame (⇧ a second), ⌥← and ⌥→ go to the GIF's start and end,
   and I and O set its start or end at the playhead. ⌘Z undoes.
-- Beside the picture, choose whether the date and the time go under the screen and the size; the editor says how large
-  the file will be. **Save to** is the folder it's saved in ([below](#where-files-go)). Then **Save** (Return), as
-  `tinySA <date> at <time>.gif`, or **Copy** (⌘C) to paste it into a chat or an email as an animated GIF. **Cancel**
-  (Esc) asks before it deletes the recording.
+- **Beside the picture**: what goes under the screen (the date, the time, and the time into the GIF of its length,
+  "0:10 / 2:30"), whether it plays over and over, how long it pauses at the end (5 seconds unless you say), its
+  resolution, and its **speed**, 1× to 20×: a minute at 10× plays in 6 seconds. Faster than 1×, **Frames a second**
+  can go below 10 for a smaller file, each frame the screen as it was then. The **estimated GIF size** shows in large
+  type, green under 2 MB, orange to 10 MB, red past that.
+- **At the bottom**: **Copy** (⌘C, green) at the left, to paste the GIF into a chat or an email; at the right, **Save
+  to** with the folder it's saved in ([below](#where-files-go)), **Choose…**, **Save** (Return), as
+  `tinySA <date> at <time>.gif`, and **Cancel** (Esc), which asks before it deletes the recording.
 
 Hold ⌥ while recording and Stop becomes **Stop & Save**: the GIF is saved as it is, from 5 seconds before Record to
 Stop, without the editor (⌥⌘R too). A recording stops by itself two minutes after Record and opens the editor; one
@@ -247,10 +251,13 @@ band, a sweep a frame, in 511 KB at the sharp size._
 
 What's in a GIF:
 
-- **The screen exactly**, frame by frame as the analyzer drew it: one frame after each sweep, at the real time between
-  sweeps, so the GIF plays as it happened. No dithering, no blur: a tinySA's screen has fewer colours than a GIF holds.
-- **The date and time** in a strip under the screen, at its bottom right, in your Mac's formats, the time to the
-  second and ticking as the GIF plays (both can be turned off).
+- **The screen exactly**, frame by frame as the analyzer drew it, in real time (or as many times faster as you chose):
+  the GIF moves on in tenths of a second, each the screen as it was then, so it plays as it happened, its seconds
+  exactly a second apart in any player. No dithering, no blur: a tinySA's screen has fewer colours than a GIF holds.
+- **A strip under the screen**: at its right the date and time, in your Mac's formats, the time to the second; at its
+  left the time into the GIF of its length ("0:10 / 2:30"), the two ticking together. Through a second when no
+  picture came from the analyzer they tick on in pink, white again with the next. Through the pause at the end, "End
+  of recording" in red. Turn all three off and there's no strip.
 - **Small files**: only the rows of the screen that changed since the frame before are stored, and a screen that keeps
   still costs nothing. A minute of a busy band takes about 550 KB at the sharp size (220 KB small); with the
   analyzer's waterfall on, which changes every sweep, 3 to 6 MB (under half that small).

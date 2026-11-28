@@ -1,12 +1,22 @@
 import Foundation
 
 /// How a GIF is made from a clip.
-public struct GIFOptions: Equatable, Sendable {
+public struct GIFOptions: Hashable, Sendable {
   /// GIF pixels to each pixel of the screen, across and down: 1, or 2 for twice the size with the pixels kept sharp.
   public var scale: Int
-  /// A strip under the screen with the date, the time, or both, at its bottom right.
+  /// A strip under the screen with the date, the time, or both, at its bottom right, and with `showsElapsed`, how far
+  /// into the recording each moment is, of how long it is ("0:10 / 2:30"), at its bottom left. No strip without any.
   public var showsDate: Bool
   public var showsTime: Bool
+  public var showsElapsed: Bool
+  /// Played over and over, or once.
+  public var loops: Bool
+  /// Seconds the last frame is held at the end; longer than a second, "End of recording" shows in red in the strip.
+  public var pauseAtEnd: TimeInterval
+  /// Times faster than it happened it plays, 1 to 20: a minute at 10 plays in 6 seconds.
+  public var speed: Double
+  /// Frames a second of its playing at most, 1 to 10: fewer make a smaller file when it plays faster.
+  public var framesPerSecond: Int
   /// The formats of the date and time: the Mac's own, by default.
   public var locale: Locale
   public var timeZone: TimeZone
@@ -14,15 +24,75 @@ public struct GIFOptions: Equatable, Sendable {
   public var comment: String?
 
   public init(
-    scale: Int = 1, showsDate: Bool = true, showsTime: Bool = true, locale: Locale = .current,
+    scale: Int = 1, showsDate: Bool = true, showsTime: Bool = true, showsElapsed: Bool = false, loops: Bool = true,
+    pauseAtEnd: TimeInterval = 0, speed: Double = 1, framesPerSecond: Int = 10, locale: Locale = .current,
     timeZone: TimeZone = .current, comment: String? = nil
   ) {
     self.scale = scale
     self.showsDate = showsDate
     self.showsTime = showsTime
+    self.showsElapsed = showsElapsed
+    self.loops = loops
+    self.pauseAtEnd = pauseAtEnd
+    self.speed = speed
+    self.framesPerSecond = framesPerSecond
     self.locale = locale
     self.timeZone = timeZone
     self.comment = comment
+  }
+
+  /// The strip has something to say.
+  public var hasCaption: Bool { showsDate || showsTime || showsElapsed }
+
+  /// Seconds of playing between two of its moments at most, and the recording's seconds between them.
+  public var step: TimeInterval { 1 / Double(min(max(framesPerSecond, 1), 10)) }
+  public var stepOfRecording: TimeInterval { step * playingSpeed }
+  public var playingSpeed: Double { min(max(speed, 1), 20) }
+
+  /// How long a clip plays as a GIF, the pause at the end included.
+  public func playingTime(of duration: TimeInterval) -> TimeInterval {
+    duration / playingSpeed + max(pauseAtEnd, 0)
+  }
+}
+
+/// What the strip under a GIF's screen says at a moment: the date and time then; how far into the GIF that is, of how
+/// long it is, in whole seconds of the recording, ticking with the clock; whether no picture came in the second before
+/// it (or the recording's time between two moments, when that's longer); and the end.
+public struct Caption: Hashable, Sendable {
+  public var clock: Date
+  public var elapsed: Int
+  public var total: Int
+  public var stale: Bool
+  public var ended: Bool
+
+  public init(clock: Date, elapsed: Int = 0, total: Int = 0, stale: Bool = false, ended: Bool = false) {
+    self.clock = clock
+    self.elapsed = elapsed
+    self.total = total
+    self.stale = stale
+    self.ended = ended
+  }
+}
+
+extension Clip {
+  /// The strip's words at `moment` of a GIF of this clip, or of its part from `from` to `to` (the editor's): seconds
+  /// counted on the clock's seconds, so the count and the clock tick together; stale when no picture came in the
+  /// `window` up to it.
+  public func caption(
+    at moment: Date, from: Date? = nil, to: Date? = nil, window: TimeInterval = 1, ended: Bool = false
+  ) -> Caption {
+    func second(_ date: Date) -> Int { Int(date.timeIntervalSinceReferenceDate.rounded(.down)) }
+    let start = from ?? self.start
+    let total = second(to ?? end) - second(start)
+    var low = 0
+    var high = arrivals.count
+    while low < high {
+      let middle = (low + high) / 2
+      if arrivals[middle] <= moment { low = middle + 1 } else { high = middle }
+    }
+    let stale = low == 0 || moment.timeIntervalSince(arrivals[low - 1]) >= window
+    return Caption(
+      clock: moment, elapsed: min(second(moment) - second(start), total), total: total, stale: stale, ended: ended)
   }
 }
 
@@ -43,12 +113,14 @@ public struct GIFResult: Sendable {
 /// image still shows rightly: groups.io fits each image to its width, so an image narrower than the GIF came out larger
 /// than the rest and out of place, and the old screen showing through its transparent pixels piled up frame after
 /// frame. (The smallest rectangle around each change, unchanged pixels transparent, made files a fifth to a half
-/// smaller.) The time in the strip ticks every second, so it runs on while the screen keeps still. Delays are the real
-/// time between frames, so the GIF plays as it happened.
+/// smaller.)
+///
+/// It plays in real time, or as many times faster as asked: its moments are a tenth of a second of playing apart (or
+/// further, with fewer frames a second), on whole multiples of that on the clock, each showing the screen as it was
+/// then. So the clock and the count of seconds in the strip tick on the second, together, and no image is shorter
+/// than half a tenth of a second (the first and last; the rest a tenth or more), which players differ on; a frame shows
+/// up to a moment late. Seconds no picture came in tick on in pink.
 public enum GIF {
-  /// Frames closer than this are shown together: browsers slow down frames shorter than 20 ms.
-  static let together: TimeInterval = 0.03
-
   /// The GIF of a clip; nil without a frame, or once `stop` says to stop (a size no longer wanted).
   public static func make(
     _ clip: Clip, options: GIFOptions = GIFOptions(), progress: (Double) -> Void = { _ in },
@@ -58,13 +130,11 @@ public enum GIF {
     let frames = clip.frames.filter { $0.width == last.width && $0.height == last.height }
     let (width, height) = (last.width, last.height)
     let scale = min(max(options.scale, 1), 4)
-    var caption = CaptionStrip(
-      width: width * scale, scale: scale, showsDate: options.showsDate, showsTime: options.showsTime,
-      locale: options.locale, timeZone: options.timeZone)
+    var caption = CaptionStrip(width: width * scale, scale: scale, options: options)
     let screenHeight = height * scale
     let canvasWidth = width * scale
     let canvasHeight = screenHeight + (caption?.height ?? 0)
-    let events = timeline(frames, start: clip.start, end: clip.end, ticks: options.showsTime && caption != nil)
+    let events = timeline(clip, frames: frames, options: options)
     guard !events.isEmpty else { return nil }
 
     var palette = Palette()
@@ -80,7 +150,7 @@ public enum GIF {
       if event.frame != shownFrame, let snapshot = frames[event.frame].snapshot() { pixels = snapshot.pixels }
       guard let pixels else { continue }
       var levels: [UInt8]?
-      if let text = caption?.text(at: event.clock) { levels = caption?.levels(for: text) }
+      if let words = caption?.words(event.caption) { levels = caption?.levels(for: words) }
 
       // The rows that changed: the screen's, at the GIF's size, and the strip's under it.
       var rows: Range<Int>?
@@ -122,27 +192,30 @@ public enum GIF {
       shownCaption = levels
     }
     progress(1)
-    let duration = clip.end.timeIntervalSince(clip.start)
+    let duration = options.playingTime(of: clip.duration)
     let data = file(
       images, palette: palette.colors, width: canvasWidth, height: canvasHeight, duration: duration,
-      comment: options.comment)
+      loops: options.loops, comment: options.comment)
     return GIFResult(data: data, width: canvasWidth, height: canvasHeight, images: images.count, duration: duration)
   }
 
-  /// A frame as the GIF shows it, the strip under it saying `moment`: for a preview.
+  /// A frame as the GIF shows it, the strip under it saying the date and time of `moment`.
   public static func still(_ screen: Snapshot, at moment: Date, options: GIFOptions) -> Snapshot {
+    still(screen, caption: Caption(clock: moment), options: options)
+  }
+
+  /// A frame as the GIF shows it, the strip under it saying `caption`: for a preview.
+  public static func still(_ screen: Snapshot, caption: Caption, options: GIFOptions) -> Snapshot {
     let scale = min(max(options.scale, 1), 4)
     let width = screen.width * scale
-    var strip = CaptionStrip(
-      width: width, scale: scale, showsDate: options.showsDate, showsTime: options.showsTime,
-      locale: options.locale, timeZone: options.timeZone)
+    var strip = CaptionStrip(width: width, scale: scale, options: options)
     let screenHeight = screen.height * scale
     var pixels = [UInt32](repeating: 0, count: width * (screenHeight + (strip?.height ?? 0)))
     for y in 0..<screenHeight {
       let row = (y / scale) * screen.width
       for x in 0..<width { pixels[y * width + x] = screen.pixels[row + x / scale] }
     }
-    if let text = strip?.text(at: moment), let levels = strip?.levels(for: text) {
+    if let words = strip?.words(caption), let levels = strip?.levels(for: words) {
       for (i, level) in levels.enumerated() { pixels[screenHeight * width + i] = CaptionStrip.colors[Int(level)] }
     }
     return Snapshot(width: width, height: pixels.count / width, pixels: pixels)
@@ -150,40 +223,47 @@ public enum GIF {
 
   // MARK: The moments the GIF shows
 
-  /// A moment of the GIF: seconds from its start, the frame on the screen, and the clock to show.
+  /// A moment of the GIF: seconds of its playing from its start, the frame on the screen, and what the strip says.
   struct Event: Equatable {
     var time: TimeInterval
     var frame: Int
-    var clock: Date
+    var caption: Caption
   }
 
-  /// The moments to show: the screen at the start, each frame after it, and each second the clock ticks over; moments
-  /// closer than `together` are shown as one.
-  static func timeline(_ frames: [RecordedFrame], start: Date, end: Date, ticks: Bool) -> [Event] {
+  /// The moments to show: the start, then one each `step` of playing (`stepOfRecording` of the recording) on whole
+  /// multiples of that on the clock, none closer than half a step to the start or the end; each the frame on the
+  /// screen then. With a pause at the end, the end once more, held for it.
+  static func timeline(_ clip: Clip, frames: [RecordedFrame], options: GIFOptions) -> [Event] {
     guard !frames.isEmpty else { return [] }
-    let first = frames.lastIndex { $0.time <= start } ?? 0
-    var moments = [Event(time: 0, frame: first, clock: start)]
-    for i in (first + 1)..<frames.count where frames[i].time > start && frames[i].time <= end {
-      moments.append(Event(time: frames[i].time.timeIntervalSince(start), frame: i, clock: frames[i].time))
+    let speed = options.playingSpeed
+    let real = options.stepOfRecording
+    let window = max(1, real)
+    let start = clip.start.timeIntervalSinceReferenceDate
+    let end = clip.end.timeIntervalSinceReferenceDate
+    var instants = [clip.start]
+    var n = (start / real).rounded(.down) + 1
+    if n * real - start < real / 2 { n += 1 }
+    while n * real <= end - real / 2 {
+      instants.append(Date(timeIntervalSinceReferenceDate: n * real))
+      n += 1
     }
-    if ticks {
-      var second = start.timeIntervalSinceReferenceDate.rounded(.down) + 1
-      while second <= end.timeIntervalSinceReferenceDate {
-        let clock = Date(timeIntervalSinceReferenceDate: second)
-        moments.append(Event(time: clock.timeIntervalSince(start), frame: -1, clock: clock))
-        second += 1
-      }
-    }
-    moments.sort { $0.time < $1.time }
     var events: [Event] = []
-    for moment in moments {
-      if var previous = events.last, moment.time - previous.time < together {
-        if moment.frame >= 0 { previous.frame = moment.frame }
-        previous.clock = max(previous.clock, moment.clock)
-        events[events.count - 1] = previous
-      } else {
-        events.append(Event(time: moment.time, frame: moment.frame >= 0 ? moment.frame : events.last?.frame ?? first, clock: moment.clock))
-      }
+    var frame = 0
+    func onScreen(_ moment: Date) -> Int {
+      while frame + 1 < frames.count, frames[frame + 1].time <= moment { frame += 1 }
+      return frame
+    }
+    for instant in instants {
+      events.append(
+        Event(
+          time: instant.timeIntervalSince(clip.start) / speed, frame: onScreen(instant),
+          caption: clip.caption(at: instant, window: window)))
+    }
+    if options.pauseAtEnd > 0 {
+      events.append(
+        Event(
+          time: clip.duration / speed, frame: onScreen(clip.end),
+          caption: clip.caption(at: clip.end, window: window, ended: options.pauseAtEnd > 1)))
     }
     return events
   }
@@ -225,9 +305,10 @@ public enum GIF {
     return Image(rows: rows, codeSize: codeSize, data: lzw.encode(own, codeSize: codeSize), time: time)
   }
 
-  /// The whole file: header, colours, the loop, a comment, the images with their delays.
+  /// The whole file: header, colours, the loop (or none, to play once), a comment, the images with their delays.
   static func file(
-    _ images: [Image], palette: [UInt32], width: Int, height: Int, duration: TimeInterval, comment: String?
+    _ images: [Image], palette: [UInt32], width: Int, height: Int, duration: TimeInterval, loops: Bool = true,
+    comment: String?
   ) -> Data {
     var out: [UInt8] = []
     func le16(_ value: Int) { out += [UInt8(value & 0xFF), UInt8(value >> 8 & 0xFF)] }
@@ -253,7 +334,7 @@ public enum GIF {
       let (r, g, b) = i < palette.count ? Snapshot.rgb(palette[i]) : (0, 0, 0)
       out += [r, g, b]
     }
-    out += [0x21, 0xFF, 0x0B] + Array("NETSCAPE2.0".utf8) + [0x03, 0x01, 0x00, 0x00, 0x00]  // loop forever
+    if loops { out += [0x21, 0xFF, 0x0B] + Array("NETSCAPE2.0".utf8) + [0x03, 0x01, 0x00, 0x00, 0x00] }  // forever
     if let comment, !comment.isEmpty {
       out += [0x21, 0xFE]
       blocks(Array(comment.utf8))

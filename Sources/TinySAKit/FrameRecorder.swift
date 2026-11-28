@@ -36,23 +36,32 @@ public struct Clip: Sendable {
   public let frames: [RecordedFrame]
   public let start: Date
   public let end: Date
+  /// When pictures came, in order, a frame's or one the same as the frame before (which isn't kept twice): the
+  /// seconds none came show in a GIF. From a little before the start, so its first second has the picture before.
+  public let arrivals: [Date]
+
+  /// How long before the start the arrivals go back: further than a GIF's moments look back.
+  static let arrivalsBefore: TimeInterval = 30
 
   /// The frames from the screen as it was at `start` to `end`; `start` moves up to the first frame when there is none
-  /// before it. Nil without a frame.
-  public init?(frames all: [RecordedFrame], from start: Date, to end: Date) {
+  /// before it. Nil without a frame. Without `arrivals`, pictures came with the frames only.
+  public init?(frames all: [RecordedFrame], from start: Date, to end: Date, arrivals: [Date]? = nil) {
     let from = all.lastIndex { $0.time <= start } ?? all.firstIndex { $0.time > start } ?? all.endIndex
     let frames = all[from...].prefix { $0.time <= end }
     guard let first = frames.first else { return nil }
     self.frames = Array(frames)
     self.start = max(start, first.time)
     self.end = max(end, self.start)
+    let earliest = self.start.addingTimeInterval(-Self.arrivalsBefore)
+    let latest = self.end
+    self.arrivals = (arrivals ?? all.map(\.time)).filter { $0 >= earliest && $0 <= latest }
   }
 
   public var duration: TimeInterval { end.timeIntervalSince(start) }
 
   /// Its last `seconds`.
   public func last(_ seconds: TimeInterval) -> Clip {
-    Clip(frames: frames, from: max(start, end.addingTimeInterval(-seconds)), to: end) ?? self
+    Clip(frames: frames, from: max(start, end.addingTimeInterval(-seconds)), to: end, arrivals: arrivals) ?? self
   }
 
   /// The frame on the screen at a moment of it.
@@ -78,6 +87,9 @@ public final class FrameRecorder: @unchecked Sendable {
   private var frames: [RecordedFrame] = []
   /// The screen as it is now, kept as it is even when nothing records: a recording begins with it.
   private var latest: (snapshot: Snapshot, time: Date, stored: Bool)?
+  /// When pictures came, the same as the one before or not, while frames are kept: for a GIF to show the seconds
+  /// none came in.
+  private var arrivals: [Date] = []
   private var keepSeconds: TimeInterval = 0
   private struct Recording {
     /// Where its clip starts: when it began, or before, as far back as the seconds kept then went.
@@ -107,6 +119,7 @@ public final class FrameRecorder: @unchecked Sendable {
   public func add(_ snapshot: Snapshot, at time: Date) {
     lock.locked {
       if let latest, time < latest.time { return }
+      if keepSeconds > 0 || !recordings.isEmpty { arrivals.append(time) }
       if let latest, latest.snapshot == snapshot { return }
       if let size = frames.last.map({ ($0.width, $0.height) }), size != (snapshot.width, snapshot.height) {
         frames.removeAll()  // another screen: frames of two sizes don't make one GIF
@@ -162,7 +175,7 @@ public final class FrameRecorder: @unchecked Sendable {
     lock.locked {
       guard let recording = recordings.removeValue(forKey: id) else { return nil }
       let end = min(time, recording.began.addingTimeInterval(recording.longest))
-      let clip = Clip(frames: frames, from: recording.from, to: end)
+      let clip = Clip(frames: frames, from: recording.from, to: end, arrivals: arrivals)
       prune(now: time)
       return clip
     }
@@ -173,7 +186,7 @@ public final class FrameRecorder: @unchecked Sendable {
     lock.locked {
       guard keepSeconds > 0 else { return nil }
       let span = min(seconds ?? keepSeconds, keepSeconds)
-      return Clip(frames: frames, from: time.addingTimeInterval(-span), to: time)
+      return Clip(frames: frames, from: time.addingTimeInterval(-span), to: time, arrivals: arrivals)
     }
   }
 
@@ -211,9 +224,12 @@ public final class FrameRecorder: @unchecked Sendable {
     }
     guard let from else {
       frames.removeAll()
+      arrivals.removeAll()
       latest?.stored = false
       return
     }
     if let i = frames.lastIndex(where: { $0.time <= from }), i > 0 { frames.removeFirst(i) }
+    let earliest = from.addingTimeInterval(-Clip.arrivalsBefore)
+    if let i = arrivals.firstIndex(where: { $0 >= earliest }), i > 0 { arrivals.removeFirst(i) }
   }
 }

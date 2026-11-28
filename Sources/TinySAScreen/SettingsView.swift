@@ -11,7 +11,10 @@ struct SettingsView: View {
   @AppStorage(Preferences.Key.recordLongest) private var recordLongest = 120
   @AppStorage(Preferences.Key.gifShowsDate) private var showsDate = true
   @AppStorage(Preferences.Key.gifShowsTime) private var showsTime = true
+  @AppStorage(Preferences.Key.gifShowsElapsed) private var showsElapsed = true
   @AppStorage(Preferences.Key.gifScale) private var scale = 2
+  @AppStorage(Preferences.Key.gifLoops) private var loops = true
+  @AppStorage(Preferences.Key.gifPauseAtEnd) private var pauseAtEnd = 5
   @AppStorage(Preferences.Key.controlEnabled) private var controlEnabled = true
   @AppStorage(Preferences.Key.inkSeconds) private var inkSeconds = 3
   @AppStorage(Preferences.Key.peakWindow) private var peakWindow = 60
@@ -27,16 +30,27 @@ struct SettingsView: View {
       Section {
         Toggle("Date under the screen", isOn: $showsDate)
         Toggle("Time under the screen, to the second", isOn: $showsTime)
-        Picker("Size", selection: $scale) {
+        Toggle("Time into the GIF and its length under the screen (0:10 / 2:30)", isOn: $showsElapsed)
+        Picker("Resolution", selection: $scale) {
           Text("Sharp: twice the screen's size").tag(2)
           Text("Small: the screen's own size").tag(1)
         }
+        Toggle("Play over and over", isOn: $loops)
+        Stepper(value: $pauseAtEnd, in: 0...10) {
+          HStack {
+            Text("Pause at the end")
+            Spacer()
+            Text(pauseAtEnd == 0 ? "None" : "\(pauseAtEnd) s").monospacedDigit().foregroundStyle(.secondary)
+          }
+        }
+        .accessibilityValue(pauseAtEnd == 0 ? "None" : "\(pauseAtEnd) seconds")
       } header: {
         Text("GIFs")
       } footer: {
         Text(
-          "Stop & Save makes GIFs this way. The editor that Stop opens starts with them, and changes them too. GIFs "
-            + "and screenshots (⌘S) go to the folder the editor last saved to (its Save to), the Desktop at first.")
+          "Stop & Save makes GIFs this way. The editor that Stop opens starts with them, and changes them too. A "
+            + "pause longer than a second says \"End of recording\" under the screen. GIFs and screenshots (⌘S) go to "
+            + "the folder the editor last saved to (its Save to), the Desktop at first.")
           .foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
       }

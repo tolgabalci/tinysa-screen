@@ -11,6 +11,9 @@ enum Preferences {
     static let recordLongest = "recordLongest"
     static let gifShowsDate = "gifShowsDate"
     static let gifShowsTime = "gifShowsTime"
+    static let gifShowsElapsed = "gifShowsElapsed"
+    static let gifLoops = "gifLoops"
+    static let gifPauseAtEnd = "gifPauseAtEnd"
     static let gifScale = "gifScale"
     static let savedBands = "savedBands"
     static let inkSeconds = "inkSeconds"
@@ -36,6 +39,9 @@ enum Preferences {
       Key.recordLongest: 120,
       Key.gifShowsDate: true,
       Key.gifShowsTime: true,
+      Key.gifShowsElapsed: true,
+      Key.gifLoops: true,
+      Key.gifPauseAtEnd: 5,
       Key.gifScale: 2,
       Key.inkSeconds: 3,
       Key.floatOnTop: false,
@@ -69,7 +75,18 @@ enum Preferences {
 
   static var gifShowsDate: Bool { defaults.bool(forKey: Key.gifShowsDate) }
   static var gifShowsTime: Bool { defaults.bool(forKey: Key.gifShowsTime) }
+  static var gifShowsElapsed: Bool { defaults.bool(forKey: Key.gifShowsElapsed) }
   static var gifScale: Int { defaults.integer(forKey: Key.gifScale) == 1 ? 1 : 2 }
+  static var gifLoops: Bool { defaults.bool(forKey: Key.gifLoops) }
+  /// Seconds the last frame is held, 0 to 10.
+  static var gifPauseAtEnd: Int { min(max(defaults.integer(forKey: Key.gifPauseAtEnd), 0), 10) }
+
+  /// How GIFs look and play, as Settings and the editor last left them: at their own speed, every frame.
+  static var gifOptions: GIFOptions {
+    GIFOptions(
+      scale: gifScale, showsDate: gifShowsDate, showsTime: gifShowsTime, showsElapsed: gifShowsElapsed,
+      loops: gifLoops, pauseAtEnd: TimeInterval(gifPauseAtEnd))
+  }
 
   /// Seconds a pen stroke stays before it fades.
   static var inkSeconds: Int { min(max(defaults.integer(forKey: Key.inkSeconds), 1), 30) }
