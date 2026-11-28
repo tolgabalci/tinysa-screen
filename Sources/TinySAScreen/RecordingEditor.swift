@@ -238,15 +238,15 @@ struct RecordingEditor: View {
         }
         .pickerStyle(.segmented)
         .disabled(!model.clip.hasPeaks)
-        Toggle("New peak capture at the start", isOn: $freshPeaks)
-          .disabled(!model.clip.hasPeaks || gifPeaks == GIFPeaks.none.rawValue)
-          .help(
-            "The peak hold starts over where the GIF starts: no peaks at first, then each as it's caught, so none from "
-              + "before the GIF shows. Off, the hold as the window had it.")
         .help(
           model.clip.hasPeaks
             ? "The peak hold over the screen where it was on while recording: each peak labeled beside it, or in a box"
             : "Peak Hold was off while this was recorded")
+        Toggle("New peak capture at the start", isOn: $freshPeaks)
+          .disabled(!model.clip.hasPeaks || gifPeaks == GIFPeaks.none.rawValue)
+          .help(
+            "The peak hold starts over where the GIF starts, as if Clear Peaks were pressed there: only the peaks "
+              + "caught while the GIF plays, none from before it. Off, the hold as the window had it.")
       }
       group("Under the screen") {
         Toggle("The date", isOn: $showsDate)
