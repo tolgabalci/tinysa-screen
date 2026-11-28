@@ -4,11 +4,18 @@ import Foundation
 
 /// The strip under the screen in a GIF: at its bottom right the date and time of each moment, in the Mac's own date and
 /// time formats, the time to the second so it ticks as the GIF plays; at its bottom left how far into the recording the
-/// moment is, of how long it is ("0:10 / 2:30"). White on black like the analyzer's own text, smoothed in a few levels;
-/// pink through a second no picture came in, and "End of recording" in red in the middle through the pause at the end.
+/// moment is, of how long it is ("0:10 / 2:30"), in a bar that fills as the GIF plays. White on black like the
+/// analyzer's own text, smoothed in a few levels; pink through a second no picture came in, and "End of recording" in
+/// red in the middle through the pause at the end. Its colours are few (the bar's square, the text's levels over what
+/// it's on), so they fit the GIF's 256 with the screen's.
 struct CaptionStrip {
-  /// Shades from the background (0) to the text (levels − 1), of each ink.
+  /// Shades of text over what it's on, from none to all.
   static let levels = 8
+
+  static let black = Snapshot.pixel(r: 0, g: 0, b: 0)
+  /// The bar: the part to come, and the part played.
+  static let track = Snapshot.pixel(r: 58, g: 58, b: 62)
+  static let filled = Snapshot.pixel(r: 32, g: 102, b: 204)
 
   /// The inks: white, the pink of a second without a picture, the red of the end.
   enum Ink: Int, CaseIterable {
@@ -23,21 +30,14 @@ struct CaptionStrip {
     }
   }
 
-  /// The colour of each level of each ink, from the background to the text: ink × levels + level.
-  static let colors: [UInt32] = Ink.allCases.flatMap { ink in
-    (0..<levels).map { level in
-      let (r, g, b) = Snapshot.rgb(ink.color)
-      func shade(_ value: UInt8) -> UInt8 { UInt8((Int(value) * level + (levels - 1) / 2) / (levels - 1)) }
-      return Snapshot.pixel(r: shade(r), g: shade(g), b: shade(b))
-    }
-  }
-
-  /// What the strip says, where, and in which ink.
+  /// What the strip says, where, in which ink, and how much of the bar is filled.
   struct Words: Hashable {
     var left = ""
     var right = ""
     var center = ""
     var stale = false
+    /// Pixels of the bar filled; nil without the bar.
+    var filled: Int?
   }
 
   let width: Int
@@ -47,7 +47,12 @@ struct CaptionStrip {
   private let date: DateFormatter?
   private let time: DateFormatter?
   private let showsElapsed: Bool
-  private var rendered: [Words: [UInt8]] = [:]
+  /// The bar's place: from the left margin, as wide as leaves room for "End of recording" in the middle.
+  private let bar: (x: Int, y: Int, width: Int, height: Int)?
+  /// The strip last drawn: moments within a second say the same.
+  private var last: (words: Words, pixels: [UInt32])?
+
+  static let ending = "End of recording"
 
   /// Nil when the strip has nothing to say.
   init?(width: Int, scale: Int, options: GIFOptions) {
@@ -71,6 +76,15 @@ struct CaptionStrip {
     let descriptor = CTFontDescriptorCreateCopyWithFeature(
       CTFontCopyFontDescriptor(base), kNumberSpacingType as CFNumber, kMonospacedNumbersSelector as CFNumber)
     font = CTFontCreateWithFontDescriptor(descriptor, CGFloat(11 * scale), nil)
+    if options.showsProgress {
+      let margin = 6 * scale
+      let ending = Int(Self.measure(Self.ending, font).rounded(.up))
+      let room = (width - ending) / 2 - margin - 4 * scale
+      let barWidth = max(min(width * 38 / 100, room), 24 * scale)
+      bar = (margin, 2 * scale, barWidth, 12 * scale)
+    } else {
+      bar = nil
+    }
   }
 
   /// The date and time at a moment, as the strip's right says it.
@@ -78,11 +92,16 @@ struct CaptionStrip {
     [date?.string(from: moment), time?.string(from: moment)].compactMap { $0 }.joined(separator: "   ")
   }
 
-  /// What the strip says for a caption.
+  /// What the strip says for a caption: the bar filled as far as the count of seconds has gone.
   func words(_ caption: Caption) -> Words {
-    Words(
+    var words = Words(
       left: showsElapsed ? "\(Self.duration(caption.elapsed)) / \(Self.duration(caption.total))" : "",
-      right: text(at: caption.clock), center: caption.ended ? "End of recording" : "", stale: caption.stale)
+      right: text(at: caption.clock), center: caption.ended ? Self.ending : "", stale: caption.stale)
+    if let bar {
+      let played = caption.total > 0 ? min(max(Double(caption.elapsed) / Double(caption.total), 0), 1) : 1
+      words.filled = Int((played * Double(bar.width)).rounded())
+    }
+    return words
   }
 
   /// "0:10", "2:30", "−0:20" (a preview before the GIF's start).
@@ -91,31 +110,62 @@ struct CaptionStrip {
     return (seconds < 0 ? "\u{2212}" : "") + String(format: "%d:%02d", whole / 60, whole % 60)
   }
 
-  /// The strip saying `words`: a colour (ink × levels + level) for each pixel, row by row from the top left.
-  mutating func levels(for words: Words) -> [UInt8] {
-    if let known = rendered[words] { return known }
-    let ink = words.stale ? Ink.pink : .white
+  /// The strip saying `words`: its colour at each pixel, row by row from the top left.
+  mutating func pixels(for words: Words) -> [UInt32] {
+    if let last, last.words == words { return last.pixels }
+    var pixels = [UInt32](repeating: Self.black, count: width * height)
+    // The bar: square but for its corner pixels, the part played from the left.
+    if let bar, let filled = words.filled {
+      for y in bar.y..<(bar.y + bar.height) {
+        for x in bar.x..<(bar.x + bar.width) {
+          let top = y == bar.y || y == bar.y + bar.height - 1
+          if top && (x == bar.x || x == bar.x + bar.width - 1) { continue }
+          pixels[y * width + x] = x - bar.x < filled ? Self.filled : Self.track
+        }
+      }
+    }
     let margin = CGFloat(6 * scale)
-    var coverage = [UInt8](repeating: 0, count: width * height)
-    var inks = [UInt8](repeating: UInt8(ink.rawValue), count: width * height)
+    let ink = words.stale ? Ink.pink : .white
+    let left: (CGFloat) -> CGFloat =
+      bar.map { bar in { textWidth in CGFloat(bar.x) + (CGFloat(bar.width) - textWidth) / 2 } } ?? { _ in margin }
     let parts: [(String, Ink, (CGFloat) -> CGFloat)] = [
-      (words.left, ink, { _ in margin }),
+      (words.left, ink, left),
       (words.right, ink, { [width] textWidth in CGFloat(width) - margin - textWidth }),
       (words.center, .red, { [width] textWidth in (CGFloat(width) - textWidth) / 2 }),
     ]
+    let top = Self.levels - 1
     for (text, partInk, x) in parts where !text.isEmpty {
-      let part = draw(text, at: x)
-      for i in part.indices where part[i] > coverage[i] {
-        coverage[i] = part[i]
-        inks[i] = UInt8(partInk.rawValue)
+      let coverage = draw(text, at: x)
+      for i in coverage.indices where coverage[i] > 0 {
+        let level = (Int(coverage[i]) * top + 127) / 255
+        if level > 0 { pixels[i] = Self.blend(pixels[i], partInk.color, level) }
       }
     }
-    let top = Self.levels - 1
-    let levels = coverage.indices.map {
-      coverage[$0] == 0 ? 0 : inks[$0] * UInt8(Self.levels) + UInt8((Int(coverage[$0]) * top + 127) / 255)
-    }
-    rendered[words] = levels
-    return levels
+    last = (words, pixels)
+    return pixels
+  }
+
+  /// `ink` over `under`, `level` levels of the way.
+  static func blend(_ under: UInt32, _ ink: UInt32, _ level: Int) -> UInt32 {
+    let top = levels - 1
+    let (r0, g0, b0) = Snapshot.rgb(under)
+    let (r1, g1, b1) = Snapshot.rgb(ink)
+    func mix(_ a: UInt8, _ b: UInt8) -> UInt8 { UInt8((Int(a) * (top - level) + Int(b) * level + top / 2) / top) }
+    return Snapshot.pixel(r: mix(r0, r1), g: mix(g0, g1), b: mix(b0, b1))
+  }
+
+  private static func line(_ text: String, _ font: CTFont) -> CTLine {
+    CTLineCreateWithAttributedString(
+      NSAttributedString(
+        string: text,
+        attributes: [
+          NSAttributedString.Key(kCTFontAttributeName as String): font,
+          NSAttributedString.Key(kCTForegroundColorFromContextAttributeName as String): true,
+        ]))
+  }
+
+  private static func measure(_ text: String, _ font: CTFont) -> CGFloat {
+    CTLineGetTypographicBounds(line(text, font), nil, nil, nil)
   }
 
   /// `text` drawn on a strip of its own, from where `x` (given its width) puts it: how much of each pixel it covers.
@@ -130,13 +180,7 @@ struct CaptionStrip {
       context.setShouldAntialias(true)
       context.setShouldSmoothFonts(false)
       context.setFillColor(gray: 1, alpha: 1)
-      let line = CTLineCreateWithAttributedString(
-        NSAttributedString(
-          string: text,
-          attributes: [
-            NSAttributedString.Key(kCTFontAttributeName as String): font,
-            NSAttributedString.Key(kCTForegroundColorFromContextAttributeName as String): true,
-          ]))
+      let line = Self.line(text, font)
       let textWidth = CTLineGetTypographicBounds(line, nil, nil, nil)
       // Centred on the height of the capitals and digits, which is what the strip shows.
       let baseline = ((CGFloat(height) - CTFontGetCapHeight(font)) / 2).rounded()

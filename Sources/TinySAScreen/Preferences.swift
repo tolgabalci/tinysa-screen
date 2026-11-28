@@ -12,6 +12,7 @@ enum Preferences {
     static let gifShowsDate = "gifShowsDate"
     static let gifShowsTime = "gifShowsTime"
     static let gifShowsElapsed = "gifShowsElapsed"
+    static let gifShowsProgress = "gifShowsProgress"
     static let gifLoops = "gifLoops"
     static let gifPauseAtEnd = "gifPauseAtEnd"
     static let gifScale = "gifScale"
@@ -40,6 +41,7 @@ enum Preferences {
       Key.gifShowsDate: true,
       Key.gifShowsTime: true,
       Key.gifShowsElapsed: true,
+      Key.gifShowsProgress: true,
       Key.gifLoops: true,
       Key.gifPauseAtEnd: 5,
       Key.gifScale: 2,
@@ -76,6 +78,7 @@ enum Preferences {
   static var gifShowsDate: Bool { defaults.bool(forKey: Key.gifShowsDate) }
   static var gifShowsTime: Bool { defaults.bool(forKey: Key.gifShowsTime) }
   static var gifShowsElapsed: Bool { defaults.bool(forKey: Key.gifShowsElapsed) }
+  static var gifShowsProgress: Bool { defaults.bool(forKey: Key.gifShowsProgress) }
   static var gifScale: Int { defaults.integer(forKey: Key.gifScale) == 1 ? 1 : 2 }
   static var gifLoops: Bool { defaults.bool(forKey: Key.gifLoops) }
   /// Seconds the last frame is held, 0 to 10.
@@ -85,7 +88,7 @@ enum Preferences {
   static var gifOptions: GIFOptions {
     GIFOptions(
       scale: gifScale, showsDate: gifShowsDate, showsTime: gifShowsTime, showsElapsed: gifShowsElapsed,
-      loops: gifLoops, pauseAtEnd: TimeInterval(gifPauseAtEnd))
+      showsProgress: gifShowsProgress, loops: gifLoops, pauseAtEnd: TimeInterval(gifPauseAtEnd))
   }
 
   /// Seconds a pen stroke stays before it fades.

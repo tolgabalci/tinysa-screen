@@ -29,10 +29,12 @@ All notable changes are listed here, newest first. Versions follow [Semantic Ver
   twentieth of a second. Before, images came at the frames' own times, some a few hundredths of a second long, which
   players can treat differently.
 - Under the screen, at the left, the time into the GIF of its length ("0:10 / 2:30"), ticking with the clock at the
-  right. Through a second no picture came from the analyzer, both tick on in pink, white again with the next picture.
+  right, in a progress bar that fills as the GIF plays (blue over grey, a step a second). Through a second no picture
+  came from the analyzer, the times tick on in pink, white again with the next picture.
 - A pause at the end, 5 seconds unless set otherwise (0 to 10), holding the last frame with "End of recording" in red
   under the screen when it's longer than a second; and looping can be turned off, to play once. Both in the editor and
-  in Settings, with the new count. With all three of the date, the time and the count off, the GIF has no strip.
+  in Settings, with the new count and bar, all on at first. With the date, the time, the count and the bar all off,
+  the GIF has no strip.
 - Speed in the editor, 1× to 20×: a minute at 10× plays in 6 seconds, and the editor plays it so. Faster, Frames a
   second is Full, every frame of the recording, unless brought down to 10 or fewer (1 at the least), trading
   smoothness for a smaller file, each frame the screen as it was then.

@@ -246,6 +246,29 @@ final class GIFTests: XCTestCase {
     XCTAssertNil(held.loops, "plays once")
   }
 
+  /// The bar at the strip's left fills as the GIF plays, a second at a time with the count in it, all of it at the end;
+  /// without it, no bar.
+  func testProgressBarFills() throws {
+    let clip = Self.clip([(0, Self.screen(blockAt: 10))], end: 10)
+    var options = GIFOptions(showsDate: false, showsTime: false, showsElapsed: true, showsProgress: true)
+    let gif = try DecodedGIF(try XCTUnwrap(GIF.make(clip, options: options)).data)
+    let (played, toCome) = (Self.rgb(CaptionStrip.filled), Self.rgb(CaptionStrip.track))
+    func count(_ color: UInt32, _ image: DecodedGIF.Image) -> Int {
+      image.canvas[(480 * 320)...].filter { $0 == color }.count
+    }
+    let filled = gif.images.map { count(played, $0) }
+    // From .4 s past a second to 10.4 s: a tick each second of the clock, 11 images.
+    XCTAssertEqual(gif.images.count, 11)
+    XCTAssertEqual(filled.first, 0)
+    XCTAssertEqual(filled, filled.sorted(), "it only fills")
+    XCTAssertGreaterThan(filled[5], 0)
+    XCTAssertEqual(count(toCome, try XCTUnwrap(gif.images.last)), 0, "all of it at the end")
+    XCTAssertGreaterThan(count(toCome, gif.images[0]), 100)
+    options.showsProgress = false
+    let plain = try DecodedGIF(try XCTUnwrap(GIF.make(clip, options: options)).data)
+    XCTAssertTrue(plain.images.allSatisfy { count(played, $0) == 0 && count(toCome, $0) == 0 })
+  }
+
   /// Through a second no picture came in, the strip's words are pink; white again once one comes.
   func testSecondsWithoutAPictureArePink() throws {
     let screen = Self.screen(blockAt: 10)

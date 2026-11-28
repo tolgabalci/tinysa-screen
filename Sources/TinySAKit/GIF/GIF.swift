@@ -5,10 +5,12 @@ public struct GIFOptions: Hashable, Sendable {
   /// GIF pixels to each pixel of the screen, across and down: 1, or 2 for twice the size with the pixels kept sharp.
   public var scale: Int
   /// A strip under the screen with the date, the time, or both, at its bottom right, and with `showsElapsed`, how far
-  /// into the recording each moment is, of how long it is ("0:10 / 2:30"), at its bottom left. No strip without any.
+  /// into the recording each moment is, of how long it is ("0:10 / 2:30"), at its bottom left, in a bar that fills as
+  /// the GIF plays with `showsProgress`. No strip without any.
   public var showsDate: Bool
   public var showsTime: Bool
   public var showsElapsed: Bool
+  public var showsProgress: Bool
   /// Played over and over, or once.
   public var loops: Bool
   /// Seconds the last frame is held at the end; longer than a second, "End of recording" shows in red in the strip.
@@ -25,7 +27,8 @@ public struct GIFOptions: Hashable, Sendable {
   public var comment: String?
 
   public init(
-    scale: Int = 1, showsDate: Bool = true, showsTime: Bool = true, showsElapsed: Bool = false, loops: Bool = true,
+    scale: Int = 1, showsDate: Bool = true, showsTime: Bool = true, showsElapsed: Bool = false,
+    showsProgress: Bool = false, loops: Bool = true,
     pauseAtEnd: TimeInterval = 0, speed: Double = 1, framesPerSecond: Int? = nil, locale: Locale = .current,
     timeZone: TimeZone = .current, comment: String? = nil
   ) {
@@ -33,6 +36,7 @@ public struct GIFOptions: Hashable, Sendable {
     self.showsDate = showsDate
     self.showsTime = showsTime
     self.showsElapsed = showsElapsed
+    self.showsProgress = showsProgress
     self.loops = loops
     self.pauseAtEnd = pauseAtEnd
     self.speed = speed
@@ -43,7 +47,7 @@ public struct GIFOptions: Hashable, Sendable {
   }
 
   /// The strip has something to say.
-  public var hasCaption: Bool { showsDate || showsTime || showsElapsed }
+  public var hasCaption: Bool { showsDate || showsTime || showsElapsed || showsProgress }
 
   /// Seconds of playing between two of its moments, and the recording's seconds between them: for every frame, a tenth
   /// of a second of the recording, or a fiftieth of a second of playing when it plays faster than five times; with
@@ -150,15 +154,15 @@ public enum GIF {
     var lzw = LZWEncoder()
     var shown: [UInt32]?
     var shownFrame = -1
-    var shownCaption: [UInt8]?
+    var shownCaption: [UInt32]?
     for (k, event) in events.enumerated() {
       if k % 16 == 0, stop() { return nil }
       progress(Double(k) / Double(events.count))
       var pixels = shown
       if event.frame != shownFrame, let snapshot = frames[event.frame].snapshot() { pixels = snapshot.pixels }
       guard let pixels else { continue }
-      var levels: [UInt8]?
-      if let words = caption?.words(event.caption) { levels = caption?.levels(for: words) }
+      var strip: [UInt32]?
+      if let words = caption?.words(event.caption) { strip = caption?.pixels(for: words) }
 
       // The rows that changed: the screen's, at the GIF's size, and the strip's under it.
       var rows: Range<Int>?
@@ -168,10 +172,10 @@ public enum GIF {
       } else {
         rows = 0..<screenHeight
       }
-      if let levels {
-        let stripHeight = levels.count / canvasWidth
+      if let strip {
+        let stripHeight = strip.count / canvasWidth
         let changed =
-          shownCaption.map { changedRows($0, levels, width: canvasWidth, height: stripHeight) } ?? 0..<stripHeight
+          shownCaption.map { changedRows($0, strip, width: canvasWidth, height: stripHeight) } ?? 0..<stripHeight
         if let changed { rows = rows.spanning(changed.lowerBound + screenHeight..<changed.upperBound + screenHeight) }
       }
       guard let rows else { continue }  // nothing changed: the frame before stays up longer
@@ -186,10 +190,10 @@ public enum GIF {
             own[i] = palette.index(pixels[row + x / scale])
             i += 1
           }
-        } else if let levels {
+        } else if let strip {
           let row = (y - screenHeight) * canvasWidth
           for x in 0..<canvasWidth {
-            own[i] = palette.index(CaptionStrip.colors[Int(levels[row + x])])
+            own[i] = palette.index(strip[row + x])
             i += 1
           }
         }
@@ -197,7 +201,7 @@ public enum GIF {
       images.append(encode(own, rows: rows, time: event.time, lzw: &lzw))
       shown = pixels
       shownFrame = event.frame
-      shownCaption = levels
+      shownCaption = strip
     }
     progress(1)
     let duration = options.playingTime(of: clip.duration)
@@ -223,8 +227,8 @@ public enum GIF {
       let row = (y / scale) * screen.width
       for x in 0..<width { pixels[y * width + x] = screen.pixels[row + x / scale] }
     }
-    if let words = strip?.words(caption), let levels = strip?.levels(for: words) {
-      for (i, level) in levels.enumerated() { pixels[screenHeight * width + i] = CaptionStrip.colors[Int(level)] }
+    if let words = strip?.words(caption), let colors = strip?.pixels(for: words) {
+      for (i, color) in colors.enumerated() { pixels[screenHeight * width + i] = color }
     }
     return Snapshot(width: width, height: pixels.count / width, pixels: pixels)
   }

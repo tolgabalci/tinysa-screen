@@ -20,6 +20,7 @@ struct RecordingEditor: View {
   @AppStorage(Preferences.Key.gifShowsDate) private var showsDate = true
   @AppStorage(Preferences.Key.gifShowsTime) private var showsTime = true
   @AppStorage(Preferences.Key.gifShowsElapsed) private var showsElapsed = true
+  @AppStorage(Preferences.Key.gifShowsProgress) private var showsProgress = true
   @AppStorage(Preferences.Key.gifScale) private var scale = 2
   @AppStorage(Preferences.Key.gifLoops) private var loops = true
   @AppStorage(Preferences.Key.gifPauseAtEnd) private var pauseAtEnd = 5
@@ -41,7 +42,8 @@ struct RecordingEditor: View {
   /// How the GIF is made: Settings' choices (which the editor changes) and this GIF's speed.
   private var options: GIFOptions {
     GIFOptions(
-      scale: scale, showsDate: showsDate, showsTime: showsTime, showsElapsed: showsElapsed, loops: loops,
+      scale: scale, showsDate: showsDate, showsTime: showsTime, showsElapsed: showsElapsed,
+      showsProgress: showsProgress, loops: loops,
       pauseAtEnd: TimeInterval(min(max(pauseAtEnd, 0), 10)), speed: model.speed,
       framesPerSecond: model.effectiveFramesPerSecond)
   }
@@ -227,6 +229,8 @@ struct RecordingEditor: View {
         Toggle("The time, to the second", isOn: $showsTime)
         Toggle("Elapsed and total time", isOn: $showsElapsed)
           .help("How far into the GIF, of how long it is, at the strip's left: 0:10 / 2:30")
+        Toggle("Progress bar", isOn: $showsProgress)
+          .help("A bar at the strip's left that fills as the GIF plays, a second at a time, the time in it")
       }
       group("Playing") {
         Toggle("Over and over", isOn: $loops)

@@ -227,11 +227,12 @@ yellow ends:
   filmstrip moves the playhead.
 - **The keys are QuickTime Player's**: ← and → step a frame (⇧ a second), ⌥← and ⌥→ go to the GIF's start and end,
   and I and O set its start or end at the playhead. ⌘Z undoes.
-- **Beside the picture**: what goes under the screen (the date, the time, and the time into the GIF of its length,
-  "0:10 / 2:30"), whether it plays over and over, how long it pauses at the end (5 seconds unless you say), its
-  resolution, and its **speed**, 1× to 20×: a minute at 10× plays in 6 seconds. Faster than 1×, **Frames a second** is
-  Full, every frame of the recording, unless you bring it down to 10 or fewer for a smaller file, each frame the screen
-  as it was then. The **estimated GIF size** shows in large type, green under 2 MB, orange to 10 MB, red past that.
+- **Beside the picture**: what goes under the screen (the date, the time, the time into the GIF of its length,
+  "0:10 / 2:30", and a progress bar it sits in), whether it plays over and over, how long it pauses at the end (5
+  seconds unless you say), its resolution, and its **speed**, 1× to 20×: a minute at 10× plays in 6 seconds. Faster
+  than 1×, **Frames a second** is Full, every frame of the recording, unless you bring it down to 10 or fewer for a
+  smaller file, each frame the screen as it was then. The **estimated GIF size** shows in large type, green under 2 MB,
+  orange to 10 MB, red past that.
 - **At the bottom**: **Copy** (⌘C, green) at the left, to paste the GIF into a chat or an email; at the right, **Save
   to** with the folder it's saved in ([below](#where-files-go)), **Choose…**, **Save** (Return), as
   `tinySA <date> at <time>.gif`, and **Cancel** (Esc), which asks before it deletes the recording.
@@ -255,9 +256,10 @@ What's in a GIF:
   the GIF moves on in tenths of a second, each the screen as it was then, so it plays as it happened, its seconds
   exactly a second apart in any player. No dithering, no blur: a tinySA's screen has fewer colours than a GIF holds.
 - **A strip under the screen**: at its right the date and time, in your Mac's formats, the time to the second; at its
-  left the time into the GIF of its length ("0:10 / 2:30"), the two ticking together. Through a second when no
-  picture came from the analyzer they tick on in pink, white again with the next. Through the pause at the end, "End
-  of recording" in red. Turn all three off and there's no strip.
+  left a bar that fills as the GIF plays, with the time into the GIF of its length in it ("0:10 / 2:30"), ticking
+  with the clock. Through a second when no picture came from the analyzer the times tick on in pink, white again with
+  the next. Through the pause at the end, "End of recording" in red. All on unless you turn them off; turn all four
+  off and there's no strip.
 - **Small files**: only the rows of the screen that changed since the frame before are stored, and a screen that keeps
   still costs nothing. A minute of a busy band takes about 550 KB at the sharp size (220 KB small); with the
   analyzer's waterfall on, which changes every sweep, 3 to 6 MB (under half that small).

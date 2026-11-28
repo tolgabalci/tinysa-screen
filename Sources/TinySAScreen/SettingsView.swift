@@ -12,6 +12,7 @@ struct SettingsView: View {
   @AppStorage(Preferences.Key.gifShowsDate) private var showsDate = true
   @AppStorage(Preferences.Key.gifShowsTime) private var showsTime = true
   @AppStorage(Preferences.Key.gifShowsElapsed) private var showsElapsed = true
+  @AppStorage(Preferences.Key.gifShowsProgress) private var showsProgress = true
   @AppStorage(Preferences.Key.gifScale) private var scale = 2
   @AppStorage(Preferences.Key.gifLoops) private var loops = true
   @AppStorage(Preferences.Key.gifPauseAtEnd) private var pauseAtEnd = 5
@@ -31,6 +32,7 @@ struct SettingsView: View {
         Toggle("Date under the screen", isOn: $showsDate)
         Toggle("Time under the screen, to the second", isOn: $showsTime)
         Toggle("Time into the GIF and its length under the screen (0:10 / 2:30)", isOn: $showsElapsed)
+        Toggle("A bar under the screen that fills as the GIF plays", isOn: $showsProgress)
         Picker("Resolution", selection: $scale) {
           Text("Sharp: twice the screen's size").tag(2)
           Text("Small: the screen's own size").tag(1)

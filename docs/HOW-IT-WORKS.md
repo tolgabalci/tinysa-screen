@@ -228,8 +228,10 @@ them. Nothing goes to the disk until a GIF is saved.
   pause at the end is one more image, held.
 - **The strip**: the text drawn with the Mac's system font in eight shades, white on black like the analyzer's: the
   date and time at its right, the time into the GIF of its length at its left, counted on the clock's seconds so both
-  tick together. Each tick adds an image of the strip's rows that changed, half a kilobyte at the screen's size and one
-  and a half at twice that, so the clock runs on while the screen keeps still. The app notes the time of every picture
+  tick together, in a bar that fills a step each tick (square but for its corner pixels, so its colours stay few: a
+  grey to come, a blue played, the text's eight shades over each). Each tick adds an image of the strip's rows that
+  changed, half a kilobyte at the screen's size and one and a half at twice that, so the clock runs on while the screen
+  keeps still. The app notes the time of every picture
   that comes, the ones the same as the one before too, which aren't kept twice; a moment with none in the second before
   it (or the recording's time between moments, when faster) is drawn in pink. "End of recording" is red.
 - **A comment** in the file says where the picture came from and when.
