@@ -150,6 +150,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     NotificationCenter.default.addObserver(
       self, selector: #selector(preferencesChanged), name: UserDefaults.didChangeNotification, object: nil)
     #if DEBUG
+      // Real frames replayed through the window, pictured for the README: Showcase.window.
+      if let frames = ProcessInfo.processInfo.environment["TINYSA_SCREEN_SHOWCASE"] {
+        Showcase.window(
+          window, frames: URL(fileURLWithPath: frames),
+          show: { [weak self] image in self.map { $0.session($0.session, show: image) } },
+          made: { [weak self] url in self?.showLastGIF(url) },
+          peaks: { [weak self] state in self?.peaksChanged(state) },
+          say: { [weak self] note in self?.view.say(note) })
+        return
+      }
       // The window alone, pictured, without the analyzer or the control socket: EditorDemo.window.
       if let screen = ProcessInfo.processInfo.environment["TINYSA_SCREEN_WINDOW_DEMO"] {
         EditorDemo.window(

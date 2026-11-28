@@ -15,6 +15,7 @@
     static var renders: [(at: Date, took: TimeInterval, second: Double)] = []
 
     static func runIfAsked() -> Bool {
+      if Showcase.editorIfAsked() { return true }
       let environment = ProcessInfo.processInfo.environment
       if let folder = environment["TINYSA_SCREEN_RECORD_DEMO"],
         let out = environment["TINYSA_SCREEN_EDITOR_SNAPSHOTS"]
@@ -291,7 +292,7 @@
 
     /// `window` drawn as the window in front is, by AppKit's own switches for it, though the app never comes forward:
     /// so a picture shows what the user sees, and nobody's typing is taken.
-    private static func drawInFront(_ window: NSWindow) {
+    static func drawInFront(_ window: NSWindow, again: Bool = false) {
       for name in ["_setForceActiveControls:", "_setForceMainAppearance:", "_setHasActiveAppearance:"] {
         let selector = NSSelectorFromString(name)
         guard window.responds(to: selector) else {
@@ -299,9 +300,14 @@
           continue
         }
         typealias Setter = @convention(c) (AnyObject, Selector, Bool) -> Void
-        unsafeBitCast(window.method(for: selector), to: Setter.self)(window, selector, true)
+        let set = unsafeBitCast(window.method(for: selector), to: Setter.self)
+        if again { set(window, selector, false) }  // AppKit passes over the same value set twice
+        set(window, selector, true)
       }
       window.contentView?.superview?.needsDisplay = true  // the frame, the toolbar with it
+      for kind in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
+        window.standardWindowButton(kind)?.needsDisplay = true  // their colours, in front
+      }
     }
 
     /// The hold of `screen`, its labels as if read (902 to 928 MHz, +10 dBm at the top, 10 dB a division of 24
@@ -568,7 +574,7 @@
 
     /// The window as it is on the screen. A program can picture its own windows without being let record the screen;
     /// the call is looked up as the SDK no longer offers it to Swift.
-    private static func picture(of window: NSWindow) -> CGImage? {
+    static func picture(of window: NSWindow) -> CGImage? {
       typealias Create = @convention(c) (CGRect, UInt32, UInt32, UInt32) -> Unmanaged<CGImage>?
       guard let symbol = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "CGWindowListCreateImage") else { return nil }
       let create = unsafeBitCast(symbol, to: Create.self)
