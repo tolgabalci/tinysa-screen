@@ -11,7 +11,7 @@ public struct GIFOptions: Hashable, Sendable {
   public var showsTime: Bool
   public var showsElapsed: Bool
   public var showsProgress: Bool
-  /// Played over and over, or once.
+  /// Played in a loop, or once.
   public var loops: Bool
   /// Seconds the last frame is held at the end; longer than a second, "End of recording" shows in red in the strip.
   public var pauseAtEnd: TimeInterval

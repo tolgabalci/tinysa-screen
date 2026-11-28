@@ -37,7 +37,7 @@ struct SettingsView: View {
           Text("Sharp: twice the screen's size").tag(2)
           Text("Small: the screen's own size").tag(1)
         }
-        Toggle("Play over and over", isOn: $loops)
+        Toggle("Loop", isOn: $loops)
         Stepper(value: $pauseAtEnd, in: 0...10) {
           HStack {
             Text("Pause at the end")

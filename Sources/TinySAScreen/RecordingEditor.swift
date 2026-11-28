@@ -7,7 +7,7 @@ import UniformTypeIdentifiers
 /// with the part the GIF keeps between two yellow handles. It starts as Stop & Save would save it (from the lead-in set
 /// in Settings before Record, to Stop); a handle dragged back takes in more of the seconds before, either one dragged
 /// in trims. The picture shows the frame at the playhead as the GIF will, strip and all, as large as the window lets
-/// it, and follows a handle while it moves; Play plays the part kept over and over, as the GIF will. Beside it: the
+/// it, and follows a handle while it moves; Play plays the part kept in a loop, as the GIF will. Beside it: the
 /// date and time under the screen, the size, and the folder the GIF is saved in, kept for the next.
 struct RecordingEditor: View {
   enum Action { case save, copy }
@@ -201,7 +201,7 @@ struct RecordingEditor: View {
         model.togglePlay()
       } label: {
         Image(systemName: model.isPlaying ? "pause.fill" : "play.fill")
-          .frame(width: 18)
+          .frame(width: 30)
       }
       .buttonStyle(.borderless)
       .help(model.isPlaying ? "Pause (Space)" : "Play the GIF (Space)")
@@ -216,7 +216,7 @@ struct RecordingEditor: View {
         .help("When the GIF ends")
         .accessibilityLabel("Ends at \(TimeText.clock(model.trim.end))")
     }
-    .font(.callout.monospacedDigit())
+    .font(.system(size: 24).monospacedDigit())  // twice the callout size: the GIF's ends and length at a glance
     .foregroundStyle(.secondary)
   }
 
@@ -233,7 +233,7 @@ struct RecordingEditor: View {
           .help("A bar at the strip's left that fills as the GIF plays, a second at a time, the time in it")
       }
       group("Playing") {
-        Toggle("Over and over", isOn: $loops)
+        Toggle("Loop", isOn: $loops)
           .help("Loop the GIF; off, it plays once and stays at its end")
         Stepper(value: $pauseAtEnd, in: 0...10) {
           Text("Pause at the end: \(pauseAtEnd == 0 ? "none" : "\(pauseAtEnd) s")")

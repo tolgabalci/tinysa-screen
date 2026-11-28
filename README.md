@@ -223,12 +223,12 @@ yellow ends:
 - **Drag the ends** to trim the GIF, or drag the start back into the dimmed part, the seconds kept from before you
   pressed Record (marked above the filmstrip). The picture shows the frame at an end while you drag it, as the GIF will
   show it, date and time included. Hold ⌥ for finer steps.
-- **Play** (Space, or a click on the picture) plays the GIF over and over, as it will loop. A drag anywhere else on the
+- **Play** (Space, or a click on the picture) plays the GIF in a loop, as it will play. A drag anywhere else on the
   filmstrip moves the playhead.
 - **The keys are QuickTime Player's**: ← and → step a frame (⇧ a second), ⌥← and ⌥→ go to the GIF's start and end,
   and I and O set its start or end at the playhead. ⌘Z undoes.
 - **Beside the picture**: what goes under the screen (the date, the time, the time into the GIF of its length,
-  "0:10 / 2:30", and a progress bar it sits in), whether it plays over and over, how long it pauses at the end (5
+  "0:10 / 2:30", and a progress bar it sits in), whether it loops, how long it pauses at the end (5
   seconds unless you say), its resolution, and its **speed**, 1× to 20×: a minute at 10× plays in 6 seconds. Faster
   than 1×, **Frames a second** is Full, every frame of the recording, unless you bring it down to 10 or fewer for a
   smaller file, each frame the screen as it was then. The **estimated GIF size** shows in large type, green under 2 MB,
