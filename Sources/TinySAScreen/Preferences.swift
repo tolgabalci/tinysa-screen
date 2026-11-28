@@ -28,7 +28,9 @@ enum Preferences {
     static let peakDisplay = "peakDisplay"
     static let peakArrowColor = "peakArrowColor"
     static let screenshotPeaks = "screenshotPeaks"
+    /// 1.4.0's first builds' Peaks on or off in GIFs, taken over by `gifPeaks`.
     static let gifShowsPeaks = "gifShowsPeaks"
+    static let gifPeaks = "gifPeaks"
     static let saveFolderBookmark = "saveFolderBookmark"
     static let saveFolderPath = "saveFolderPath"
     static let editorWidth = "editorWidth"
@@ -41,6 +43,9 @@ enum Preferences {
     let own = defaults.persistentDomain(forName: Bundle.main.bundleIdentifier ?? "tinysa-screen")
     if own?[Key.peakDisplay] == nil, let listed = own?[Key.peakListed] as? Bool {
       defaults.set((listed ? PeakDisplay.box : .labels).rawValue, forKey: Key.peakDisplay)
+    }
+    if own?[Key.gifPeaks] == nil, own?[Key.gifShowsPeaks] as? Bool == false {
+      defaults.set(GIFPeaks.none.rawValue, forKey: Key.gifPeaks)
     }
     defaults.register(defaults: [
       Key.controlEnabled: true,
@@ -64,7 +69,7 @@ enum Preferences {
       Key.peakDisplay: PeakDisplay.labels.rawValue,
       Key.peakArrowColor: PeakColor.orange.rawValue,
       Key.screenshotPeaks: true,
-      Key.gifShowsPeaks: true,
+      Key.gifPeaks: GIFPeaks.labels.rawValue,
     ])
   }
 
@@ -104,7 +109,17 @@ enum Preferences {
     GIFOptions(
       scale: gifScale, showsDate: gifShowsDate, showsTime: gifShowsTime, showsElapsed: gifShowsElapsed,
       showsProgress: gifShowsProgress, loops: gifLoops, pauseAtEnd: TimeInterval(gifPauseAtEnd),
-      peaks: defaults.bool(forKey: Key.gifShowsPeaks) ? peakLook : nil)
+      peaks: gifPeakLook(gifPeaks))
+  }
+
+  /// How GIFs show the peak hold where it was on, as the editor last left it.
+  static var gifPeaks: GIFPeaks { GIFPeaks(rawValue: defaults.string(forKey: Key.gifPeaks) ?? "") ?? .labels }
+
+  /// The peak hold's look in a GIF shown `peaks` way; nil for none.
+  static func gifPeakLook(_ peaks: GIFPeaks) -> PeakLook? {
+    guard peaks != .none else { return nil }
+    return PeakLook(
+      color: peakColor.gifColor, readouts: peaks == .box ? .box : .labels, arrowColor: peakArrowColor.gifColor)
   }
 
   /// The peak hold's look: its colour, its readouts in a box or beside each peak.
@@ -209,10 +224,28 @@ enum PeakDisplay: String, CaseIterable, Identifiable {
     }
   }
 
+  /// As the Peaks button's menu says it.
+  var menuTitle: String {
+    switch self {
+    case .labels: return "Labels Beside the Peaks"
+    case .box: return "A Box over the Graph"
+    case .list: return "A List Beside the Screen"
+    }
+  }
+
   /// In the window: with the list beside the screen, the peaks' numbers only.
   var window: PeakLook.Readouts { self == .labels ? .labels : self == .box ? .box : .numbers }
   /// In a GIF or a screenshot: the list isn't in the picture, so the box.
   var picture: PeakLook.Readouts { self == .labels ? .labels : .box }
+}
+
+/// How a GIF shows the peak hold where it was on while recording: not at all, its peaks labeled beside them, or in a
+/// box over the graph (a GIF has no room for the window's list).
+enum GIFPeaks: String, CaseIterable, Identifiable {
+  case none, labels, box
+
+  var id: String { rawValue }
+  var name: String { rawValue.capitalized }
 }
 
 /// The peak hold's colours. The analyzer draws its own traces yellow, green, red and magenta (traces 1 to 4 on a

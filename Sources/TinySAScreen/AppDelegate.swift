@@ -77,9 +77,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     setUpToolbarButton(recordButton, "Record", symbol: "record.circle", action: #selector(toggleRecording(_:)))
     setUpToolbarButton(pointerButton, "Pointer", symbol: "cursorarrow.rays", action: #selector(togglePointer(_:)))
     setUpToolbarButton(penButton, "Pen", symbol: "pencil.tip", action: #selector(togglePen(_:)))
-    setUpToolbarButton(peaksButton, "Peaks", symbol: "chart.xyaxis.line", action: #selector(togglePeakHold(_:)))
-    peaksButton.setButtonType(.pushOnPushOff)
-    peaksButton.toolTip = "Hold the highest level at each frequency and label the highest peaks, on the Mac (⌥⌘P)"
+    setUpToolbarButton(peaksButton, "Peaks", symbol: "chart.xyaxis.line", action: #selector(showPeaksMenu(_:)))
+    peaksButton.menuOnPress = Self.peaksMenu()
+    peaksButton.setAccessibilityRole(.popUpButton)
+    peaksButton.toolTip =
+      "The peak hold, held on the Mac: its peaks as labels beside them, in a box over the graph or in a list "
+      + "beside the screen; or none (⌥⌘P turns it on and off)"
     setUpToolbarButton(clearPeaksButton, "Clear Peaks", symbol: "eraser", action: #selector(clearPeakHold(_:)))
     clearPeaksButton.toolTip = "Start the peak hold over, from the next sweep (⌥⌘⌫)"
     let recorder = session.recorder
@@ -389,7 +392,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
     case .peaks:
       item.label = "Peaks"
       item.view = OutlinedToolbarItem(peaksButton)
-      item.menuFormRepresentation = menuForm("Peak Hold", #selector(togglePeakHold(_:)))
+      let form = NSMenuItem(title: "Peaks", action: nil, keyEquivalent: "")
+      form.submenu = Self.peaksMenu()
+      item.menuFormRepresentation = form
     case .clearPeaks:
       item.label = "Clear Peaks"
       item.view = OutlinedToolbarItem(clearPeaksButton)
@@ -539,6 +544,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
   }
 
   // MARK: Peak hold
+
+  /// The Peaks button's menu: none, or the peak hold with its peaks shown one of the three ways.
+  private static func peaksMenu() -> NSMenu {
+    let menu = NSMenu(title: "Peaks")
+    let none = NSMenuItem(title: "None", action: #selector(choosePeaks(_:)), keyEquivalent: "")
+    none.tag = -1
+    menu.addItem(none)
+    menu.addItem(.separator())
+    for (i, display) in PeakDisplay.allCases.enumerated() {
+      let item = NSMenuItem(title: display.menuTitle, action: #selector(choosePeaks(_:)), keyEquivalent: "")
+      item.tag = i
+      menu.addItem(item)
+    }
+    return menu
+  }
+
+  /// The Peaks button's menu below it (pressed with VoiceOver, say).
+  @objc private func showPeaksMenu(_ sender: ToolbarButton) {
+    sender.showMenu()
+  }
+
+  /// A choice from the Peaks button's menu: the hold off, or on, its peaks shown that way.
+  @objc func choosePeaks(_ sender: NSMenuItem) {
+    guard PeakDisplay.allCases.indices.contains(sender.tag) else {
+      Preferences.peakHold = false
+      return
+    }
+    Preferences.defaults.set(PeakDisplay.allCases[sender.tag].rawValue, forKey: Preferences.Key.peakDisplay)
+    Preferences.peakHold = true
+  }
 
   @objc func togglePeakHold(_ sender: Any?) {
     Preferences.peakHold.toggle()
@@ -747,6 +782,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, NSMe
       return true
     case #selector(togglePeakHold(_:)):
       item.state = Preferences.peakHold ? .on : .off
+      return status.instrument != .nanoVNA
+    case #selector(choosePeaks(_:)):
+      let shown = Preferences.peakHold ? PeakDisplay.allCases.firstIndex(of: Preferences.peakDisplay) ?? -1 : -1
+      item.state = item.tag == shown ? .on : .off
       return status.instrument != .nanoVNA
     case #selector(clearPeakHold(_:)):
       return Preferences.peakHold && status.instrument != .nanoVNA

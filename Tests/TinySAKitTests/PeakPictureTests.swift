@@ -167,17 +167,18 @@ final class PeakPictureTests: XCTestCase {
       seed = seed &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
       return range.lowerBound + CGFloat(seed >> 11) / CGFloat(1 << 53) * (range.upperBound - range.lowerBound)
     }
-    let bounds = CGRect(x: 60, y: 0, width: 900, height: 480)
+    let bounds = CGRect(x: 60, y: 0, width: 600, height: 360)
     let size = CGSize(width: 76, height: 44)
     var moved = 0
     for _ in 0..<200 {
       let count = 6 + Int(random(0...4))
-      let tops = (0..<count).map { _ in CGPoint(x: random(70...950), y: random(60...420)) }
+      let tops = (0..<count).map { _ in CGPoint(x: random(70...650), y: random(60...320)) }
       let places = PeakLabels.place(Array(repeating: size, count: count), at: tops, within: bounds, gap: 8)
       for (i, place) in places.enumerated() where place.away {
         moved += 1
         XCTAssertTrue(bounds.contains(place.rect))
         let (from, to) = PeakLabels.arrow(from: place.rect, to: tops[i])
+        XCTAssertGreaterThanOrEqual(hypot(to.x - from.x, to.y - from.y), 5 * 8, "an arrow long enough to see")
         for j in 0..<i {
           XCTAssertFalse(PeakLabels.crosses(from, to, places[j].rect.insetBy(dx: 0.5, dy: 0.5)), "behind label \(j)")
           if places[j].away {
@@ -187,7 +188,7 @@ final class PeakPictureTests: XCTestCase {
         }
       }
     }
-    XCTAssertGreaterThan(moved, 50, "crowds enough to move labels")
+    XCTAssertGreaterThan(moved, 20, "crowds enough to move labels")
   }
 
   /// A low peak by the graph's left edge, tall ones around it: its label right by it (over the tall ones' lines), not

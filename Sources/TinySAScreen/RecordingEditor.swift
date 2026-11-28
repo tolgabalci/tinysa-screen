@@ -24,7 +24,7 @@ struct RecordingEditor: View {
   @AppStorage(Preferences.Key.gifScale) private var scale = 2
   @AppStorage(Preferences.Key.gifLoops) private var loops = true
   @AppStorage(Preferences.Key.gifPauseAtEnd) private var pauseAtEnd = 3
-  @AppStorage(Preferences.Key.gifShowsPeaks) private var showsPeaks = true
+  @AppStorage(Preferences.Key.gifPeaks) private var gifPeaks = GIFPeaks.labels.rawValue
   @StateObject private var stills = StillCache()
   @StateObject private var estimate = SizeEstimate()
   @FocusState private var typingFolder: Bool
@@ -47,7 +47,7 @@ struct RecordingEditor: View {
       showsProgress: showsProgress, loops: loops,
       pauseAtEnd: TimeInterval(min(max(pauseAtEnd, 0), 10)), speed: model.speed,
       framesPerSecond: model.effectiveFramesPerSecond,
-      peaks: showsPeaks && model.clip.hasPeaks ? Preferences.peakLook : nil)
+      peaks: model.clip.hasPeaks ? Preferences.gifPeakLook(GIFPeaks(rawValue: gifPeaks) ?? .labels) : nil)
   }
 
   /// The strip's rows under the screen, at the screen's own size.
@@ -229,12 +229,15 @@ struct RecordingEditor: View {
   private var side: some View {
     VStack(alignment: .leading, spacing: 14) {
       group("On the screen") {
-        Toggle("Peaks", isOn: $showsPeaks)
-          .disabled(!model.clip.hasPeaks)
-          .help(
-            model.clip.hasPeaks
-              ? "The peak hold over the screen, as the window showed it while recording"
-              : "Peak Hold was off while this was recorded")
+        Picker("Peaks", selection: $gifPeaks) {
+          ForEach(GIFPeaks.allCases) { peaks in Text(peaks.name).tag(peaks.rawValue) }
+        }
+        .pickerStyle(.segmented)
+        .disabled(!model.clip.hasPeaks)
+        .help(
+          model.clip.hasPeaks
+            ? "The peak hold over the screen where it was on while recording: each peak labeled beside it, or in a box"
+            : "Peak Hold was off while this was recorded")
       }
       group("Under the screen") {
         Toggle("The date", isOn: $showsDate)

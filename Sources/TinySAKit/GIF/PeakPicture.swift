@@ -126,16 +126,24 @@ public enum PeakLabels {
 
   /// Places for labels of `sizes` for peaks whose tops are at `tops`, inside `bounds`, top-down, taken in `order` (the
   /// oldest peak's first, so a newer one gives way). Beside its top, right or left, or just above it, where that's
-  /// clear of the labels placed, their arrows and every peak's top (the graph's lines may go under it); else the
-  /// spot nearby with the best arrow to the top: short, angled or upright (a level one, sideways, counts four times as
-  /// long, a shallow one half as long again), one below the top a little longer than one above, its way passing no
-  /// label; else beside it all the same. Close, over the graph, beats clear and far.
+  /// clear of the labels placed, their arrows and every peak's top (the graph's lines may go under it). Else the best
+  /// spot nearby: touching its top (within `near` of it, `gap` × 2.5, and clearly nearer its own top than any other, by
+  /// `gap` × 2), with no arrow, which reads as the peak's; or far enough for an arrow to show its line as well as its
+  /// head (`gap` × 5 at least), the arrow short and angled or upright (a level one, sideways, counts four times as
+  /// long, a shallow one half as long again; below the top a quarter longer than above), passing behind no label.
+  /// Nothing in between: an arrow too short to see is only its head. Else beside it all the same. Close, over the
+  /// graph, beats clear and far.
   public static func place(
     _ sizes: [CGSize], at tops: [CGPoint], order: [Int]? = nil, within bounds: CGRect, gap: CGFloat
   ) -> [Place] {
     var places = sizes.map { Place(rect: CGRect(origin: .zero, size: $0), away: false) }
     var taken: [CGRect] = []
     var arrows: [(from: CGPoint, to: CGPoint)] = []
+    let (near, shortestArrow) = (gap * 2.5, gap * 5)
+    func distance(_ rect: CGRect, _ point: CGPoint) -> CGFloat {
+      let (from, _) = arrow(from: rect, to: point)
+      return hypot(point.x - from.x, point.y - from.y)
+    }
     for i in order ?? Array(sizes.indices) where i < sizes.count && i < tops.count {
       let (size, top) = (sizes[i], tops[i])
       func fits(_ rect: CGRect) -> Bool {
@@ -150,27 +158,33 @@ public enum PeakLabels {
       ]
       var place = beside.first(where: fits).map { Place(rect: $0, away: false) }
       if place == nil {
-        var best: (cost: CGFloat, rect: CGRect)?
-        let (stepX, stepY) = (max(size.width / 6, 2), max(size.height / 4, 2))
-        for row in -24...24 {
-          for column in -24...24 {
+        var best: (cost: CGFloat, place: Place)?
+        let (stepX, stepY) = (max(size.width / 8, 2), max(size.height / 6, 2))
+        for row in -36...36 {
+          for column in -36...36 {
             let center = CGPoint(x: top.x + CGFloat(column) * stepX, y: top.y + CGFloat(row) * stepY)
             let rect = inside(
               CGRect(
                 x: center.x - size.width / 2, y: center.y - size.height / 2, width: size.width, height: size.height),
               bounds)
+            let length = distance(rect, top)
+            // Touching its own top, the nearest to it: the peak's, no arrow. Too far to touch, too near for an arrow:
+            // neither.
+            let touching =
+              length <= near && !tops.indices.contains { $0 != i && distance(rect, tops[$0]) <= length + 2 * gap }
+            guard touching || length >= shortestArrow else { continue }
             let (from, to) = arrow(from: rect, to: top)
-            let length = hypot(to.x - from.x, to.y - from.y)
             let steep = abs(to.y - from.y) / max(length, 1)  // 0 level, 1 upright
-            var cost = length * (steep < 0.42 ? 4 : steep < 0.7 ? 1.5 : 1) * (rect.minY > top.y ? 1.25 : 1)
+            var cost =
+              touching ? length : length * (steep < 0.42 ? 4 : steep < 0.7 ? 1.5 : 1) * (rect.minY > top.y ? 1.25 : 1)
             cost += 0.001 * CGFloat(abs(row) + abs(column))  // equal costs: the nearer spot
             guard cost < best?.cost ?? .infinity, fits(rect),
-              !taken.contains(where: { crosses(from, to, $0.insetBy(dx: 0.5, dy: 0.5)) })
+              touching || !taken.contains(where: { crosses(from, to, $0.insetBy(dx: 0.5, dy: 0.5)) })
             else { continue }
-            best = (cost, rect)
+            best = (cost, Place(rect: rect, away: !touching))
           }
         }
-        place = best.map { Place(rect: $0.rect, away: true) }
+        place = best?.place
       }
       let chosen = place ?? Place(rect: inside(beside[0], bounds), away: false)
       places[i] = chosen

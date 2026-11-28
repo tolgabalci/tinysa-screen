@@ -188,10 +188,12 @@ analyzer cut its sweep short, and a feeding program's pictures are all there is 
   exact. The recorder keeps the hold's changes with the frames (and always the latest, so a recording knows it from
   its start), and each moment of a GIF draws the hold as it was then. Labels beside peaks are placed oldest peak first:
   beside its top, right, left or just above, clear of the labels placed, their arrows and every peak's top (the
-  graph's lines may go under one); where none of those is clear, the spot nearby with the best arrow to the top:
-  short, and angled or upright (a level one counts four times as long, a shallow one half as long again; below the top
-  a quarter longer than above), its way passing behind no label, the spot slid inside the graph at its edges. Close
-  over the graph beats clear and far. The arrows are in a colour of their own, orange unless chosen otherwise, so none
+  graph's lines may go under one). Where none of those is clear, the best spot nearby, slid inside the graph at its
+  edges: touching the top (within 2.5 times the gap a label keeps from its peak, and clearly nearer its own top than
+  any other's), with no arrow; or far enough for an arrow to show its line as well as its head (5 times that gap),
+  the arrow short and angled or upright (a level one counts four times as long, a shallow one half as long again;
+  below the top a quarter longer than above), passing behind no label. Nothing in between: an arrow too short is only
+  its head. Close over the graph beats clear and far. The arrows are in a colour of their own, orange unless chosen otherwise, so none
   is taken for the held line.
 - **The list beside the screen** (`PeakLog`): a row a peak, matched from one hold to the next by its number and place
   (2 % of the graph's width, as the numbers are kept), its level and time brought up to date while it's held, kept

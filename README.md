@@ -164,15 +164,16 @@ window above other apps' windows while you work in another one (a call's, say), 
 
 ## Peak hold
 
-**Peaks** (⌥⌘P) holds the highest level the analyzer's live trace (the yellow one) reaches at each frequency over the
-last minute, as a cyan line over the picture, and shows its highest peaks, with when each one's level came in, as
-**Settings › Peak hold › Show peaks as** says:
+**Peaks** holds the highest level the analyzer's live trace (the yellow one) reaches at each frequency over the last
+minute, as a cyan line over the picture, and shows its highest peaks, with when each one's level came in. Its menu
+(the Peaks button, or Settings › Peak hold › Show peaks as) chooses how, or None; ⌥⌘P turns it on and off:
 
 - **Labels beside the peaks**: each peak's time (without AM or PM, for room), megahertz to the nearest and level
   beside it, "11:09:21 / 911 MHz / −58 dBm". Where peaks crowd together, the older peak's label stays beside it and a
-  newer one's goes close by with a short arrow to its peak, angled or upright rather than level, over the graph if
-  need be but never over another label, a peak's top or an arrow, and its arrow never behind another label. The
-  arrows are orange, so none is taken for the held line (Settings › Peak hold › Arrows).
+  newer one's goes close by: touching its peak, with no arrow, where that's clearly its own; else far enough for an
+  arrow that shows (angled or upright rather than level), over the graph if need be but never over another label, a
+  peak's top or an arrow, and its arrow never behind another label. The arrows are orange, so none is taken for the
+  held line (Settings › Peak hold › Arrows).
 - **A box over the graph**, which finds itself an empty spot: the hold's period, then each peak by its number on the
   screen, in the order they came in:
 
@@ -247,8 +248,8 @@ yellow ends:
   filmstrip moves the playhead.
 - **The keys are QuickTime Player's**: ← and → step a frame (⇧ a second), ⌥← and ⌥→ go to the GIF's start and end,
   and I and O set its start or end at the playhead. ⌘Z undoes.
-- **Beside the picture**: the peak hold over the screen (**Peaks**, where it was on while recording), what goes under
-  the screen (the date, the time, the time into the GIF of its length,
+- **Beside the picture**: the peak hold over the screen where it was on while recording (**Peaks**: None, Labels or
+  Box), what goes under the screen (the date, the time, the time into the GIF of its length,
   "0:10 / 2:30", and a progress bar it sits in), whether it loops, how long it pauses at the end (3
   seconds unless you say), its resolution, and its **speed**, 1× to 20×: a minute at 10× plays in 6 seconds. Faster
   than 1×, **Frames a second** is Full, every frame of the recording, unless you bring it down to 10 or fewer for a
